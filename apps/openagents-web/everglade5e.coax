@@ -159,57 +159,11 @@ e5_before :: (s: [] Everglade, v: [] E5, bar: [] f32, bar_n: int, hero: [] f32, 
 
 // ---- each frame, after Everglade's
 
-// What Everglade's frame did: the harm its dice dealt is put back and handed to the engine (or, in a
-// bar cast's wake, left to the engine's own roll); the casts that were let loose (Everglade notes
-// each for its analytics) wait for their strike; what was put away ends its concentration.
+// After Everglade's frame: nothing of its casts or harm is the page's to roll (e5_hurts, e5_ends empty).
 e5_after :: (s: [] Everglade, v: [] E5) #export_c {
-  v[0].hurt_n = 0; v[0].end_n = 0;
-  if !s[0].started { return; }
-  // in a room the server resolves every cast and every harm: this page's rules keep only your bar
-  if net_live(s) { v[0].pend_n = 0; return; }
-  now := v[0].now;
-  w := watch_w(s);
-  if s[0].wv.started {
-    bar_harm := now - v[0].landed < f32(E5_WINDOW) || v[0].pend_n > 0 || (v[0].hero_ok && v[0].hero[4] >= 0);
-    for i: 0..<WATCH_ACTORS {
-      if !v[0].here0[i] { continue; }
-      a := w[0].actors[i..<i + 1];
-      lost := (v[0].hp0[i] + v[0].temp0[i]) - (a[0].hp + a[0].temp);
-      if lost <= 0 { continue; }
-      // put back: Hit Points, and a death Everglade's dice dealt (the engine decides that)
-      a[0].hp = v[0].hp0[i]; a[0].temp = v[0].temp0[i];
-      if a[0].mode == WM_DEAD && v[0].mode0[i] != WM_DEAD {
-        a[0].mode = v[0].mode0[i]; a[0].t = v[0].t0[i]; a[0].after = v[0].after0[i]; a[0].body = v[0].body0[i];
-      }
-      if !bar_harm && v[0].hurt_n < E5_HURTS { v[0].hurt_who[v[0].hurt_n] = i; v[0].hurt_amt[v[0].hurt_n] = lost; v[0].hurt_n += 1; }
-    }
-    lost := (v[0].you_hp0 + v[0].you_temp0) - (watch_you(w[..])[0].hp + watch_you(w[..])[0].temp);
-    if lost > 0 {
-      watch_you(w[..])[0].hp = v[0].you_hp0; watch_you(w[..])[0].temp = v[0].you_temp0;
-      if watch_you(w[..])[0].dead && !v[0].you_dead0 { watch_you(w[..])[0].dead = false; watch_you(w[..])[0].dead_t = 0; watch_you(w[..])[0].you_fall = 0; watch_you(w[..])[0].you_body = v[0].you_body0; }
-      if v[0].hurt_n < E5_HURTS { v[0].hurt_who[v[0].hurt_n] = -1; v[0].hurt_amt[v[0].hurt_n] = lost; v[0].hurt_n += 1; }
-    }
-  }
-  // the bar's notes this frame (everglade-track.coax egt_note): a slot let loose (used false), a slot
-  // pressed (used true)
-  for q: 0..<s[0].sp.note_n {
-    note := s[0].sp.notes[q];
-    b := note / 2; pressed := note % 2 == 1;
-    // the Warlock's (everglade-warlock.coax): at the point it was cast
-    if b >= WL_SLOT0 && b < WL_SLOT0 + WL_SLOTS { if !pressed { e5_pend(v, b, s[0].wl.at.x, s[0].wl.at.z); } continue; }
-    if b < 0 || b >= SP_REBUILD { continue; }
-    if !pressed {
-      at := ifx b < SP_SLOTS then s[0].sp.cast_at else ifx s[0].sp.aim_ok then s[0].sp.aim else ab_you(s);
-      e5_pend(v, b, at.x, at.z);
-      continue;
-    }
-    k := b - SP_SLOTS;
-    if k < 0 { continue; }
-    // one cast round you lands 2 m ahead, as a room's (everglade-net.coax net_press): the rules' cube
-    // or Line from you points the way you face (Thunderwave, Gust of Wind)
-    if ab_active(s, k) { if !ab_aimed(k) { at := add(ab_you(s), times(ab_forward(s), 2)); e5_pend(v, b, at.x, at.z); } }
-    else if v[0].end_n < E5_ENDS { v[0].end_slot[v[0].end_n] = b; v[0].end_n += 1; }
-  }
+  // the room (the local host offline, #12882) resolves every cast and every harm: this page's rules
+  // keep only your bar
+  v[0].hurt_n = 0; v[0].end_n = 0; v[0].pend_n = 0;
 }
 e5_pend :: (v: [] E5, b: int, x: f32, z: f32) {
   if v[0].pend_n >= E5_PENDING { return; }
@@ -313,26 +267,15 @@ e5_take :: (s: [] Everglade, v: [] E5, out: [] f32, n: int, lines: [] u8, lines_
   dealt := 0; struck := 0;
   // in a room the town's conditions are the server's (each person's row's COND, #12876): this page's
   // rules resolve no cast there (e5_after), so theirs would leave every townsperson free
-  if net_live(s) { for i: 0..<WATCH_ACTORS { v[0].cond[1 + i] = net_folk(s, i).cond; } }
+  for i: 0..<WATCH_ACTORS { v[0].cond[1 + i] = net_folk(s, i).cond; }
   s[0].wv.rules_page = !net_live(s) && n > 0;
   if s[0].wv.started && n > 0 {
     w := watch_w(s);
     you := ab_you(s);
     // you
-    eh := cast(int) out[0]; et := cast(int) out[1];
-    v[0].cond[0] = cast(int) out[2];
-    lost := ifx net_live(s) then 0 else (watch_you(w[..])[0].hp + watch_you(w[..])[0].temp) - (eh + et);   // in a room the server's (e5_before)
-    if lost > 0 && !watch_you(w[..])[0].dead {
-      watch_hurt_you(w, lost);
-      watch_pop(s, add(you, v3(0, 2.1, 0)), lost, lost * 4 >= hi_int(watch_you(w[..])[0].max, 1) || lost >= 25);
-    } else if lost < 0 && !watch_you(w[..])[0].dead {
-      watch_you(w[..])[0].hp = lo_int(eh, watch_you(w[..])[0].max); watch_you(w[..])[0].temp = et;
-      watch_pop_heal(s, add(you, v3(0, 2.1, 0)), -lost);
-    }
+    v[0].cond[0] = cast(int) out[2];   // (your Hit Points are the room's: e5_before)
     for i: 0..<lo_int(n - 1, WATCH_ACTORS) {
       o := (1 + i) * E5_OUT_FLOATS;
-      // offline these rules have the town: the abilities' holds follow them (ab_rules_cond)
-      if !net_live(s) { v[0].cond[1 + i] = cast(int) out[o + 2]; s[0].wv.rules_on = true; s[0].wv.rules_cond[i] = v[0].cond[1 + i]; }
       if !watch_here(w, i) { continue; }
       a := w[0].actors[i..<i + 1];
       fh := cast(int) out[o]; ft := cast(int) out[o + 1];
@@ -372,17 +315,6 @@ e5_take :: (s: [] Everglade, v: [] E5, out: [] f32, n: int, lines: [] u8, lines_
     if lines[q] != 10 { continue; }
     e5_log(v, lines[start..<q]);
     start = q + 1;
-  }
-}
-// The saves the page's rules rolled this frame against your spells (everglade5e-rules.coax e5r_saves:
-// person, bar slot, 1 a success, 3 floats each): offline each is the page's copy of that slot's
-// ability's to take (Thunderwave's push, Gust of Wind's: everglade-abilities.coax ab_rules_save), as a
-// room's server hands its own (#12884). In a room the server's rules are the ones that count.
-e5_saves :: (s: [] Everglade, saves: [] f32, n: int) #export_c {
-  if !s[0].started || !s[0].wv.started || net_live(s) { return; }
-  for q: 0..<lo_int(n, saves.count / 3) {
-    k := cast(int) saves[q * 3 + 1] - SP_SLOTS;
-    if k >= 0 { everglade_room_folk_save(s, cast(int) saves[q * 3], k, 0, saves[q * 3 + 2] > 0.5); }
   }
 }
 e5_log :: (v: [] E5, line: [] u8) {
@@ -524,8 +456,8 @@ e5_holds :: (s: [] Everglade, v: [] E5, lines: [] u8, sizes: [] int, tone: [] in
     if m > 0 { sizes[c] = m; tone[c] = st_tone(t[0].e[i].cond); c += 1; }
   }
   // the engine's conditions on you (none of Everglade's: Blinded and Deafened have their own words):
-  // the room's in your COND, offline the rules' own (#12784 makes offline the room's)
-  ec := (st_cond(s, ST_YOU) | (ifx net_live(s) then 0 else cast(int) v[0].hero[11])) & 32767 & (-1 ^ st_named(s, ST_YOU));   // (a line above says those)
+  // the room's in your COND (the local host's offline, #12882)
+  ec := st_cond(s, ST_YOU) & 32767 & (-1 ^ st_named(s, ST_YOU));   // (a line above says those)
   if c < E5_HOLDS && ec != 0 {
     m := 0;
     for q: 0..<15 {

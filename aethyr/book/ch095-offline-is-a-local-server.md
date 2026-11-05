@@ -1,17 +1,20 @@
 # 95. Offline is a local server
 
-> **Status: partly implemented.** The local host runs behind a switch,
-> `?offline=worker` (#12784): `coax/web/room/worker.coax` builds the room
+> **Status: partly implemented.** The local host runs in the browser
+> (#12784): `coax/web/room/worker.coax` builds the room
 > server's units to `build/everglade-room.wasm` with
 > [room-worker.c](../../coax/web/room/room-worker.c) in place of
 > `room-host.c`, both hosts include one tick
 > ([room-tick.c](../../coax/web/room/room-tick.c)), and
 > [room-worker.js](../../coax/web/room-worker.js) runs it in a Web Worker
-> behind a `local:` socket. Since #12882 an Everglade page that never sat
-> and still can't reach the rooms after three tries plays on the local host
-> too (`everglade-net.coax` `net_down`, `NET_LOCAL_AFTER`); `?offline=page`
-> keeps the page's own game. The page's own offline simulation is not yet
-> deleted, and a page plays it until that fallback (#12882).
+> behind a `local:` socket. Since #12882 every Everglade page plays on the
+> local host from its first frame, asks the rooms for a seat meanwhile, and
+> opens the room's socket beside the local one, taking it once it seats
+> (`everglade-net.coax` `net_ask_room`, `net_room_seated`); `?offline=worker`
+> keeps the local host only. The page's own rules no longer roll harm, saves
+> or conditions offline, and its status has one filler, the room's. Its
+> walking before the first seat, its town and the raid preview are still the
+> page's (#12882 lists what is left).
 
 Every feature of a game that has an offline mode and an online mode is
 written twice, unless the offline mode is the online mode. This chapter adds

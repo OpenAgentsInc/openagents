@@ -2,9 +2,9 @@
 // in a local room, side by side, frame by frame. Any difference in what the two pages draw fails it,
 // with the probe that drifted, when and by how much. It runs on this machine only: its own room
 // server, page server, network and bots, and two headless Chromes.
-//   coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--offline worker|page] [--out DIR]
+//   coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--offline worker|native] [--out DIR]
 // --offline: the offline page on the room server's local host (worker, the default: ?offline=worker,
-// #12784), or its own game as before (page: ?offline=page, so it never falls back to the local host, #12882).
+// #12784), or the native local room (native). The page's own offline game is gone (#12882).
 // Before it: coax/web/room/build.sh (the room server, coax/web/room/bin/room) and the page
 // (apps/openagents-web/build.sh, or coax/web/wasm.sh for build/everglade5e.wasm alone).
 //
@@ -251,7 +251,7 @@ dr_mark :: (p: DrPair, name: string) {
 // the watch's hold on you (3 s, no save) and the rules' on the townsperson nearest you (6 s, no save).
 // The room page's room reads it from its control file (re-read every 2 s); the offline page's local
 // host gets the same line (roomHost.control) the moment the room page shows you held, so the two
-// holds start as one. With --offline page, the offline page is held by its own watch (net_probe 59).
+// holds start as one.
 DR_HELD :: "((__dr.probe(52) & 3) || __dr.probe(53) > 0) ? 1 : 0";
 dr_hold :: (p: DrPair) {
   if p.native {
@@ -275,16 +275,11 @@ dr_hold :: (p: DrPair) {
     took = dr_int(p.b, DR_HELD, 0) == 1;
     if !took { proc_sleep(20); }
   }
-  held := 0;
-  if p.worker {
-    q: [1] Buf; bput(q[..], "coaxial.roomHost.control('hold local-1 ' + __dr.probe(1) + ' "); bint(q[..], stamp); bput(q[..], "\\n')");
-    held = dr_int(p.a, btext(q[..]), 0);
-    w := proc_now_ms();
-    while held == 1 && dr_int(p.a, DR_HELD, 0) != 1 && proc_now_ms() - w < 2000 { proc_sleep(20); }
-    held = dr_int(p.a, DR_HELD, 0);
-  } else {
-    held = dr_int(p.a, "__dr.probe(59)", 0);
-  }
+  q: [1] Buf; bput(q[..], "coaxial.roomHost.control('hold local-1 ' + __dr.probe(1) + ' "); bint(q[..], stamp); bput(q[..], "\\n')");
+  held := dr_int(p.a, btext(q[..]), 0);
+  w := proc_now_ms();
+  while held == 1 && dr_int(p.a, DR_HELD, 0) != 1 && proc_now_ms() - w < 2000 { proc_sleep(20); }
+  held = dr_int(p.a, DR_HELD, 0);
   _ := fs_write(p.ctl, DR_CONTROL_PAIR);
   if !took { print("  (the room page was never held: % asks)\n", tries); }
   if held != 1 { print("  (the offline page did not take the hold: %)\n", held); }
@@ -390,31 +385,6 @@ DR_PROBES :: 32;
 DrReport :: struct { r: [DR_PROBES] DrResult; n: int; }
 dr_add :: (rep: [] DrReport, name: string, v: DrVerdict) { if rep[0].n < DR_PROBES { rep[0].r[rep[0].n] = DrResult.{name = name, v = v}; rep[0].n += 1; } }
 
-// With --offline page the held step's two holds are not one spell: offline it is the page's own
-// watch (net_probe 59, a Watch Mage's hold that may last another round), in the room the scripted
-// one (dr_hold). Then only the hold's start is compared: what holds you and the status lines are not
-// compared from 1 s after the later page shows you held to 1 s after the later page shows you free.
-// On the local host (the default) both pages are held by the one line, and all of it is compared.
-dr_hold_window :: (a: [] DrPage, b: [] DrPage) {
-  on: [2] int; off: [2] int;
-  for side: 0..<2 {
-    p := ifx side == 0 then a else b;
-    h := dr_mark_t(p, "held"); on[side] = -1; off[side] = -1;
-    if h < 0 { continue; }
-    for r: 0..<p[0].n {
-      t := dr_at(p, r, C_T);
-      if t < h { continue; }
-      held := (dr_at(p, r, C_COND) & 3) != 0;
-      if held && on[side] < 0 { on[side] = t; }
-      if !held && on[side] >= 0 && off[side] < 0 { off[side] = t; }
-    }
-    if on[side] >= 0 && off[side] < 0 { off[side] = dr_at(p, p[0].n - 1, C_T); }
-  }
-  if on[0] < 0 || on[1] < 0 { return; }
-  from := (ifx on[0] > on[1] then on[0] else on[1]) + 1000;
-  to := (ifx off[0] > off[1] then off[0] else off[1]) + 1000;
-  a[0].hold_from = from; a[0].hold_to = to; b[0].hold_from = from; b[0].hold_to = to;
-}
 
 // Where you are in your own heading (C_LX, C_LZ, mm): what you moved since the step began, turned by
 // the camera's yaw that frame. Your keys move you by the camera, and the two browsers get each key
@@ -486,7 +456,6 @@ dr_local :: (a: [] DrPage, b: [] DrPage) {
 // Every probe of the paired session, offline (a) against the room (b) and back.
 dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport, worker: bool) {
   window := 250 + rtt;
-  if !worker { dr_hold_window(a, b); }
   dr_local(a, b);
   t0 := dr_mark_t(a, "start"); t1 := dr_mark_t(a, "end");
   if t0 < 0 || t1 < 0 { t0 = 0; t1 = 1 << 50; }
@@ -586,10 +555,9 @@ dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport, worker: b
   }
   {
     // the held step's Hold Person reached the town (#12886): each page draws a held townsperson,
-    // or the town's people's conditions above had nothing to compare (--offline page: its own game
-    // has no room to hold one in, so the room page's alone)
-    v: [1] DrVerdict; first := ifx worker then 0 else 1;
-    for side: first..<2 {
+    // or the town's people's conditions above had nothing to compare
+    v: [1] DrVerdict;
+    for side: 0..<2 {
       p := ifx side == 0 then a else b;
       h := dr_mark_t(p, "held"); most := 0;
       for r: 0..<p[0].n { if h >= 0 && dr_at(p, r, C_T) >= h && dr_at(p, r, C_FCOND) > most { most = dr_at(p, r, C_FCOND); } }
@@ -880,8 +848,8 @@ tool_main :: () -> int #export_c {
   port := args_whole(args_value(a[..], "--port", "8960"));
   offline:=args_value(a[..],"--offline","worker");native:=offline=="native";
   near := (port <= 8830 && port + 4 >= 8830) || (port <= 8872 && port + 4 >= 8872);   // the owner's servers (it takes PORT to PORT + 4)
-  if !ok || bots < 1 || port < 1024 || near || (offline!="native" && offline!="worker" && offline!="page") {
-    tool_errln("usage: coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--offline native|worker|page] [--out DIR] (not on 8830 or 8872)"); return 2;
+  if !ok || bots < 1 || port < 1024 || near || (offline!="native" && offline!="worker") {
+    tool_errln("usage: coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--offline native|worker] [--out DIR] (not on 8830 or 8872)"); return 2;
   }
   js: [65536] u8;
   jn := fs_read("coax/web/everglade-drift.js", js[..]);

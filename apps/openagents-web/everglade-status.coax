@@ -1,8 +1,8 @@
 // What holds, slows or marks each body (#12776, #12775): one state the page draws every status from.
-// Each frame st_fill fills it, once: in a room from the server's state (each player's COND bits, and
-// the effect entities with their cause and time left as the wire brings them, #12783); offline from
-// the page's own watch, until the offline game is the room's simulation run on the page (#12784),
-// when that filler goes. Everything drawn and said about a condition reads this state only:
+// Each frame st_fill fills it, once, from the room's state (each player's COND bits, and the effect
+// entities with their cause and time left as the wire brings them, #12783); offline the room is the
+// local host (#12882), so there is no other filler. Everything drawn and said about a condition reads
+// this state only:
 //   - the lines under your Hit Points (everglade5e.coax e5_holds): HELD · HOLD PERSON · 2 S;
 //   - what is drawn on a body: Hold Person's golden rings, Earthbind's tendrils, Ray of Frost's motes,
 //     a curse's motes, a blessing's glow, on you and on every other player alike (st_draw);
@@ -34,8 +34,7 @@ st_add :: (s: [] Everglade, who: int, cond: int, cause: int, left: f32) {
 // Once a frame, before anything is drawn: the state from its one source.
 st_fill :: (s: [] Everglade) {
   s[0].status[0].n = 0;
-  if net_live(s) { st_fill_room(s); return; }
-  st_fill_watch(s);
+  if net_live(s) { st_fill_room(s); }
 }
 // In a room: what the server says. Each player's COND bits stand for themselves; an effect the server
 // names (an effect entity, its cause and its time left) says which spell and for how long.
@@ -60,17 +59,6 @@ st_cause :: (we: int) -> int {
   if we == WE_EARTHBIND { return ST_EARTHBIND; }
   if we == WE_RAY_OF_FROST { return ST_RAY_OF_FROST; }
   return -1;
-}
-// Offline: the page's own watch has you held, bound and slowed, and the rules their conditions.
-// (#12784 runs the room's simulation on the page; then this goes and st_fill_room is the only filler.)
-st_fill_watch :: (s: [] Everglade) {
-  if !s[0].wv.started { return; }
-  w := watch_w(s);
-  y := watch_you(w[..])[0];
-  if y.dead { return; }
-  if watch_held(w) { st_add(s, ST_YOU, WC_PARALYZED, ST_HOLD_PERSON, y.held_t); }
-  if watch_bound(w) { st_add(s, ST_YOU, WC_BOUND, ST_EARTHBIND, y.bound_t); }
-  if y.slow_t > 0 { st_add(s, ST_YOU, WC_SLOWED, ST_RAY_OF_FROST, y.slow_t); }
 }
 // A body's COND bits as effects, the bits a named effect already covers left out: Everglade's known
 // causes for its own (Hold Person paralyzes, Earthbind binds, Ray of Frost slows), the rest as they are.
@@ -318,7 +306,7 @@ st_draw_on :: (s: [] Everglade, you: Point, c: int) {
   }
 }
 
-#test "status: offline the watch fills it, in a room the server's COND; the lines name the spell and its seconds" #steps 2000000000 {
+#test "status: the room's COND fills it; the lines name the spell and its seconds" #steps 2000000000 {
   s: [1] Everglade;
   st_add(s[..], ST_YOU, WC_PARALYZED, ST_HOLD_PERSON, 1.4);
   st_add_bits(s[..], ST_YOU, WC_PARALYZED | WC_SLOWED);   // the summary: Hold Person's bit is named already
