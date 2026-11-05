@@ -309,6 +309,9 @@ e5_others :: (s: [] Everglade, v: [] E5, out: [] f32) -> int #export_c {
 e5_take :: (s: [] Everglade, v: [] E5, out: [] f32, n: int, lines: [] u8, lines_n: int) #export_c {
   if !s[0].started { return; }
   dealt := 0; struck := 0;
+  // in a room the town's conditions are the server's (each person's row's COND, #12876): this page's
+  // rules resolve no cast there (e5_after), so theirs would leave every townsperson free
+  if net_live(s) { for i: 0..<WATCH_ACTORS { v[0].cond[1 + i] = net_folk(s, i).cond; } }
   if s[0].wv.started && n > 0 {
     w := watch_w(s);
     you := ab_you(s);
@@ -325,9 +328,8 @@ e5_take :: (s: [] Everglade, v: [] E5, out: [] f32, n: int, lines: [] u8, lines_
     }
     for i: 0..<lo_int(n - 1, WATCH_ACTORS) {
       o := (1 + i) * E5_OUT_FLOATS;
-      v[0].cond[1 + i] = cast(int) out[o + 2];
       // offline these rules have the town: the abilities' holds follow them (ab_rules_cond)
-      if !net_live(s) { s[0].wv.rules_on = true; s[0].wv.rules_cond[i] = v[0].cond[1 + i]; }
+      if !net_live(s) { v[0].cond[1 + i] = cast(int) out[o + 2]; s[0].wv.rules_on = true; s[0].wv.rules_cond[i] = v[0].cond[1 + i]; }
       if !watch_here(w, i) { continue; }
       a := w[0].actors[i..<i + 1];
       fh := cast(int) out[o]; ft := cast(int) out[o + 1];
@@ -447,8 +449,8 @@ e5_play_hud :: (s: [] Everglade, v: [] E5, out: [] f32, u: [] f32, at: int) -> i
     w := watch_w(s);
     for i: 0..<WATCH_ACTORS {
       // one word while it lasts, the strongest (everglade-status.coax st_head_word): the rules' own,
-      // or in a room the server's (the person's row's COND)
-      word := st_head_word(v[0].cond[1 + i] | net_folk(s, i).cond);
+      // or in a room the server's (e5_take: the person's row's COND)
+      word := st_head_word(v[0].cond[1 + i]);
       if word < 0 || !watch_here(w, i) || w[0].actors[i].mode == WM_DEAD { continue; }
       sc := on_screen(u, add(watch_pop_head(s, i), v3(0, 0.5, 0)), wd, ht);
       if !sc.ok || sc.w > 60 { continue; }
@@ -744,6 +746,30 @@ e5_fps_draw :: (s: [] Everglade, v: [] E5, out: [] f32, at: int) -> int {
   #assert !you[0].dead && you[0].dead_t < 0 && !you[0].respawn;
   for q: 0..<60 { watch_net_you(w, 1.0 / 60.0); }
   #assert you[0].dead_t == 0 && watch_dark(w) == 0;
+}
+#test "Everglade 5E: in a room a townsperson's conditions are the server's, with the rest of their row (#12876)" {
+  a: [1] Everglade; na: [1] EgNet;
+  #assert net_test_page(a[..], na[..], 0, "pa", 100) && net_test_hear(a[..], 0, "y 0 1 5000100");
+  room: [1] NetTestRoom;
+  net_test_world(room[..], 0);
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
+  v: [1] E5;
+  out: [4] f32; lines: [1] u8;
+  // person 2 held (Hold Person paralyzes), person 5 free
+  net_test_tick(room[..], 1, 0);
+  net_test_s(room[..], WireS.{id = NET_FOLK_ID + 2, kind = WK_FOLK, x = 4, z = -70, hp = 9, max = 9, p1 = 2, cond = WC_PARALYZED});
+  net_test_s(room[..], WireS.{id = NET_FOLK_ID + 5, kind = WK_FOLK, x = 6, z = -70, hp = 9, max = 9, p1 = 5});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
+  #assert net_folk(a[..], 2).cond == WC_PARALYZED;
+  a[0].started = true;
+  e5_take(a[..], v[..], out[..], 0, lines[..], 0);
+  #assert v[0].cond[1 + 2] == WC_PARALYZED && v[0].cond[1 + 5] == 0 && v[0].cond[1 + 3] == 0;
+  // freed: the next row says so
+  net_test_tick(room[..], 2, 0);
+  net_test_s(room[..], WireS.{id = NET_FOLK_ID + 2, kind = WK_FOLK, x = 4, z = -70, hp = 9, max = 9, p1 = 2});
+  #assert net_test_hear(a[..], 0, net_test_frame(room[..]));
+  e5_take(a[..], v[..], out[..], 0, lines[..], 0);
+  #assert v[0].cond[1 + 2] == 0;
 }
 #test "Everglade 5E: another player's Hit Points sit at their nameplate, not half a metre over it" {
   s: [1] Everglade;

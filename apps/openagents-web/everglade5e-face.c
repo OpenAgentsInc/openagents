@@ -332,7 +332,7 @@ EXPORT("coaxial_field_probe") int32_t coaxial_field_probe(uint32_t state, int32_
   if (field == 5) return (int32_t)(probe_speed * 100);
   if (field == 6) return (int32_t)net_probe(at(state), 14);
   if (field == 7) return (int32_t)(probe_fix * 1000000);
-  /* 8: the town's people with one of the engine's conditions drawn on them; 9 yours (E5_CONDITION bits) */
+  /* 8: the town's people with one of the engine's conditions drawn on them (in a room the server's, e5_take); 9 yours (E5_CONDITION bits) */
   if (field == 8) { int k = 0; for (int i = 1; i < (int)(sizeof e5_view.cond / sizeof e5_view.cond.e[0]); i++) if (e5_view.cond.e[i]) k++; return k; }
   if (field == 9) return (int32_t)e5_view.cond.e[0];
   return -1;
