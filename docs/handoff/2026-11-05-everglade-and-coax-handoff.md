@@ -24,7 +24,6 @@ with a comment. Check the issue and `git log origin/main` for their results.
 | #12936 | Fix the production room regression, then finish the release (rooms, then web) | `../openagents-roomperf` |
 | #12927 | Checked, wrapping and saturating integer operations; migrate the room counters | `../openagents-coax-int` |
 | #12938 | Split the carrier C unit so a gameplay edit rebuilds in under 20 s | `../openagents-carrier` |
-| #12939 | Compiler tests fail under load because job notices land in compared output | `../openagents-coax-quiet` |
 
 If one of them stops without closing its issue, read its last issue comment
 and its worktree's `git status` and `git log`. Pick up from there; don't
@@ -127,7 +126,8 @@ Compiler:
   gameplay edit went from 56 s to 44 s, and a test-name edit from 46 s to 6 s.
 - #12926: capacity refusals name the limit, its top users and a fix. The
   traversal limit can now be raised with `#traversal N` or `--traversal N`.
-- #12937: the JSON output stays clean under load.
+- #12937 and #12939 (`199402193d`): the job pool's load notices print only
+  to a terminal, so test output no longer depends on machine load.
 - The order of work is recorded in
   `coax/audits/2026-11-05-mmorpg-language-and-compiler.md`.
 
@@ -137,7 +137,7 @@ Books: #12610 stays open. The owner said "no more books work". Don't work it.
 
 | Issue | Owner or status |
 | --- | --- |
-| #12936, #12927, #12938, #12939 | A running agent (see above) |
+| #12936, #12927, #12938 | A running agent (see above) |
 | #12941 | No agent. The drift check's 250 ms profile failed twice after the fire fixes, on Hold Person timing, conditions and townspeople walking in place. It may be real or caused by load, and it gates release.sh. Check it first if #12936's release is stuck. |
 | #12940 | No agent. Tree fires never burn or spread on the room server; only pages step them. |
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
