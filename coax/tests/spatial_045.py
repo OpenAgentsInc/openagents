@@ -26,8 +26,7 @@ class Spatial045(unittest.TestCase):
         path = self.work / 'case.coax'
         path.write_text(PRELUDE + source + '\n')
         return subprocess.run([str(COMPILER), 'c', str(path), '--library'],
-                              cwd=ROOT, capture_output=True, text=True, timeout=120,
-                              env={**os.environ, 'COAX_JOBS_QUIET': '1'})  # stderr is compared exactly (#12937)
+                              cwd=ROOT, capture_output=True, text=True, timeout=120)
 
     def test_named_capacity_preserves_spatial_push_get_set_and_live_view(self):
         for representation, size in [('f32', 32), ('f64', 56)]:

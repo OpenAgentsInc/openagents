@@ -32,11 +32,15 @@
 // $COAX_MUTATE_JOBS (mutants), else $COAX_JOBS, else N. The pool decides
 // only how many workers run at once, never what they compute, so every
 // result is the same for every count. A build that can't get the workers
-// it could use says so once on stderr ($COAX_JOBS_QUIET silences it), and
-// never under --json or --diagnostics json: there stderr is the machine-
-// readable stream, one JSON object per line, and a text notice would break
-// it (GitHub #12937). $COAX_JOBS_LOAD_NOW stands in for the load average,
-// so a test can put a build over $COAX_JOBS_LOAD at will.
+// it could use says so once on stderr, but only when stderr is a terminal:
+// the notice is for the person watching, and output a program captures
+// (a test comparing stderr, a log) must not depend on what else runs on
+// the machine (GitHub #12939). $COAX_JOBS_QUIET=1 silences it everywhere;
+// $COAX_JOBS_QUIET=0 prints it off a terminal too. Never under --json or
+// --diagnostics json: there stderr is the machine-readable stream, one JSON
+// object per line, and a text notice would break it (GitHub #12937).
+// $COAX_JOBS_LOAD_NOW stands in for the load average, so a test can put a
+// build over $COAX_JOBS_LOAD at will.
 #include "coax.h"
 
 #include <cerrno>
@@ -148,9 +152,12 @@ static JobPool &job_pool() {
   p.budget = set && budget ? std::min<uint64_t>(budget, 1024) : p.cores - p.reserve;
   uint64_t load = env_count("COAX_JOBS_LOAD", &set);
   p.load_limit = set ? (double)load : (double)p.budget;
-  // $COAX_JOBS_QUIET: no waiting or load notice (tests/run.sh, whose units
-  // compare stderr); `coax status` still shows the budget.
-  if (const char *quiet = getenv("COAX_JOBS_QUIET"); quiet && *quiet && strcmp(quiet, "0") != 0) p.told_wait = p.told_load = true;
+  // The waiting and load notices go to a terminal only; $COAX_JOBS_QUIET=1
+  // drops them, $COAX_JOBS_QUIET=0 prints them to any stderr. `coax status`
+  // still shows the budget.
+  const char *quiet = getenv("COAX_JOBS_QUIET");
+  const bool always = quiet && strcmp(quiet, "0") == 0;
+  if (!always && ((quiet && *quiet) || !isatty(STDERR_FILENO))) p.told_wait = p.told_load = true;
   const char *dir = getenv("COAX_JOBS_DIR");
   if (dir && *dir) p.dir = dir;
   else if (const char *home = getenv("HOME"); home && *home) p.dir = std::string(home) + "/.cache/coax/jobs";

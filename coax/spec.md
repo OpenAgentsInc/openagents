@@ -1140,9 +1140,11 @@ refund_ok :: (paid: int, refund: int) -> bool {
   else `$COAX_CHECK_JOBS` (checks) or `$COAX_MUTATE_JOBS` (mutants), else
   `$COAX_JOBS`, else the budget. A build that can't get all the workers it
   could use says so once on stderr ("coax jobs: waiting for 2 of 12 build
-  workers held by 3 other coax processes"; `$COAX_JOBS_QUIET` silences it),
-  never under `--json` or `--diagnostics json`, whose stderr holds only JSON
-  objects. `$COAX_JOBS_LOAD_NOW` stands in for the load average (tests). `coax status`
+  workers held by 3 other coax processes"), and only when stderr is a
+  terminal, so captured output never depends on the machine's load;
+  `$COAX_JOBS_QUIET=1` silences it and `$COAX_JOBS_QUIET=0` prints it to any
+  stderr. Never under `--json` or `--diagnostics json`, whose stderr holds
+  only JSON objects. `$COAX_JOBS_LOAD_NOW` stands in for the load average (tests). `coax status`
   prints the budget, the reserve, the load and each process holding tokens
   on stderr after the release catalogue; `coax status --jobs [--json]`
   prints only that, on stdout. The output is the same for every worker

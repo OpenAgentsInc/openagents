@@ -22,8 +22,10 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 COAX=bin/coax
 # Units compare stderr between runs, so no build-worker notice
-# (src/jobs.cpp) may depend on what else runs on the machine.
-export COAX_JOBS_QUIET=1
+# (src/jobs.cpp) may depend on what else runs on the machine. None does:
+# the notices go only to a terminal, so the suite runs as a unit run by hand
+# does, with $COAX_JOBS_QUIET unset (GitHub #12939; unit_loaded checks it).
+unset COAX_JOBS_QUIET
 COAX_ABS="$(cd "$(dirname "$COAX")" && pwd -P)/$(basename "$COAX")"
 pass=0; fail=0
 note() { echo "FAIL $1: $2"; fail=$((fail + 1)); }
@@ -104,6 +106,13 @@ unit_authority_cache() { web/tool.sh tests/authority-cache.coax "$COAX_ABS"; }
 unit_check_reuse() { web/tool.sh tests/check-reuse.coax "$COAX_ABS"; }
 unit_parallel_checks() { web/tool.sh tests/parallel-checks.coax "$COAX_ABS"; }
 unit_job_budget() { web/tool.sh tests/job_budget.coax "$COAX_ABS"; }
+# A sample of units that compare stdout and stderr between compiles, run with
+# every build over the load limit ($COAX_JOBS_LOAD_NOW, src/jobs.cpp): a
+# notice reaching compared output fails them (GitHub #12939).
+unit_loaded() {
+  COAX_JOBS_LOAD=1 COAX_JOBS_LOAD_NOW=500 unit_library_checks &&
+    COAX_JOBS_LOAD=1 COAX_JOBS_LOAD_NOW=500 unit_parallel_checks
+}
 unit_release() { python3 tests/release.py; }
 unit_mutation_schedule() {
   python3 tests/mutation_schedule.py && python3 tests/mutation_parallel.py && python3 tests/mutation_scope.py && python3 tests/evidence.py && python3 tests/bootstrap_mutation_shards.py && tests/mutation-gate.sh
@@ -241,7 +250,7 @@ unit_spatial() {
 
 # Every unit, in the order the whole suite runs them.
 UNITS=(pass fail examples pulse python native strict_math native_checks lexer parser budget strings traversal
-  provenance query steps library_checks authority_cache check_reuse parallel_checks job_budget release mutation_schedule
+  provenance query steps library_checks authority_cache check_reuse parallel_checks job_budget loaded release mutation_schedule
   build_profiles semantic_profiles checker systemone results book sources reflection library_tools
   sequence bounded kept clock debugging nostr constant_time wrapping mul_wide cuda proto_cap proto proto_policy
   proto_message verify wire_checks generated_checks wire_core importer_checks fingerprint_checks

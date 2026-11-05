@@ -9,6 +9,7 @@
 //   - a compile killed while it holds tokens frees them at once, and its forked check workers end
 //     within a second, mid-check;
 //   - `coax c` output and the `coax mutate` report are byte-identical at 1, 4 and all cores;
+//   - a forced load average changes no captured stdout or stderr ($COAX_JOBS_QUIET=0 shows the notice);
 //   - without a usable token directory a compile still runs, and status says so.
 // Prints a line a case and exits 0 when all hold, 1 otherwise.
 #import "Basic";
@@ -96,7 +97,8 @@ jb_start :: (j: [] Jb, args: [] string, env: [] string, unset: [] string, cache:
   ok = ok && proc_cwd(h, jt_text(j[0].dir[..]));
   for u: JB_UNSET { ok = ok && proc_unset(h, u); }
   pe: [1] Jt; jt_s(pe[..], "COAX_JOBS_DIR="); jt_s(pe[..], jt_text(j[0].pool[..]));
-  base := [3] string.[jt_text(pe[..]), "COAX_JOBS_BUDGET=3", "COAX_JOBS_LOAD=0"];
+  // COAX_JOBS_QUIET=0: the notices this test reads reach its pipe (by default only a terminal gets them).
+  base := [4] string.[jt_text(pe[..]), "COAX_JOBS_BUDGET=3", "COAX_JOBS_LOAD=0", "COAX_JOBS_QUIET=0"];
   for e: base {
     keep := true;
     for x: env { k := 0; while k < x.count && x[k] != '=' { k += 1; } if k < e.count && e[0..<k] == x[0..<k] && e[k] == '=' { keep = false; } }
@@ -366,6 +368,29 @@ test_same_results :: (compiler: string, cores: int) -> int {
   return jb_done(j[..]);
 }
 
+// A loaded machine changes no compared output: off a terminal the load and waiting notices are
+// printed only when $COAX_JOBS_QUIET=0 asks for them (GitHub #12939).
+test_notices :: (compiler: string) -> int {
+  j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
+  n0: [1] string;
+  print("a loaded machine leaves captured output alone\n");
+  quiet := [1] string.["COAX_JOBS_QUIET"];
+  a := [2] string.["c", "slow.coax"];
+  calm: [1] JbRun; r: [1] JbRun;
+  jb_run(j[..], a[..], n0[0..<0], quiet[..], true, calm[..]);
+  loaded := [2] string.["COAX_JOBS_LOAD=1", "COAX_JOBS_LOAD_NOW=500"];
+  jb_run(j[..], a[..], loaded[..], quiet[..], true, r[..]);
+  check(j[..], calm[0].status == 0 && r[0].status == 0 && jb_out(r[..]) == jb_out(calm[..]) && jb_err(r[..]) == jb_err(calm[..]) && !has(jb_err(r[..]), "coax jobs:"),
+        "under a forced load, stdout and stderr are byte-identical and carry no notice");
+  told := [3] string.["COAX_JOBS_LOAD=1", "COAX_JOBS_LOAD_NOW=500", "COAX_JOBS_QUIET=0"];
+  jb_run(j[..], a[..], told[..], n0[0..<0], true, r[..]);
+  check(j[..], r[0].status == 0 && has(jb_err(r[..]), "coax jobs: the load average is 500.0, at or above 1 ($COAX_JOBS_LOAD)"), "$COAX_JOBS_QUIET=0 prints the load notice off a terminal");
+  hush := [3] string.["COAX_JOBS_LOAD=1", "COAX_JOBS_LOAD_NOW=500", "COAX_JOBS_QUIET=1"];
+  jb_run(j[..], a[..], hush[..], n0[0..<0], true, r[..]);
+  check(j[..], r[0].status == 0 && !has(jb_err(r[..]), "coax jobs:"), "$COAX_JOBS_QUIET=1 prints none");
+  return jb_done(j[..]);
+}
+
 test_no_pool :: (compiler: string) -> int {
   j: [1] Jb; if !jb_case(j[..], compiler) { return 1; }
   n0: [1] string;
@@ -396,7 +421,7 @@ tool_main :: () -> int #export_c {
   r := proc_run(ga[..], 10000, out[..], err[..]);
   cores := args_whole(cast(string) out[0..<r.out_n]);
   if cores < 1 { cores = 1; }
-  failed := test_status(compiler, root) + test_concurrent(compiler) + test_killed_frees(compiler) + test_killed_ends_workers(compiler) + test_same_results(compiler, cores) + test_no_pool(compiler);
+  failed := test_status(compiler, root) + test_concurrent(compiler) + test_killed_frees(compiler) + test_killed_ends_workers(compiler) + test_same_results(compiler, cores) + test_notices(compiler) + test_no_pool(compiler);
   if failed > 0 { print("job budget: % failed\n", failed); return 1; }
   print("job budget: ok\n");
   return 0;

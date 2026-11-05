@@ -16,7 +16,8 @@ Without the flag, the text is byte-identical to the `.txt` recorded with the
 release before the flag existed.
 The JSON stream stays pure at any machine load: a build held back by the
 load average or the shared worker budget says so in text only without the
-flag ($COAX_JOBS_LOAD_NOW puts every build over the limit; GitHub #12937).
+flag ($COAX_JOBS_LOAD_NOW puts every build over the limit; GitHub #12937),
+and by default only to a terminal (GitHub #12939).
 """
 
 import json
@@ -39,14 +40,15 @@ KEYS = ["schema", "severity", "code", "message", "span", "notes", "fixes"]
 
 
 def coax(*args, env=None):
-    # The JSON runs keep the build-worker notices on, so they prove the stream
-    # stays pure; text runs, compared byte for byte, silence them as
-    # tests/run.sh does (they are for the person at the terminal).
+    # The JSON runs force the build-worker notices on ($COAX_JOBS_QUIET=0
+    # prints them off a terminal too), so they prove the stream stays pure;
+    # text runs, compared byte for byte, keep the default, which prints them
+    # only to a terminal (GitHub #12939).
     run_env = dict(os.environ)
     if "json" in args:
-        run_env.pop("COAX_JOBS_QUIET", None)
+        run_env["COAX_JOBS_QUIET"] = "0"
     else:
-        run_env["COAX_JOBS_QUIET"] = "1"
+        run_env.pop("COAX_JOBS_QUIET", None)
     run_env.update(env or {})
     return subprocess.run([str(COMPILER), *args], cwd=ROOT, capture_output=True, text=True, timeout=60, env=run_env)
 
@@ -221,8 +223,13 @@ class DiagnosticsJson(unittest.TestCase):
                       "COAX_JOBS_LOAD_NOW": "1000", "COAX_MUTATE_JOBS": "4", "COAX_CHECK_JOBS": "4"}
             text = subprocess.run([str(COMPILER), "mutate", "tests/diagnostics/survivor.coax"], cwd=ROOT,
                                   capture_output=True, text=True, timeout=60,
-                                  env={k: v for k, v in {**os.environ, **env}.items() if k != "COAX_JOBS_QUIET"})
+                                  env={**os.environ, **env, "COAX_JOBS_QUIET": "0"})
             self.assertIn("coax jobs: the load average is 1000.0, at or above 1 ($COAX_JOBS_LOAD)", text.stderr)
+            # Off a terminal, by default, the same build prints no notice.
+            text = subprocess.run([str(COMPILER), "mutate", "tests/diagnostics/survivor.coax"], cwd=ROOT,
+                                  capture_output=True, text=True, timeout=60,
+                                  env={k: v for k, v in {**os.environ, **env}.items() if k != "COAX_JOBS_QUIET"})
+            self.assertNotIn("coax jobs:", text.stderr)
             result = coax("mutate", "--diagnostics", "json", "tests/diagnostics/survivor.coax", env=env)
             self.assertEqual(result.stderr, (CASES / "survivor.jsonl").read_text())
             result = coax("mutate", "--diagnostics", "json", "tests/diagnostics/checker.coax", env=env)
