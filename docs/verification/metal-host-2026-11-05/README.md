@@ -42,6 +42,7 @@ Coder and voice bridge remain desktop services around that world.
 | CoreAudio device | `audio-canonical-device/audio.json` | Actual muted device callbacks remain finite, hold during pause and resume; the authored room impulse uses 66 partitions. |
 | Visible native window | `window-timing-60/` | Prior staged producer: 356 frames in 5.966595 s, 59.497921 FPS at an explicit 60 Hz cap on a 120 Hz display. Synthetic SDK key-call to GPU-completion p95 is 27.071 ms over 20 events; movement and resize are observed. Covered rendering/audio stop while native room messages continue near 30 Hz. Final ledger is zero. This software proxy excludes the physical keyboard/AppKit event queue and is not an optical measurement. |
 | Display-rate native window | `window-current-120/` | Updated producer/SDK: 728 frames in 6.058315 s, 120.00036 FPS on a 120 Hz display at 1280×720 physical pixels (640×360 CSS, DPR 2). P95 interval is 8.34 ms; the same software input proxy is 14.547 ms over 20 events. Movement and resize pass. Covered frames/completions hold at 958, audio callbacks at 757, while room messages advance 280→310. Close releases the ledger. |
+| Source-joined display-rate window | `window-qualified-current/` | Product pin `a0f3f8b518`: 719 frames in 5.98336 s, 119.999465 FPS at 120 Hz, 1280×720 physical pixels. P95 interval is 8.343 ms; SDK key-call to GPU-completion p95 is 14.735 ms over 20 events. Movement, resize and room continuity pass. Covered frames/completions hold at 948, audio callbacks at 753, while messages advance 281→311. Pending is zero while covered; close releases the ledger. The exact executable, loaded producer, SDK objects and shell sources are frozen before launch in `sdk/`. |
 | Physical AppKit flows | `ui-*.json` | Actual Command-M minimizes: producer/completion counters hold at 1136 with pending zero while room messages advance 631→881. Raising restores drawing, and Command-R replaces the engine and reconnects (net 2). Native Coder accepts a Unicode draft, which is cleared without sending; status returns to ordinary play. The isolated bundle has no microphone permission, so this observation does not qualify capture. |
 
 The earlier 60 Hz window timing uses an earlier staged producer. It is retained as evidence
@@ -49,6 +50,9 @@ of the host path, and is not a claim that final current-source packaging has
 passed. Its raw JSON contains every observed frame and event clock.
 The newer 120 Hz result is scoped to its measured surface; the later
 1800×1200 resize is a functional check, not a claim of 120 FPS there.
+The older `window-current-120` executable was overwritten by the subsequent
+Window-menu fix before it was frozen; it has no exact binary join. The new
+`window-qualified-current` run includes that fix and retains its exact binary.
 The native display-link preference now starts from AppKit's actual display
 maximum. A standard Window/Minimize menu consumes Command-M before it can
 reach the realm's map key.
@@ -125,12 +129,46 @@ for 15,554. These actual failures remain in `handoff-current-capacity/`.
 The existing native layer tool makes alpha-weighted box mipmaps, whereas
 the historical browser asks its image SDK for high quality resizing. A
 canonical Coax decode/mip API is published separately in
-`aethyr/render/host-layers.coax`; its native byte identity does not qualify
-the still-pending browser migration or erase these old asset failures.
+`aethyr/render/host-layers.coax`. The subsequent actual browser bridge and
+GPU readback compare all 53,127,800 logical layer/mip bytes exactly against
+the native bank. Those component observations do not erase the old asset
+failures or enable the ordinary pre-v1 web path.
+
+The matched new canonical browser capture is
+`host-contract-12869/layers-bridge/canonical-frame/half/frame.config`.
+`replay-canonical-half/` executes it through the real Metal interpreter:
+zero of 230,400 channels exceed the unchanged rule, maximum absolute error
+is 0.0013427734375, and nonfinite/masked counts are zero. Two frames complete
+with byte-exact recovery, pending zero and old/closed ledger live counts zero.
+API/GPU validation is enabled with no reported errors. Its exact SDK is
+frozen with `artifacts.sha256`. The corresponding Vulkan half-float run has
+27 outliers, within the inherited 2,000-channel live allowance.
+
+`cpu-next/` runs the same 90-frame workload against the freshly emitted
+native and Wasm producer at public product pin `a0f3f8b518`. Actual allocation
+capacities and all 128 scalar probe outputs agree. The tight CPU diagnostic
+still fails at S1 word 3184; `state-fields.txt` preserves the field-level
+differences, including terrain and guide fields, without claiming complete
+simulation byte identity.
+
+`handoff-canonical-current/` substitutes the actual observed producer bytes
+and measured capacities into the canonical RFI. Its complete comparisons are:
+
+| Inputs through the same Metal interpreter | Channels outside the rule | Maximum absolute error |
+| --- | ---: | ---: |
+| Native versus Wasm producer, identical frozen assets | 27 | 0.1846923828125 |
+| Actual native versus frozen canonical assets, identical native producer | 1,471 | 0.00885009765625 |
+| Actual native producer/assets versus matched Wasm handoff | 1,498 | 0.1846923828125 |
+
+All three have zero nonfinite values and masks and pass the inherited live
+allowance; all three strict supplemental comparisons fail and are retained.
+The canonical layer bank is identical. Remaining asset differences in this
+run come from the SDK media decode/resize path. This result is scoped to the
+matched 90-frame input, rather than every possible world or media asset.
 
 ## Build status
 
-The conditional native-v1/web-v0 literal-table shared release Wasm is 2,176,847 bytes, within the
+The earlier conditional native-v1/web-v0 literal-table shared release Wasm is 2,176,847 bytes, within the
 existing 2,280,000-byte budget recorded by the room/party changes. An older
 packed-table snapshot measured 2,377,513 bytes shared versus 2,253,731 bytes
 producer-only: the shared renderer increment was 123,782 bytes and the old
@@ -165,7 +203,7 @@ new compiler provenance receipt or release.
 
 A separate fresh historical-root native emission hit its bounded deadline;
 the deps traversal was also stopped without a result. Neither is claimed
-as successful. The already successful C remains the native primary. The
+as successful. At that stage the already successful C remained the native primary. The
 web-v0 preview uses the existing content-addressed C cache with its exact
 prepared product closure and the current conditional face, and retains
 the actual generated units under `qualified-current/web-v0-emission/`.
@@ -174,13 +212,45 @@ After rebasing the host, `rebased-source-observation.json` finds five
 subsequent game-source changes: raid tactics, network, wire, raid preview
 and sound. The recorded producer/window runs remain explicitly pinned to
 the earlier successful image; they are not current-main producer receipts.
-A fresh current-source emission and final app packaging are still required.
+Those observations motivated the fresh public product pin recorded below.
 
-The required current tools check reports two unrelated existing Nostr relay
-Python tools missing a `Firm reason` header. An earlier checkout also
-reported five human asset tools, which main has since ported. The current
-raw output is retained; none is added by this host.
+The earlier tools checks reported unrelated Nostr relay Python and human
+asset tools missing a `Firm reason` header; those raw outputs are retained.
+After rebasing the canonical browser bridge, the current required check
+passes: 1,782 tracked tools, zero new tools without a reason.
 
-Current-source complete producer handoff/frame comparison, final staged app
-flows, source/artifact joins and packaging remain in progress. This record
-must be updated with those receipts before any completion/default claim.
+## Fresh public product pin
+
+`qualified-next/` prepares the genuine historical `c224561457` compiler root
+against separately pinned product `a0f3f8b51848293eb7ffd8d7288dbb0c53d4db93`.
+The original 598 image/helper/receipt verify before and after preparation.
+The actual native primary C table has 137 sources; the shared Wasm table
+has 183. Every observed source hash matches its pinned product snapshot.
+Relative source rows are resolved from the recorded emission root. These
+source observations are not new compiler provenance receipts.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Native primary C | `e1d158f7cdaca9c53252f8bd38d954ccaa3ce9137f4fde4582266e4a64a8f438` |
+| Native producer library | `416861a3d6092b1f51b5a21ffb89e1c61d70b4494d32c80bb9e293f320743a1e` |
+| Shared Wasm primary C | `1c6b9983d432771ea0b2bdbf14f9b03f4a58221add9ed39f1fbc82b0bcb14836` |
+| Shared release Wasm | `9cb26215e7ce3fbe3df9b4e2071068c6ebaec4d27891690110e1bace64f21781` |
+
+The fresh primary native emission and C compilation complete within their
+bounded slice. Rules are rebuilt for this pin; unchanged Step, Grid, River
+and Guide side units retain their exact source-closure comparisons and
+objects. The shared release Wasm completes in 415 seconds (405 Coax, four
+clang, six link/optimization), measuring 2,131,313 bytes against the unchanged
+2,280,000-byte budget. The conditional face keeps native v1 and web v0.
+
+The staged app now contains that native producer and web preview, plus the
+actual canonical browser image reactor. The desktop build tool builds and
+copies `build/host-layers.wasm` alongside the audio reactor. The room remains
+the separately qualified `fae22e7101` pin above; this is not a current-room
+packaging claim. The frozen SDK generated C remains its recorded earlier
+renderer snapshot, with exact source/object hashes, rather than subsequent
+shared resource-limit refactoring on main.
+
+Ordinary Vulkan 8-bit parity, the complete common-host services and final
+packaging remain open. The presentation experiment stays disabled and WK
+stays the default. Neither #12868 nor #12869 is closed by this checkpoint.

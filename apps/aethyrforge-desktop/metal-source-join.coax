@@ -1,4 +1,4 @@
-// Observe the source table in an actual successful native C emission and
+// Observe the source table in an actual successful C emission and
 // its bytes in two closed snapshots. This writes no compiler provenance.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
@@ -18,6 +18,20 @@ msj_path :: (line:string)->string {
  end:=msj_find(line,"\"",q+1);if end<q+2 || line[end..<line.count]!="\"}," {return "";}
  for i:q+1..<end {if line[i]=='\\' {return "";}}return line[q+1..<end];
 }
+#test "relative and absolute source rows stay inside their observed emission root" {
+ #assert msj_relative("/root/a.coax","/root")=="a.coax";
+ #assert msj_relative("apps/world.coax","/root")=="apps/world.coax";
+ #assert msj_relative("/root-other/a.coax","/root")=="";
+ #assert msj_relative("../world.coax","/root")=="" && msj_relative("a/../world.coax","/root")=="";
+ #assert msj_relative("./a.coax","/root")=="" && msj_relative("a//b.coax","/root")=="";
+ #assert msj_relative("","/root")=="" && msj_relative("/root","/root")=="";
+}
+msj_relative :: (path:string,root:string)->string {
+ if path.count==0 {return "";}relative:=path;
+ if path[0]=='/' {if path.count<=root.count || path[0..<root.count]!=root || path[root.count]!='/' {return "";}relative=path[root.count+1..<path.count];}
+ start:=0;for i:0..<relative.count+1 {if i==relative.count || relative[i]=='/' {part:=relative[start..<i];if part=="" || part=="." || part==".." {return "";}start=i+1;}}
+ return relative;
+}
 msj_hash :: (path:string,out:[]u8)->bool {
  size:=fs_size(path);if size<0 {return false;}state:[112]u8;data:[65536]u8;if sha256_init(state[..])!=SHA_OK {return false;}
  at:=0;while at<size {n:=ifx size-at<data.count then size-at else data.count;if fs_read_at(path,at,data[0..<n])!=n || sha256_update_checked(state[..],data[0..<n],false)!=SHA_OK {return false;}at+=n;}
@@ -27,6 +41,6 @@ tool_main :: ()->int #export_c {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: metal-source-join GENERATED.C ORIGINAL_ROOT PREPARED_ROOT OUTPUT.json");return 2;}
  c:=args_at(a[..],0);origin:=args_at(a[..],1);prepared:=args_at(a[..],2);prefix:[65536]u8;n:=fs_read_at(c,0,prefix[..]);if n<1 {return 1;}text:=cast(string)prefix[0..<n];marker:="static const struct coax_source_range coax_source_ranges[] = {\n";start:=msj_find(text,marker,0);if start<0 {return 1;}at:=start+marker.count;end:=msj_find(text,"};",at);if end<0 {return 1;}
  out:[262144]u8;o:[1]Jo;jo_start(o[..],out[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.metal.compiled-source-observation.v1");jo_key(o[..],"generated_c");jo_str(o[..],c);hash:[64]u8;if !msj_hash(c,hash[..]) {return 1;}jo_key(o[..],"generated_c_sha256");jo_str(o[..],cast(string)hash[..]);jo_key(o[..],"sources");jo_arr(o[..]);count:=0;different:=0;
- while at<end {stop:=msj_find(text,"\n",at);if stop<0 || stop>end {return 1;}path:=msj_path(text[at..<stop]);if path.count<=origin.count || path[0..<origin.count]!=origin || path[origin.count]!='/' {tool_errln("Unexpected compiled source origin");return 1;}relative:=path[origin.count+1..<path.count];dest:[4096]u8;other:=fs_join(prepared,relative,dest[..]);left:[64]u8;right:[64]u8;if !msj_hash(path,left[..]) || !msj_hash(other,right[..]) {tool_errln(path);return 1;}same:=cast(string)left[..]==cast(string)right[..];if !same {different+=1;}jo_obj(o[..]);jo_key(o[..],"path");jo_str(o[..],relative);jo_key(o[..],"original_sha256");jo_str(o[..],cast(string)left[..]);jo_key(o[..],"prepared_sha256");jo_str(o[..],cast(string)right[..]);jo_key(o[..],"same");jo_bool(o[..],same);jo_end(o[..]);count+=1;at=stop+1;}
+ while at<end {stop:=msj_find(text,"\n",at);if stop<0 || stop>end {return 1;}path:=msj_path(text[at..<stop]);relative:=msj_relative(path,origin);if relative=="" {tool_errln("Unexpected compiled source origin");return 1;}dest:[4096]u8;source:[4096]u8;original:=fs_join(origin,relative,source[..]);other:=fs_join(prepared,relative,dest[..]);left:[64]u8;right:[64]u8;if !msj_hash(original,left[..]) || !msj_hash(other,right[..]) {tool_errln(path);return 1;}same:=cast(string)left[..]==cast(string)right[..];if !same {different+=1;}jo_obj(o[..]);jo_key(o[..],"path");jo_str(o[..],relative);jo_key(o[..],"original_sha256");jo_str(o[..],cast(string)left[..]);jo_key(o[..],"prepared_sha256");jo_str(o[..],cast(string)right[..]);jo_key(o[..],"same");jo_bool(o[..],same);jo_end(o[..]);count+=1;at=stop+1;}
  jo_end(o[..]);jo_key(o[..],"source_count");jo_int(o[..],count);jo_key(o[..],"different_count");jo_int(o[..],different);jo_key(o[..],"scope");jo_str(o[..],"Observed compiled source table and file hashes only; not a compiler provenance receipt or release admission.");jo_end(o[..]);return ifx o[0].bad || count==0 || !fs_write(args_at(a[..],3),jo_text(o[..])) then 1 else 0;
 }
