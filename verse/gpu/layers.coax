@@ -10,7 +10,7 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
-#load "../../coax/lib/image/image.coax";
+#load "../../aethyr/render/host-layers.coax";
 
 LY_FILE :: 8388608;     // the largest image file
 LY_WORK :: 4194304;     // the largest decode work (a 1024 by 1024 RGBA PNG's rows)
@@ -41,18 +41,13 @@ tool_main :: () -> int #export_c {
     path := fs_join(dir, name, pb[..]);
     sn := fs_read(path, src[..]);
     if sn < 0 { tool_err("layers: cannot read "); tool_errln(path); return 1; }
-    info := img_info(src[0..<sn]);
-    half := info.w * 2 == side && info.h * 2 == side;
-    if info.status != IMG_OK || info.w != info.h || (info.w != side && !half) || info.work > LY_WORK {
+    plan := htx_plan(src[0..<sn], side);
+    if plan.status != IMG_OK {
       tool_err("layers: not a square PNG or JPEG of side "); tool_err(args_at(a[..], 2)); tool_err(" or half it: "); tool_errln(path); return 1;
     }
     // this layer's levels, then each into its place: after the lower levels' layers and this level's earlier layers
-    at0 := ifx half then side * side * 4 else 0;
-    if img_decode(src[0..<sn], work[0..<info.work], one[at0..<at0 + info.w * info.h * 4]) != IMG_OK { tool_err("layers: cannot decode "); tool_errln(path); return 1; }
-    if half { img_double(one[at0..<at0 + info.w * info.h * 4], info.w, info.h, one[0..<at0]); }
-    mips := at0 + img_mips(one[at0..<at0 + info.w * info.h * 4], info.w, info.h, one[at0..<one.count]);
-    // every level as the browser's upload leaves it: premultiplied and divided out again
-    img_premul_trip(one[0..<mips]);
+    if htx_decode(src[0..<sn], side, work[0..<plan.work], one[0..<plan.bytes]) != IMG_OK { tool_err("layers: cannot decode "); tool_errln(path); return 1; }
+    mips := plan.bytes;
     from := 0; at := 0;
     for l: 0..<levels {
       bytes := img_side(side, l) * img_side(side, l) * 4;

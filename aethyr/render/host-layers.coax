@@ -1,0 +1,68 @@
+// Versioned canonical compressed-image decode and layer mip production.
+// Existing pre-contract browser image effects keep their own historical path.
+#load "../../coax/lib/image/image.coax";
+#authority;
+HOST_LAYER_SOURCE_BYTES :: 8388608;
+HOST_LAYER_WORK_BYTES :: 4194304;
+HOST_LAYER_SIDE :: 1024;
+HostLayerPlan :: struct {status:int=IMG_BAD;side:int;width:int;height:int;levels:int;bytes:int;work:int;base_offset:int;source_bytes:int;}
+
+#forall "canonical layer accepts every supported square and publishes full physical extents" half:0..<2 {
+ for side:[5]int.[1,2,4,512,1024] {
+  width:=ifx half==1 && side>1 then side/2 else side;
+  p:=htx_layout(ImgInfo.{status=IMG_OK,w=width,h=width,work=71},side,123);
+  #assert p.status==IMG_OK && p.side==side && p.width==width && p.height==width && p.work==71 && p.source_bytes==123;
+  #assert p.levels==img_levels(side,side) && p.base_offset==(ifx width==side then 0 else side*side*4);
+  expected:=0;for level:0..<p.levels {w:=img_side(side,level);expected+=w*w*4;}#assert p.bytes==expected;
+ }
+}
+#forall "canonical layer rejects every invalid metadata boundary without a partial plan" field:0..<12 {
+ info:=ImgInfo.{status=IMG_OK,w=4,h=4,work=71};side:=4;bytes:=123;
+ if field==0 {info.status=IMG_NOT;}if field==1 {info.w=0;}if field==2 {info.h=0;}if field==3 {info.h=3;}
+ if field==4 {side=0;}if field==5 {side=1025;info.w=1025;info.h=1025;}if field==6 {side=3;}if field==7 {info.work=0;}
+ if field==8 {info.work=HOST_LAYER_WORK_BYTES+1;}if field==9 {bytes=0;}if field==10 {bytes=HOST_LAYER_SOURCE_BYTES+1;}if field==11 {side=-1;}
+ p:=htx_layout(info,side,bytes);#assert p.status==IMG_BAD && p.side==0 && p.width==0 && p.height==0 && p.levels==0 && p.bytes==0 && p.work==0 && p.base_offset==0 && p.source_bytes==0;
+}
+#test "canonical layer exact limits and odd square levels remain admitted" {
+ p:=htx_layout(ImgInfo.{status=IMG_OK,w=1024,h=1024,work=HOST_LAYER_WORK_BYTES},1024,HOST_LAYER_SOURCE_BYTES);
+ #assert p.status==IMG_OK && p.bytes==5592404 && p.work==4194304 && p.source_bytes==8388608;
+ q:=htx_layout(ImgInfo.{status=IMG_OK,w=3,h=3,work=1},3,1);#assert q.status==IMG_OK && q.bytes==40 && q.levels==2;
+}
+#test "canonical compressed PNG produces known pixels and the complete doubled mip chain" {
+ src:=PNG_ONE;work:[256]u8;one:[5]u8;double:[21]u8;
+ p:=htx_plan(src[..],1);#assert p.status==IMG_OK && p.width==1 && p.bytes==4 && p.base_offset==0;
+ one[4]=219;#assert htx_decode(src[..],1,work[0..<p.work],one[0..<4])==IMG_OK && png_digest(one[0..<4])==16135073 && one[4]==219;
+ double[20]=213;#assert htx_decode(src[..],2,work[0..<p.work],double[0..<20])==IMG_OK && double[20]==213;
+ for i:0..<20 {#assert double[i]==one[i%4];}
+}
+#forall "canonical decode capacity refusal never writes output" which:0..<3 {
+ src:=PNG_ONE;work:[256]u8;out:[24]u8;for i:0..<out.count {out[i]=197;}
+ p:=htx_plan(src[..],2);status:=htx_decode(src[..],ifx which==2 then 3 else 2,work[0..<(ifx which==0 then p.work-1 else work.count)],out[0..<(ifx which==1 then p.bytes-1 else out.count)]);
+ #assert status==IMG_SMALL || (which==2 && status==IMG_BAD);for i:0..<out.count {#assert out[i]==197;}
+}
+#test "canonical plan and decode refuse malformed or nonsquare original bytes" {
+ src:=PNG_RGBA;work:[256]u8;out:[24]u8;bad:[2]u8;
+ #assert htx_plan(src[..],4).status==IMG_BAD && htx_decode(src[..],4,work[..],out[..])==IMG_BAD;
+ #assert htx_plan(bad[..],1).status==IMG_BAD && htx_decode(bad[..],1,work[..],out[..])==IMG_BAD;
+ late:=PNG_BAD_FILTER5;#assert htx_plan(late[..],2).status==IMG_OK && htx_decode(late[..],2,work[..],out[..])==IMG_BAD;
+}
+#test "canonical alpha round trip is applied exactly once to decoded bytes" {
+ // Uncompressed zlib scanline [filter0,100,200,50,128], Adler32 0x04d101df.
+ src:=[73]u8.[137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,1,0,0,0,1,8,6,0,0,0,0,0,0,0,0,0,0,16,73,68,65,84,120,1,1,5,0,250,255,0,100,200,50,128,4,209,1,223,0,0,0,0,0,0,0,0,73,69,78,68,174,66,96,130];
+ for chunk:0..<2 {start:=ifx chunk==0 then 12 else 37;end:=ifx chunk==0 then 29 else 57;crc:=png_crc(src[start..<end]);for lane:0..<4 {src[end+lane]=cast(u8)((crc>>((3-lane)*8))&255);}}
+ work:[32]u8;out:[4]u8;#assert htx_decode(src[..],1,work[..],out[..])==IMG_OK;
+ #assert out[0]==100 && out[1]==199 && out[2]==50 && out[3]==128;
+}
+
+htx_layout :: (info:ImgInfo,side:int,source_bytes:int)->HostLayerPlan {
+ if info.status!=IMG_OK || side<1 || side>HOST_LAYER_SIDE || source_bytes<1 || source_bytes>HOST_LAYER_SOURCE_BYTES || info.w<1 || info.h!=info.w || (info.w!=side && info.w*2!=side) || info.work<1 || info.work>HOST_LAYER_WORK_BYTES {return HostLayerPlan.{};}
+ levels:=img_levels(side,side);bytes:=0;for level:0..<levels {w:=img_side(side,level);bytes+=w*w*4;}
+ return HostLayerPlan.{status=IMG_OK,side=side,width=info.w,height=info.h,levels=levels,bytes=bytes,work=info.work,base_offset=ifx info.w==side then 0 else side*side*4,source_bytes=source_bytes};
+}
+htx_plan :: (src:[]u8,side:int)->HostLayerPlan #export_c {return htx_layout(img_info(src),side,src.count);}
+htx_decode :: (src:[]u8,side:int,work:[]u8,out:[]u8)->int #export_c {
+ p:=htx_plan(src,side);if p.status!=IMG_OK {return p.status;}if work.count<p.work || out.count<p.bytes {return IMG_SMALL;}
+ count:=p.width*p.height*4;status:=img_decode(src,work[0..<p.work],out[p.base_offset..<p.base_offset+count]);if status!=IMG_OK {return status;}
+ if p.base_offset!=0 {img_double(out[p.base_offset..<p.base_offset+count],p.width,p.height,out[0..<p.base_offset]);}
+ written:=img_mips(out[p.base_offset..<p.base_offset+count],p.width,p.height,out[p.base_offset..<p.bytes]);img_premul_trip(out[0..<p.bytes]);return IMG_OK;
+}
