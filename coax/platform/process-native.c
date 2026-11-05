@@ -792,3 +792,13 @@ int64_t cxproc_write_some(int64_t h, coax_v_u8 s) {
   if (n < 0) return (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) ? 0 : -1;
   return (int64_t)n;
 }
+
+int64_t cxproc_platform(void) {
+#if defined(__linux__) && defined(__x86_64__)
+  return 3;
+#elif defined(__APPLE__)
+  return 1;
+#else
+  return 0;
+#endif
+}

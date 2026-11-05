@@ -410,3 +410,72 @@ int64_t cxfs_realpath(void) {
   memcpy(fs_name, resolved, n + 1);
   free(resolved); return (int64_t)n;
 }
+
+/* Private, single-writer journal effects. Coax owns framing, ordering,
+   capacity policy, retained heads and whether an acknowledged intent may
+   start an effect. This owner shares no mutable buffers with cxstore/cxfs. */
+static char journal_path[4097];
+static size_t journal_path_n;
+static int journal_path_bad;
+static int journal_fd = -1, journal_broken;
+static unsigned char journal_pending[32857];
+static size_t journal_pending_n;
+
+static void journal_discard(void) {
+  volatile unsigned char *p = journal_pending;
+  for (size_t i=0; i<journal_pending_n; ++i) p[i]=0;
+  journal_pending_n=0;
+}
+int64_t cxjournal_path_push(int64_t byte) {
+  if (journal_fd>=0) return -1;
+  if (byte<1 || byte>255 || journal_path_n>=sizeof journal_path-1) {
+    journal_path_bad=1;return -1;
+  }
+  journal_path[journal_path_n++]=(char)byte;return 0;
+}
+int64_t cxjournal_open(void) {
+  if (journal_fd>=0) return -1;
+  int valid=!journal_path_bad && journal_path_n>0;
+  journal_path[journal_path_n]=0;
+  journal_path_n=0;journal_path_bad=0;
+  if (!valid) return -1;
+  int opened=open(journal_path,O_WRONLY|O_CREAT|O_EXCL|O_CLOEXEC|O_NOFOLLOW,0600);
+  if (opened<0) return -1;
+  char parent[sizeof journal_path];memcpy(parent,journal_path,sizeof parent);
+  char *slash=strrchr(parent,'/');
+  if (!slash) {parent[0]='.';parent[1]=0;}
+  else if (slash==parent) parent[1]=0;
+  else *slash=0;
+  int directory=open(parent,O_RDONLY|O_DIRECTORY|O_CLOEXEC);
+  int synced=full_sync(opened)==0 && directory>=0 && fsync(directory)==0;
+  if (directory>=0) close(directory);
+  if (!synced) {close(opened);return -1;}
+  journal_fd=opened;journal_broken=0;journal_discard();return 0;
+}
+int64_t cxjournal_put(int64_t byte) {
+  if (journal_fd<0 || journal_broken) return -1;
+  if (byte<0 || byte>255 || journal_pending_n>=sizeof journal_pending) {
+    journal_broken=1;return -1;
+  }
+  journal_pending[journal_pending_n++]=(unsigned char)byte;return 0;
+}
+int64_t cxjournal_commit(void) {
+  if (journal_fd<0 || journal_broken) {journal_discard();return -1;}
+  off_t before=lseek(journal_fd,0,SEEK_END);size_t done=0;
+  if (before>=0) {
+    while (done<journal_pending_n) {
+      ssize_t n=pwrite(journal_fd,journal_pending+done,journal_pending_n-done,before+(off_t)done);
+      if (n<0 && errno==EINTR) continue;
+      if (n<=0) break;
+      done+=(size_t)n;
+    }
+    if (done==journal_pending_n && full_sync(journal_fd)==0) {journal_discard();return 0;}
+    int truncated=ftruncate(journal_fd,before);
+    if (truncated==0) {int synced=full_sync(journal_fd);(void)synced;}
+  }
+  journal_broken=1;journal_discard();return -1;
+}
+int64_t cxjournal_close(void) {
+  int result=journal_fd<0 ? 0 : close(journal_fd);
+  journal_fd=-1;journal_broken=0;journal_discard();return result==0 ? 0 : -1;
+}

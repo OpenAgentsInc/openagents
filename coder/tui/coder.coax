@@ -199,6 +199,7 @@ App :: struct {
   cu_hold: int;                   // config answers still expected before the first prompt
   // microcoder engine: its worker process (mcworker.coax), a run per message
   mc_h: int = -1;
+  mc_ticket:int;
   mc_line: [] u8;
   mc_ar: [1] ClArena;
   log: [] CsLog;                  // the session's log file (session.coax)
@@ -741,6 +742,7 @@ cd_cmd_apple_fm :: (prompt: string) -> int {
 CD_CONTEXT_MAX :: 8192;
 
 cd_start :: (a: [] App, msg: string) {
+  if a[0].log[0].failed {a[0].running=false;a[0].exit=1;return;}
   a[0].provider_reset_s = 0;
   a[0].starts += 1;
   a[0].running = true; a[0].started_ms = cd_now(a); a[0].steps = 0;

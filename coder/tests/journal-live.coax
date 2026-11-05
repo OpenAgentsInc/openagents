@@ -1,0 +1,96 @@
+// The real gateway plan and Microcoder driver, with recorded HTTP responses
+// instead of a credentialed provider. Commands and views are real effects.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+cxproc_sleep_ms :: (ms:int)->int #foreign;
+#load "../../coax/lib/microcoder/run.coax";
+
+jl_response :: (path:string,action:string) {
+  b:[8192]u8;n:=json_raw(b[..],0,"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: {\"choices\":[{\"delta\":{\"content\":");
+  n=json_write_string(b[..],n,action);n=json_raw(b[..],n,"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
+  #assert n>0 && fs_write(path,cast(string)b[0..<n]);
+}
+jl_child :: (dir:string)->int {
+  pathbuf:[1200]u8;path:=fs_join(dir,"live.ajr",pathbuf[..]);
+  journal:[1]JfWriter;#assert jf_open(journal[..],path);defer jf_close(journal[..]);
+  #assert jf_context(journal[..],"frozen system/schema; workspace-write");
+  run:[1]McRun;state:[1]McStateBuffers;loop:[1]McLoopBuffers;
+  plan:[1]GwPlan;buffers:[1]GwPlanBuffers;bench:[1]GwBench;
+  gw_plan_init(plan[..],buffers[..]);plan[0].journal=journal[..];
+  g:=Gateway.{name="fixture",url="http://127.0.0.1:1/v1/chat/completions",wire=GW_WIRE_CHAT};
+  none:[1]string;#assert gw_plan_add(plan[..],g,"fixture-model",none[0..<0]);
+  mc_init(run[0].l[..],state[..],loop[..],"fixture","create and read effect","{}",0.9);
+  run[0].profile="workspace-write";run[0].gated=true;
+  mc_run_start(run[..],plan[..],bench[..],dir,"low");
+  expected:[2][262144]u8;lengths:[2]int;calls:=0;
+  // gw_call_start retains the exact translated request length.
+  req:=mc_request(run[0].l[..]);req.model="fixture-model";req.effort="low";why:[1]string;
+  translated:=gw_translate(g,req,expected[0][..],why[..]);lengths[0]=translated.count;calls=1;
+  out:[32]McRunEvent;ended:=false;asked:=false;seen_command:=false;seen_view:=false;
+  for guard:0..<10000 {
+    n:=mc_run_poll(run[..],out[..]);
+    i:=0;while i<n {
+      if out[i].kind==MR_ASK {
+        asked=true;ticket:=out[i].ticket;
+        #assert mc_run_answer_owned(run[..],ticket-1,true,"stale",out[n..<out.count])==0;
+        #assert run[0].asking;
+        more:=mc_run_answer_owned(run[..],ticket,true,"owner",out[n..<out.count]);n+=more;
+        req=mc_request(run[0].l[..]);req.model="fixture-model";req.effort="low";
+        translated=gw_translate(g,req,expected[1][..],why[..]);lengths[1]=translated.count;calls=2;
+      }
+      if out[i].kind==MR_COMMAND {seen_command=true;#assert out[i].exit==0;}
+      if out[i].kind==MR_VIEW {seen_view=true;#assert out[i].found;}
+      if out[i].kind==MR_ENDED {ended=true;#assert out[i].ending==MC_END_FINISHED && out[i].text=="done";}
+      i+=1;
+    }
+    if ended {break;}sleep:=cxproc_sleep_ms(2);
+  }
+  #assert ended && asked && seen_command && seen_view && calls==2;
+  bytes:[1048576]u8;nb:=fs_read(path,bytes[..]);#assert nb>0;
+  recovered:AfState;at:=0;request:=0;offset:=0;commands:=0;views:=0;decisions:=0;
+  while at<nb {
+    r:=aj_read(recovered.chain,bytes[at..<nb]);#assert r.ok;
+    if r.kind==AjKind.model_chunk {
+      #assert request<2;
+      for i:0..<r.count {#assert offset<lengths[request] && bytes[at+r.at+i]==expected[request][offset];offset+=1;}
+    }
+    if r.kind==AjKind.model_intent {#assert offset==lengths[request];request+=1;offset=0;}
+    if r.kind==AjKind.command_intent {commands+=1;}
+    if r.kind==AjKind.view_intent {views+=1;}
+    if r.kind==AjKind.decision {decisions+=1;}
+    move:=af_recover(recovered,bytes[at..<at+r.consumed]);#assert move.ok;
+    recovered=move.state;at+=r.consumed;
+  }
+  #assert request==2 && commands==1 && views==1 && decisions==2 && !recovered.unknown;
+  // Stopping a transport records an unknown remote outcome and never
+  // turns it into a successful model completion.
+  #assert jf_context(journal[..],"cancelled model");
+  mc_init(run[0].l[..],state[..],loop[..],"fixture","cancel","{}",0.9);
+  mc_run_start(run[..],plan[..],bench[..],dir,"low");
+  stopped:=mc_run_stop(run[..],out[..]);#assert stopped>0 && journal[0].flow.phase==AfPhase.closed && journal[0].flow.unknown && !journal[0].flow.chain.failed;
+  // A lost storage owner must prevent the gateway playback process itself.
+  #assert jf_context(journal[..],"next run");retired:=cxjournal_close();#assert retired==0;
+  cursorbuf:[1200]u8;cursor:=fs_join(dir,".next",cursorbuf[..]);before:[32]u8;old:=fs_read(cursor,before[..]);
+  mc_init(run[0].l[..],state[..],loop[..],"fixture","new task","{}",0.9);
+  mc_run_start(run[..],plan[..],bench[..],dir,"low");
+  n:=mc_run_poll(run[..],out[..]);#assert n>0 && run[0].ended && journal[0].flow.chain.failed && out[n-1].ending==MC_END_FAILED;
+  after:[32]u8;now:=fs_read(cursor,after[..]);#assert old==now && cast(string)before[0..<old]==cast(string)after[0..<now];
+  print("live request bytes, approval ownership, durable shell/view results and failed-storage transport refusal passed\n");return 0;
+}
+tool_main :: ()->int #export_c {
+  args:[1]Args;#assert args_load(args[..]);
+  if args[0].n==1 {return jl_child(args_at(args[..],0));}
+  b:[1024]u8;dir:=fs_temp("journal-live-",b[..]);#assert dir.count>0;defer {r:=fs_remove(dir);}
+  p:[1200]u8;one:=fs_join(dir,"1.http",p[..]);
+  jl_response(one,"{\"rationale\":\"inspect\",\"commands\":[\"printf once > effect.txt\"],\"view\":[\"effect.txt\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
+  two:=fs_join(dir,"2.http",p[..]);
+  jl_response(two,"{\"rationale\":\"done\",\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done\",\"ask\":\"none\"}");
+  h:=cxproc_new();#assert h>=0;
+  #assert mc_proc_arg(h,CL_FIELD_ARG,"coax/web/tool.sh") && mc_proc_arg(h,CL_FIELD_ARG,"coder/tests/journal-live.coax") && mc_proc_arg(h,CL_FIELD_ARG,dir);
+  env:[1300]u8;n:=json_raw(env[..],0,"GW_REPLAY=");n=json_raw(env[..],n,dir);#assert mc_proc_arg(h,CL_FIELD_ENV,cast(string)env[0..<n]);
+  #assert cxproc_spawn(h)==0;closed:=cxproc_close_stdin(h);
+  line:[8192]u8;
+  while true {nline:=cxproc_read_line(h,60000);if nline==CL_EOF {break;}#assert nline>=0 && nline<=line.count;for i:0..<nline {line[i]=cast(u8)cxproc_line_byte(h,i);}print("%\n",cast(string)line[0..<nline]);}
+  status:=cxproc_wait(h,1000);err:[8192]u8;ne:=cxproc_stderr_count(h);if ne>err.count {ne=err.count;}for i:0..<ne {err[i]=cast(u8)cxproc_stderr_byte(h,i);}if status!=0 {tool_errln(cast(string)err[0..<ne]);}
+  released:=cxproc_release(h);return status;
+}

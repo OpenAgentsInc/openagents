@@ -11,6 +11,10 @@
 // into the loop.
 
 #load "loop.coax";
+#load "../agent/native-profile.coax";
+#load "../sys/fs.coax";
+cxproc_platform :: ()->int #foreign;
+cxproc_flush_timeout :: (h:int,ms:int)->int #foreign;
 
 MC_COMMAND_SECONDS :: 30;
 MC_VIEW_BYTES :: 65536;
@@ -60,18 +64,23 @@ mc_proc_arg :: (h: int, field: int, s: string) -> bool {
 }
 
 // Runs command by /bin/sh -c in cwd, stdin closed, for at most seconds.
-mc_run_command :: (cwd: string, command: string, seconds: int, o: [] McOutput) -> McCommandResult {
+mc_run_command :: (cwd:string,command:string,seconds:int,o:[]McOutput)->McCommandResult {
+  return mc_run_command_profile(cwd,command,seconds,o,"danger-full-access");
+}
+mc_run_command_profile :: (cwd: string, command: string, seconds: int, o: [] McOutput, profile:string) -> McCommandResult {
   o[0].nh = 0; o[0].nt = 0; o[0].at = 0; o[0].dropped = 0;
   r := McCommandResult.{exit = -1};
   h := cxproc_new();
   if h < 0 { for c: "no process slot is free" { mc_output_byte(o, c); } r.output = mc_output_text(o); return r; }
-  ok := mc_proc_arg(h, CL_FIELD_ARG, "/bin/sh") && mc_proc_arg(h, CL_FIELD_ARG, "-c") && mc_proc_arg(h, CL_FIELD_ARG, command);
+  ok:=mc_profile_args(h,cwd,profile);
+  ok = ok && mc_proc_arg(h, CL_FIELD_ARG, "/bin/sh") && mc_proc_arg(h, CL_FIELD_ARG, "-c") && mc_proc_arg(h, CL_FIELD_ARG, command);
   if cwd.count > 0 { ok = ok && mc_proc_arg(h, CL_FIELD_CWD, cwd); }
   if !ok || cxproc_spawn(h) != 0 {
     x := cxproc_release(h);
     for c: "the command could not start" { mc_output_byte(o, c); }
     r.output = mc_output_text(o); return r;
   }
+  if !mc_profile_input(h,profile) {k:=cxproc_kill(h,9);x:=cxproc_release(h);r.output="sandbox setup failed";return r;}
   x := cxproc_close_stdin(h);
   deadline := cxproc_now_ms() + seconds * 1000;
   lines := 0;
@@ -134,16 +143,20 @@ McViewResult :: struct {
 }
 
 // Reads path under cwd (64 KB at most) into buf, through head(1).
-mc_view_file :: (cwd: string, path: string, buf: [] u8) -> McViewResult {
+mc_view_file :: (cwd:string,path:string,buf:[]u8)->McViewResult {
+  return mc_view_file_profile(cwd,path,buf,"danger-full-access");
+}
+mc_view_file_profile :: (cwd: string, path: string, buf: [] u8, profile:string) -> McViewResult {
   if !mc_path_inside(cwd, path) { return McViewResult.{content = "not shown: the path leaves the working directory"}; }
   h := cxproc_new();
   if h < 0 { return McViewResult.{content = "not shown: no process slot is free"}; }
   num: [24] u8;
   nn := json_write_int(num[..], 0, MC_VIEW_BYTES + 1);
-  ok := mc_proc_arg(h, CL_FIELD_ARG, "/usr/bin/head") && mc_proc_arg(h, CL_FIELD_ARG, "-c") && mc_proc_arg(h, CL_FIELD_ARG, cast(string) num[0..<nn]);
+  ok := mc_profile_args(h,cwd,profile) && mc_proc_arg(h, CL_FIELD_ARG, "/usr/bin/head") && mc_proc_arg(h, CL_FIELD_ARG, "-c") && mc_proc_arg(h, CL_FIELD_ARG, cast(string) num[0..<nn]);
   ok = ok && mc_proc_arg(h, CL_FIELD_ARG, "--") && mc_proc_arg(h, CL_FIELD_ARG, path);
   if cwd.count > 0 { ok = ok && mc_proc_arg(h, CL_FIELD_CWD, cwd); }
   if !ok || cxproc_spawn(h) != 0 { x := cxproc_release(h); return McViewResult.{content = "not shown: could not read it"}; }
+  if !mc_profile_input(h,profile) {k:=cxproc_kill(h,9);x:=cxproc_release(h);return McViewResult.{content="not shown: sandbox setup failed"};}
   x := cxproc_close_stdin(h);
   n := 0; cut := false; binary := false; lines := 0;
   while true {
@@ -204,4 +217,48 @@ mc_run_tools :: (l: [] McLoop, cwd: string, b: [] McToolBuffers) -> int {
   #assert mc_path_inside("/tmp/demo", "a.swift") && mc_path_inside("/tmp/demo", "src/x/y.txt") && mc_path_inside("/tmp/demo", "/tmp/demo/a.swift");
   #assert !mc_path_inside("/tmp/demo", "../etc/passwd") && !mc_path_inside("/tmp/demo", "src/../../x") && !mc_path_inside("/tmp/demo", "/etc/passwd");
   #assert !mc_path_inside("/tmp/demo", "/tmp/demox/a") && !mc_path_inside("/tmp/demo", "") && mc_path_inside("/tmp/demo", "..hidden");
+}
+
+// There is no fallback from a selected workspace profile. Only public
+// runtime directories and this canonical workspace are mounted. The filter
+// arrives over the owned child's stdin before bubblewrap execs the tool.
+mc_profile_args :: (h:int,cwd:string,profile:string)->bool {
+  if profile=="danger-full-access" {return true;}
+  if profile!="workspace-write" && profile!="read-only" {return false;}
+  if cxproc_platform()!=3 {return false;}
+  rootbuf:[4096]u8;root:=fs_realpath(cwd,rootbuf[..]);
+  hb:[4096]u8;home:=cl_getenv("HOME",hb[..]);
+  if root!=cwd || !np_root(root,home) {return false;}
+  overridebuf:[4096]u8;override:=cl_getenv("CODER_HOME",overridebuf[..]);
+  if override.count>0 {
+    canonicalbuf:[4096]u8;canonical:=fs_realpath(override,canonicalbuf[..]);
+    if !np_root(root,canonical) {return false;}
+  }
+  trusted:=ifx fs_kind("/nix/store")==FS_DIR then "/run/current-system/sw/bin/bwrap" else "/usr/bin/bwrap";
+  limitexe:=ifx fs_kind("/nix/store")==FS_DIR then "/run/current-system/sw/bin/prlimit" else "/usr/bin/prlimit";
+  limits:=[7]string.[limitexe,"--as=2147483648","--cpu=30","--fsize=16777216","--nofile=128","--",""];
+  for arg:limits[0..<6] {if !mc_proc_arg(h,CL_FIELD_ARG,arg) {return false;}}
+  args:=[21]string.[trusted,"--unshare-all","--unshare-user","--disable-userns","--die-with-parent","--new-session","--clearenv",
+    "--proc","/proc","--dev","/dev","--tmpfs","/tmp","--dir","/home/agent","--setenv","HOME","/home/agent","--seccomp","0",""];
+  for arg:args[0..<20] {if !mc_proc_arg(h,CL_FIELD_ARG,arg) {return false;}}
+  if fs_kind("/nix/store")==FS_DIR {
+    nix:=[18]string.["--ro-bind","/nix/store","/nix/store","--ro-bind","/run/current-system/sw","/run/current-system/sw",
+      "--symlink","/run/current-system/sw/bin","/usr/bin","--symlink","/run/current-system/sw/bin","/bin",
+      "--setenv","PATH","/run/current-system/sw/bin:/bin:/usr/bin","--dir","/etc",""];
+    for arg:nix[0..<17] {if !mc_proc_arg(h,CL_FIELD_ARG,arg) {return false;}}
+  } else {
+    runtime:=[15]string.["--ro-bind","/usr","/usr","--ro-bind","/bin","/bin","--ro-bind-try","/lib","/lib",
+      "--ro-bind-try","/lib64","/lib64","--setenv","PATH","/usr/bin:/bin"];
+    for arg:runtime {if !mc_proc_arg(h,CL_FIELD_ARG,arg) {return false;}}
+  }
+  tail:=[7]string.[ifx profile=="read-only" then "--ro-bind" else "--bind",root,root,"--chdir",root,"--",""];
+  for arg:tail[0..<6] {if !mc_proc_arg(h,CL_FIELD_ARG,arg) {return false;}}
+  return true;
+}
+mc_profile_input :: (h:int,profile:string)->bool {
+  if profile=="danger-full-access" {return true;}
+  filter:[NP_FILTER_BYTES]u8;n:=np_filter(filter[..]);
+  if n==0 {return false;}
+  for i:0..<n {if cxproc_write(h,cast(int)filter[i])!=0 {return false;}}
+  return cxproc_flush_timeout(h,1000)==0;
 }

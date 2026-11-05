@@ -106,6 +106,7 @@ MR_ASK :: 7;                     // text: a command waiting for mc_run_answer (a
 
 McRunEvent :: struct {
   kind: int;
+  ticket:int;
   text: string;
   log: GwAttemptLog;
   exit: int;
@@ -126,7 +127,12 @@ McRun :: struct {
   calling: bool;
   logged: int;                   // plan log entries handed out this step
   ended: bool;
+  profile:string="danger-full-access";
+  journal: [] JfWriter;
+  deadline: int;
+  effects: int;
   gated: bool;                   // each command waits for mc_run_answer: the host's hooks and approvals decide
+  ask_ticket:int;
   asking: bool; ask_i: int;      // the pending action's command waiting for an answer
   rbuf: [4096] u8;               // this poll's reply bytes
   obuf: [131072] u8; nob: int;   // this poll's command outputs: the tools reuse their buffer per command
@@ -147,10 +153,14 @@ mc_run_keep :: (r: [] McRun, s: string) -> string {
 // (gw_plan_add its attempts first); effort "" leaves it to the provider.
 mc_run_start :: (r: [] McRun, p: [] GwPlan, bench: [] GwBench, cwd: string, effort: string) {
   r[0].p = p; r[0].bench = bench; r[0].cwd = cwd; r[0].effort = effort; r[0].ended = false;
+  r[0].journal=p[0].journal;r[0].deadline=0;now:=cxproc_now_ms();if now>=0 && now<=9223372036854475807 {r[0].deadline=now+300000;}r[0].effects=0;
   mc_run_call(r);
 }
 
 mc_run_call :: (r: [] McRun) {
+  if r[0].journal.count>0 && !np_budget(true,r[0].l[0].steps,cxproc_now_ms(),r[0].deadline) {
+    r[0].l[0].ending=MC_END_FAILED;r[0].l[0].why="run budget exhausted";return;
+  }
   req := mc_request(r[0].l[..]);
   if r[0].effort.count > 0 { req.effort = r[0].effort; }
   mc_rs_reset(r[0].rs[..]);
@@ -177,7 +187,10 @@ mc_run_logs :: (r: [] McRun, out: [] McRunEvent, k: int) -> int {
 mc_run_end :: (r: [] McRun, out: [] McRunEvent, k: int) -> int {
   r[0].ended = true;
   l := r[0].l[..];
-  text := ifx l[0].ending == MC_END_NO_CAPACITY then l[0].why else l[0].reply;
+  if r[0].journal.count>0 && !r[0].journal[0].flow.chain.failed && r[0].journal[0].flow.phase!=AfPhase.closed {
+    if !jf_stop(r[0].journal,mc_ending_name(l[0].ending)) {l[0].ending=MC_END_FAILED;l[0].why="durable stop failed; inspect the journal before retrying";}
+  }
+  text := ifx l[0].ending == MC_END_NO_CAPACITY || l[0].ending==MC_END_FAILED then l[0].why else l[0].reply;
   return mc_run_put(out, k, McRunEvent.{kind = MR_ENDED, ending = l[0].ending, text = text});
 }
 
@@ -185,10 +198,13 @@ mc_run_end :: (r: [] McRun, out: [] McRunEvent, k: int) -> int {
 // never block; a step's commands run here when the step asks for them.
 mc_run_poll :: (r: [] McRun, out: [] McRunEvent) -> int {
   if r[0].ended || r[0].asking { return 0; }
+  if r[0].l[0].ending==MC_END_FAILED {return mc_run_end(r,out,0);}
+  if r[0].journal.count>0 && cxproc_now_ms()>=r[0].deadline {gw_plan_stop(r[0].p);return mc_run_failed(r,out,0);}
   l := r[0].l[..];
   k := 0;
   ev: [8] GwEvent;
   n := gw_plan_poll(r[0].p, r[0].bench, ev[..]);
+  if r[0].journal.count>0 && r[0].journal[0].flow.chain.failed {return mc_run_failed(r,out,0);}
   status := MC_WAIT;
   rn := 0;
   for i: 0..<n {
@@ -203,18 +219,39 @@ mc_run_poll :: (r: [] McRun, out: [] McRunEvent) -> int {
   if status == MC_TOOLS {
     a := mc_pending(l);
     if r[0].gated && a.nc > 0 {
-      r[0].asking = true; r[0].ask_i = 0;
-      return mc_run_put(out, k, McRunEvent.{kind = MR_ASK, text = a.commands[0]});
+      r[0].ask_i = 0;
+      return mc_run_ask(r,out,k,a.commands[0]);
     }
-    for i: 0..<a.nc { k = mc_run_one(r, out, k, a.commands[i]); }
+    for i: 0..<a.nc { k = mc_run_one(r, out, k, a.commands[i]);if r[0].ended {return k;} }
     return mc_run_after(r, out, k);
   }
   return mc_run_next(r, out, k, status);
 }
 
+// The live journal owns every effect ticket. Any uncertain completion ends
+// the run; a later call never silently retries the pending operation.
+mc_run_intent :: (r:[]McRun,kind:AjKind,target:string)->bool {
+  if r[0].journal.count==0 {return true;}
+  now:=cxproc_now_ms();
+  if !np_budget(false,r[0].effects,now,r[0].deadline) || r[0].deadline-now<1000 {return false;}
+  if !jf_intent(r[0].journal,kind,target) {return false;}
+  r[0].effects+=1;return true;
+}
+mc_run_failed :: (r:[]McRun,out:[]McRunEvent,k:int)->int {
+  r[0].l[0].ending=MC_END_FAILED;
+  r[0].l[0].why="journal or run budget refused; an outstanding effect may have happened; inspect before retrying";
+  r[0].asking=false;return mc_run_end(r,out,k);
+}
+
 // One command run, its result recorded and given out.
 mc_run_one :: (r: [] McRun, out: [] McRunEvent, k: int, command: string) -> int {
-  res := mc_run_command(r[0].cwd, command, MC_COMMAND_SECONDS, r[0].tb[0].out[..]);
+  if !mc_run_intent(r,AjKind.command_intent,command) {return mc_run_failed(r,out,k);}
+  seconds:=MC_COMMAND_SECONDS;
+  if r[0].journal.count>0 {left:=(r[0].deadline-cxproc_now_ms())/1000;if left<seconds {seconds=left;}if seconds<1 {return mc_run_failed(r,out,k);}}
+  res := mc_run_command_profile(r[0].cwd, command, seconds, r[0].tb[0].out[..],r[0].profile);
+  metadata:[128]u8;m:=json_raw(metadata[..],0,"exit=");m=json_write_int(metadata[..],m,res.exit);
+  m=json_raw(metadata[..],m,ifx res.timed_out then " timed_out=true" else " timed_out=false");
+  if r[0].journal.count>0 && (!jf_output(r[0].journal,res.output) || !jf_result(r[0].journal,cast(string)metadata[0..<m])) {return mc_run_failed(r,out,k);}
   mc_command(r[0].l[..], command, res.exit, res.timed_out, res.output);
   return mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = command, exit = res.exit, timed_out = res.timed_out, output = mc_run_keep(r, res.output)});
 }
@@ -223,7 +260,9 @@ mc_run_one :: (r: [] McRun, out: [] McRunEvent, k: int, command: string) -> int 
 mc_run_after :: (r: [] McRun, out: [] McRunEvent, k0: int) -> int {
   l := r[0].l[..]; a := mc_pending(l); k := k0;
   for i: 0..<a.nv {
-    v := mc_view_file(r[0].cwd, a.view[i], r[0].tb[0].view[..]);
+    if !mc_run_intent(r,AjKind.view_intent,a.view[i]) {return mc_run_failed(r,out,k);}
+    v := mc_view_file_profile(r[0].cwd, a.view[i], r[0].tb[0].view[..],r[0].profile);
+    if r[0].journal.count>0 && (!jf_output(r[0].journal,v.content) || !jf_result(r[0].journal,ifx v.found then "found=true" else "found=false")) {return mc_run_failed(r,out,k);}
     mc_view(l, a.view[i], v.found, v.content);
     k = mc_run_put(out, k, McRunEvent.{kind = MR_VIEW, text = a.view[i], found = v.found});
   }
@@ -244,13 +283,17 @@ mc_run_answer :: (r: [] McRun, allow: bool, why: string, out: [] McRunEvent) -> 
   r[0].nob = 0;
   l := r[0].l[..]; a := mc_pending(l); i := r[0].ask_i;
   k := 0;
-  if allow { k = mc_run_one(r, out, k, a.commands[i]); }
+  if r[0].journal.count>0 {
+    b:[8192]u8;n:=json_raw(b[..],0,ifx allow then "allow " else "refuse ");n=json_raw(b[..],n,a.commands[i]);n=json_raw(b[..],n," reason=");n=json_raw(b[..],n,why);
+    if n<0 || !jf_decision(r[0].journal,cast(string)b[0..<n]) {return mc_run_failed(r,out,0);}
+  }
+  if allow { k = mc_run_one(r, out, k, a.commands[i]);if r[0].ended {return k;} }
   else {
     mc_action_refused(l[0].st[..], a.commands[i], why);
     k = mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = a.commands[i], exit = 126, output = mc_run_keep(r, why)});
   }
   r[0].ask_i = i + 1;
-  if r[0].ask_i < a.nc { return mc_run_put(out, k, McRunEvent.{kind = MR_ASK, text = a.commands[r[0].ask_i]}); }
+  if r[0].ask_i < a.nc { return mc_run_ask(r,out,k,a.commands[r[0].ask_i]); }
   r[0].asking = false;
   return mc_run_after(r, out, k);
 }
@@ -303,4 +346,25 @@ mc_run_stop :: (r: [] McRun, out: [] McRunEvent) -> int {
   #assert first == "one" && second == "two";
   r[0].nob = r[0].obuf.count - 2;
   #assert mc_run_keep(r[..], "abc") == "ab" && mc_run_keep(r[..], "d") == "";
+}
+
+// Tickets never reset between turns in this worker. A late answer cannot
+// authorize a different command or the next turn's proposal.
+mc_run_ask :: (r:[]McRun,out:[]McRunEvent,k:int,command:string)->int {
+  if r[0].ask_ticket==9223372036854775807 {return mc_run_failed(r,out,k);}
+  r[0].ask_ticket+=1;r[0].asking=true;
+  b:[8192]u8;n:=json_raw(b[..],0,"proposal=");n=json_write_int(b[..],n,r[0].ask_ticket);n=json_raw(b[..],n," command=");n=json_raw(b[..],n,command);
+  if r[0].journal.count>0 && (n<0 || !jf_decision(r[0].journal,cast(string)b[0..<n])) {return mc_run_failed(r,out,k);}
+  return mc_run_put(out,k,McRunEvent.{kind=MR_ASK,ticket=r[0].ask_ticket,text=command});
+}
+mc_run_answer_owned :: (r:[]McRun,ticket:int,allow:bool,why:string,out:[]McRunEvent)->int {
+  if ticket<=0 || ticket!=r[0].ask_ticket {return 0;}
+  return mc_run_answer(r,allow,why,out);
+}
+#test "stale approval answers leave the current proposal untouched" {
+  r:[1]McRun;r[0].asking=true;r[0].ask_ticket=3;out:[16]McRunEvent;
+  #assert mc_run_answer_owned(r[..],2,true,"",out[..])==0;
+  #assert mc_run_answer_owned(r[..],0,true,"",out[..])==0;
+  #assert mc_run_answer_owned(r[..],4,true,"",out[..])==0;
+  #assert r[0].asking && r[0].ask_ticket==3 && !r[0].ended;
 }

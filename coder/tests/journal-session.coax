@@ -1,0 +1,69 @@
+// Actual file effects gated by the checked intent chain; reconstruction
+// consumes the bytes written by the production journal-file adapter.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/agent/journal-file.coax";
+
+tool_main :: ()->int #export_c {
+  temp:[1024]u8;dir:=fs_temp("journal-session-",temp[..]);
+  if dir.count==0 {return 1;}
+  defer {removed:=fs_remove(dir);}
+  pathbuf:[1200]u8;path:=fs_join(dir,"session.ajr",pathbuf[..]);
+  effectbuf:[1200]u8;effect:=fs_join(dir,"effect.txt",effectbuf[..]);
+  aliasbuf:[1200]u8;alias_path:=fs_join(dir,"alias.ajr",aliasbuf[..]);
+  alias:[1]JfWriter;#assert jf_open(alias[..],alias_path);
+  alias[0].frame[0]='x';
+  #assert !jf_context(alias[..],cast(string)alias[0].frame[0..<1]);
+  #assert alias[0].flow.chain.failed && fs_size(alias_path)==0 && crypto_zeroed(alias[0].frame[..]);
+  jf_close(alias[..]);
+  w:[1]JfWriter;
+  #assert jf_open(w[..],path);
+  defer jf_close(w[..]);
+  #assert jf_context(w[..],"task, frozen schema, workspace grant");
+  body:="{\"messages\":[{\"role\":\"user\",\"content\":\"task\"}]}";
+  #assert jf_request(w[..],body,"fixture/model/chat");
+  #assert jf_begin(w[..],AjKind.model_intent);
+  #assert !jf_begin(w[..],AjKind.model_intent);
+  #assert jf_reply(w[..],"{\"commands\":[\"create effect\"]}");
+  #assert jf_model_end(w[..],"done");
+  #assert jf_intent(w[..],AjKind.command_intent,"create effect");
+  #assert fs_write(effect,"once");
+  if jf_begin(w[..],AjKind.command_intent) {bad:=fs_write(effect,"repeated");}
+  #assert jf_output(w[..],"created");
+  #assert jf_result(w[..],"exit 0");
+  #assert jf_intent(w[..],AjKind.view_intent,effect);
+  viewed:[16]u8;vn:=fs_read(effect,viewed[..]);#assert vn==4;
+  #assert jf_output(w[..],cast(string)viewed[0..<vn]);
+  #assert jf_result(w[..],"found true");
+  #assert jf_stop(w[..],"finished");
+  bytes:[1048576]u8;n:=fs_read(path,bytes[..]);#assert n>0;
+  replay:AfState;at:=0;requests:=0;intents:=0;views:=0;request:[1024]u8;nr:=0;
+  while at<n {
+    r:=aj_read(replay.chain,bytes[at..<n]);#assert r.ok;
+    frame:=bytes[at..<at+r.consumed];move:=af_recover(replay,frame);#assert move.ok;
+    if r.kind==AjKind.command_intent && af_start(move.state,AjKind.command_intent,r.group).ok {
+      bad:=fs_write(effect,"replayed");
+    }
+    if r.kind==AjKind.model_chunk {
+      for i:0..<r.count {request[nr]=bytes[at+r.at+i];nr+=1;}
+    }
+    if r.kind==AjKind.model_intent {requests+=1;}
+    if r.kind==AjKind.command_intent {intents+=1;}
+    if r.kind==AjKind.view_intent {views+=1;}
+    replay=move.state;at+=r.consumed;
+  }
+  #assert requests==1 && intents==1 && views==1 && cast(string)request[0..<nr]==body;
+  #assert replay.phase==AfPhase.closed && !replay.unknown && aj_same(replay.chain.head,w[0].flow.chain.head);
+  observed:[16]u8;got:=fs_read(effect,observed[..]);#assert got==4 && cast(string)observed[0..<got]=="once";
+  #assert jf_context(w[..],"next task");
+  // Loss of the concrete file owner cannot authorize a later tool effect.
+  retired:=cxjournal_close();#assert retired==0;
+  #assert !jf_intent(w[..],AjKind.command_intent,"unrecorded effect");
+  if jf_begin(w[..],AjKind.command_intent) {bad:=fs_write(effect,"unrecorded");}
+  #assert w[0].flow.chain.failed && !jf_reply(w[..],"");
+  got=fs_read(effect,observed[..]);#assert got==4 && cast(string)observed[0..<got]=="once";
+  #assert crypto_zeroed(w[0].frame[..]);
+  print("durable request reconstruction, one-use effects and failed-owner refusal passed\n");
+  return 0;
+}

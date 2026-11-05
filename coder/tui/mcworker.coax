@@ -31,6 +31,8 @@
 #load "../../coax/lib/sys/tool.coax";
 #load "microcoder_keys.coax";
 #load "micro-observation.coax";
+#load "../../coax/lib/sys/fs.coax";
+cxproc_wall_us :: ()->int #foreign;
 
 cxterm_byte :: (timeout_ms: int) -> int #foreign;
 cxterm_write :: (s: [] u8) -> int #foreign;
@@ -68,7 +70,7 @@ mw_event :: (e: McRunEvent, o: [] u8) {
     n = json_raw(o, 0, "{\"kind\":\"view\",\"path\":"); n = json_write_string(o, n, e.text);
     n = json_raw(o, n, ifx e.found then ",\"found\":true}" else ",\"found\":false}");
   } else if e.kind == MR_ASK {
-    n = json_raw(o, 0, "{\"kind\":\"ask\",\"command\":"); n = json_write_string(o, n, e.text); n = json_raw(o, n, "}");
+    n = json_raw(o, 0, "{\"kind\":\"ask\",\"command\":"); n = json_write_string(o, n, e.text);n=json_raw(o,n,",\"ticket\":");n=json_write_int(o,n,e.ticket); n = json_raw(o, n, "}");
   } else if e.kind == MR_ENDED {
     n = json_raw(o, 0, "{\"kind\":\"ended\",\"ending\":"); n = json_write_string(o, n, mc_ending_name(e.ending));
     n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, e.text);
@@ -144,7 +146,15 @@ tool_main :: () -> int #export_c {
   line: [MW_LINE] u8; nl := 0;
   out: [MW_LINE] u8;
   ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
-  task: [16384] u8; cwd: [4096] u8;
+  task: [16384] u8; cwd: [4096] u8;profilebuf:[64]u8;
+  journal:[1]JfWriter;defer jf_close(journal[..]);
+  jp:[4096]u8;homebuf:[4096]u8;home:=cl_getenv("CODER_HOME",homebuf[..]);
+  if home.count==0 {home=cl_getenv("HOME",homebuf[..]);}
+  path:[4096]u8;pn:=json_raw(path[..],0,home);pn=json_raw(path[..],pn,"/.openagents/coder/sessions");
+  if home.count==0 || pn<0 || !fs_mkdir(cast(string)path[0..<pn]) {return 1;}
+  jn:=json_raw(jp[..],0,cast(string)path[0..<pn]);jn=json_raw(jp[..],jn,"/worker-");jn=json_write_int(jp[..],jn,cxproc_wall_us());jn=json_raw(jp[..],jn,".ajr");
+  if jn<0 || !jf_open(journal[..],cast(string)jp[0..<jn]) {return 1;}
+  notice:=json_raw(out[..],0,"{\"kind\":\"journal\",\"path\":");notice=json_write_string(out[..],notice,cast(string)jp[0..<jn]);notice=json_raw(out[..],notice,"}");mw_send(out[..],notice);
   running := false;
   mw_send(out[..], json_raw(out[..], 0, "{\"kind\":\"ready\"}"));
   while true {
@@ -193,7 +203,8 @@ tool_main :: () -> int #export_c {
     if ans.ok {
       if running {
         ev: [32] McRunEvent;
-        n := mc_run_answer(run[..], ans.value, cl_str(ar[..], msg, "why"), ev[..]);
+        ticket:=cl_int(msg,"ticket");
+        n := mc_run_answer_owned(run[..], ifx ticket.ok then ticket.value else 0, ans.value, cl_str(ar[..], msg, "why"), ev[..]);
         for i: 0..<n {
           if ev[i].kind == MR_ENDED {
             running = false;
@@ -223,6 +234,18 @@ tool_main :: () -> int #export_c {
     mc_init(run[0].l[..], sb[..], lb[..], fx, tk, "{\"route\":\"other\",\"difficulty\":\"easy\",\"effort\":\"low\",\"local_work\":0.9}", 0.9);
     gated := cl_bool(msg, "gated");
     run[0].gated = gated.ok && gated.value; run[0].asking = false;
+    profile:=cl_str(ar[..],msg,"sandbox");
+    if profile.count==0 {profile="danger-full-access";}
+    np:=mk_keep(profilebuf[..],profile);run[0].profile=cast(string)profilebuf[0..<np];
+    if profile!="danger-full-access" && profile!="read-only" && profile!="workspace-write" {mw_ended(out[..],"failed","unknown sandbox profile");continue;}
+    context:[32768]u8;nc:=json_raw(context[..],0,"{\"profile\":\"coder-owned-v1\",\"cwd\":");nc=json_write_string(context[..],nc,cd);
+    nc=json_raw(context[..],nc,",\"session\":");nc=json_write_string(context[..],nc,cl_str(ar[..],msg,"session"));
+    nc=json_raw(context[..],nc,",\"sandbox\":");nc=json_write_string(context[..],nc,run[0].profile);
+    nc=json_raw(context[..],nc,",\"system\":");nc=json_write_string(context[..],nc,MC_SYSTEM);
+    nc=json_raw(context[..],nc,",\"schema\":");nc=json_write_string(context[..],nc,MC_SCHEMA);
+    nc=json_raw(context[..],nc,ifx run[0].gated then ",\"gated\":true}" else ",\"gated\":false}");
+    if nc<0 || !jf_context(journal[..],cast(string)context[0..<nc]) {mw_ended(out[..],"failed","durable context failed; no request or tool started");continue;}
+    plan[0].journal=journal[..];
     mc_run_start(run[..], plan[..], bench[..], cd, "low");
     running = true;
   }

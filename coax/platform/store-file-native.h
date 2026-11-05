@@ -74,6 +74,19 @@ int64_t cxfs_entry_len(int64_t i);
 int64_t cxfs_entry_byte(int64_t i, int64_t j);
 int64_t cxfs_cwd(void);
 int64_t cxfs_realpath(void);
+/* A separate private journal owner, independent of the relay store and
+   general filesystem buffers. Build a nonempty path (up to 4096 bytes),
+   then open a NEW file exclusively, mode 0600, without following its final
+   symlink. The file and its directory are synced before open succeeds.
+   A commit appends up to 32857 bytes and syncs before acknowledgement.
+   A failed append attempts rollback and permanently poisons this owner.
+   Close discards pending bytes and releases the descriptor; a later open
+   must name another new file. Descriptors never pass through exec. */
+int64_t cxjournal_path_push(int64_t byte);
+int64_t cxjournal_open(void);
+int64_t cxjournal_put(int64_t byte);
+int64_t cxjournal_commit(void);
+int64_t cxjournal_close(void);
 #ifdef __cplusplus
 }
 #endif

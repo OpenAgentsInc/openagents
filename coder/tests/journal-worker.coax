@@ -1,0 +1,72 @@
+// Process-boundary oracle: the actual owned worker, its JSON approval
+// protocol, real tools and private journal. No provider credentials needed.
+#import "Basic";
+#load "process.coax";
+#load "../../coax/lib/agent/claude/fields.coax";
+#load "../../coax/lib/agent/journal-flow.coax";
+
+jw_send :: (h:int,text:string) {for c:text {#assert cxproc_write(h,cast(int)c)==0;}#assert cxproc_flush(h)==0;}
+jw_reply :: (path:string,action:string) {
+  b:[8192]u8;n:=json_raw(b[..],0,"HTTP/1.1 200 OK\r\n\r\ndata: {\"choices\":[{\"delta\":{\"content\":");
+  n=json_write_string(b[..],n,action);n=json_raw(b[..],n,"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
+  #assert n>0 && fs_write(path,cast(string)b[0..<n]);
+}
+tool_main :: ()->int #export_c {
+  wb:[1024]u8;dir:=fs_temp("journal-worker-",wb[..]);#assert dir.count>0;defer {r:=fs_remove(dir);}
+  hb:[1024]u8;home:=fs_temp("journal-home-",hb[..]);#assert home.count>0;defer {r:=fs_remove(home);}
+  pb:[1200]u8;p:=fs_join(dir,"1.http",pb[..]);
+  jw_reply(p,"{\"rationale\":\"write\",\"commands\":[\"printf once > worker.txt\"],\"view\":[\"worker.txt\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
+  p=fs_join(dir,"2.http",pb[..]);jw_reply(p,"{\"rationale\":\"done\",\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done\",\"ask\":\"none\"}");
+  h:=proc_new();#assert h>=0;
+  #assert proc_arg(h,"coax/web/tool.sh") && proc_arg(h,"coder/tui/mcworker.coax");
+  env:[1500]u8;
+  for name:[2]string.["HOME=","CODER_HOME="] {n:=json_raw(env[..],0,name);n=json_raw(env[..],n,home);#assert proc_env(h,cast(string)env[0..<n]);}
+  n:=json_raw(env[..],0,"GW_REPLAY=");n=json_raw(env[..],n,dir);#assert proc_env(h,cast(string)env[0..<n]);
+  #assert proc_start(h)==0;defer {k:=proc_kill(h,9);r:=proc_release(h);}
+  message:[8192]u8;n=json_raw(message[..],0,"{\"task\":\"write once and read\",\"session\":\"fixture\",\"local\":true,\"gated\":true,\"sandbox\":\"workspace-write\",\"cwd\":");
+  n=json_write_string(message[..],n,dir);n=json_raw(message[..],n,"}\n");jw_send(h,cast(string)message[0..<n]);
+  line:[32768]u8;arbuf:[32768]u8;ar:[1]ClArena;ar[0].buf=arbuf[..];
+  journal_path:[4096]u8;nj:=0;ended:=false;command:=false;view:=false;asked:=false;
+  started:=proc_now_ms();
+  while proc_now_ms()-started<120000 {
+    k:=proc_line(h,1000,line[..]);if k==PROC_TIMEOUT {continue;}if k<0 {break;}
+    text:=cast(string)line[0..<k];ar[0].at=0;ar[0].full=false;kind:=cl_str(ar[..],text,"kind");
+    if kind=="journal" {path:=cl_str(ar[..],text,"path");nj=path.count;#assert nj<=journal_path.count;for c,i:path {journal_path[i]=c;}}
+    if kind=="ask" {
+      ticket:=cl_int(text,"ticket");#assert ticket.ok && ticket.value>0;asked=true;
+      n=json_raw(message[..],0,"{\"answer\":true,\"ticket\":");n=json_write_int(message[..],n,ticket.value-1);n=json_raw(message[..],n,"}\n");jw_send(h,cast(string)message[0..<n]);
+      #assert proc_line(h,100,line[..])==PROC_TIMEOUT;
+      effectbuf:[1200]u8;effect:=fs_join(dir,"worker.txt",effectbuf[..]);#assert !fs_exists(effect);
+      n=json_raw(message[..],0,"{\"answer\":true,\"ticket\":");n=json_write_int(message[..],n,ticket.value);n=json_raw(message[..],n,"}\n");jw_send(h,cast(string)message[0..<n]);
+    }
+    if kind=="command" {code:=cl_int(text,"exit");#assert code.ok && code.value==0;command=true;}
+    if kind=="view" {found:=cl_bool(text,"found");#assert found.ok && found.value;view=true;}
+    if kind=="ended" {#assert cl_str(ar[..],text,"ending")=="finished";ended=true;break;}
+  }
+  if !ended {err:[8192]u8;error:=proc_stderr(h,err[..]);tool_errln(error);return 1;}
+  #assert asked && command && view && nj>0;
+  closed:=proc_close_stdin(h);#assert proc_wait(h,5000)==0;
+  bytes:[1048576]u8;nb:=fs_read(cast(string)journal_path[0..<nj],bytes[..]);#assert nb>0;
+  state:AfState;at:=0;models:=0;tools:=0;decisions:=0;
+  while at<nb {
+    r:=aj_read(state.chain,bytes[at..<nb]);#assert r.ok;
+    if r.kind==AjKind.model_intent {models+=1;}
+    if r.kind==AjKind.command_intent || r.kind==AjKind.view_intent {tools+=1;}
+    if r.kind==AjKind.decision {decisions+=1;}
+    move:=af_recover(state,bytes[at..<at+r.consumed]);#assert move.ok;state=move.state;at+=r.consumed;
+  }
+  #assert state.phase==AfPhase.closed && !state.unknown && models==2 && tools==2 && decisions==2;
+  // A physical JSONL append refusal must not publish or dispatch the task.
+  badpath:[1500]u8;bn:=json_raw(badpath[..],0,home);bn=json_raw(badpath[..],bn,"/.openagents/coder/sessions/storage-test.jsonl");
+  #assert fs_mkdir(cast(string)badpath[0..<bn]);
+  failh:=proc_new();#assert failh>=0;
+  argv:=[12]string.["coax/web/tool.sh","coder/tui/coder.coax","run","$ printf unsafe > should-not-start","--engine","echo","--json","--session","storage-test","--cwd",dir,""];
+  for arg:argv[0..<11] {#assert proc_arg(failh,arg);}
+  n=json_raw(env[..],0,"CODER_HOME=");n=json_raw(env[..],n,home);#assert proc_env(failh,cast(string)env[0..<n]);
+  #assert proc_start(failh)==0;input_closed:=proc_close_stdin(failh);
+  output:=proc_line(failh,120000,line[..]);#assert output==PROC_EOF;
+  status:=proc_wait(failh,1000);errors:[8192]u8;error:=proc_stderr(failh,errors[..]);
+  #assert status!=0 && pe_has(error,"session storage failed");released:=proc_release(failh);
+  markerbuf:[1200]u8;marker:=fs_join(dir,"should-not-start",markerbuf[..]);#assert !fs_exists(marker);
+  print("actual worker: owned approval, shell/view and complete private journal; JSONL failure blocks dispatch passed\n");return 0;
+}

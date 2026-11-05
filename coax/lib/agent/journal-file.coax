@@ -1,0 +1,102 @@
+// Synchronous file effects around the checked journal. One writer belongs
+// to this worker process and remains open across its turns. It is never
+// shared with the relay store or another worker. A failed writer cannot
+// start more effects; recovery reads records and never retries an intent.
+#load "journal-flow.coax";
+#load "../nostr/json.coax";
+
+cxjournal_path_push :: (byte:int)->int #foreign;
+cxjournal_open :: ()->int #foreign;
+cxjournal_put :: (byte:int)->int #foreign;
+cxjournal_commit :: ()->int #foreign;
+cxjournal_close :: ()->int #foreign;
+
+JfWriter :: struct {flow:AfState;opened:bool;frame:[32857]u8;previous:[262144]u8;previous_count:int;previous_identity:[8192]u8;identity_count:int;prefix_count:int;}
+#assert AJ_PAYLOAD+AJ_OVERHEAD==32857;
+
+jf_open :: (writer:[]JfWriter,path:string)->bool {
+  if writer[0].opened || writer[0].flow.chain.failed || writer[0].flow.replaying {return false;}
+  if path.count==0 || path.count>4096 {writer[0].flow.chain.failed=true;return false;}
+  ok:=true;
+  for byte:path {if cxjournal_path_push(cast(int)byte)!=0 {ok=false;}}
+  opened:=cxjournal_open();
+  if !ok || opened!=0 {writer[0].flow.chain.failed=true;return false;}
+  writer[0].opened=true;return true;
+}
+jf_close :: (writer:[]JfWriter) {
+  writer[0].flow.chain.failed=true;
+  if writer[0].opened {closed:=cxjournal_close();writer[0].opened=false;}
+  secure_zero(writer[0].frame[..]);
+  #assert crypto_zeroed(writer[0].frame[..]);
+  secure_zero(writer[0].previous[..]);secure_zero(writer[0].previous_identity[..]);
+  #assert crypto_zeroed(writer[0].previous[..]) && crypto_zeroed(writer[0].previous_identity[..]);
+}
+jf_event :: (writer:[]JfWriter,kind:AjKind,group:int,payload:string)->bool {
+  if !writer[0].opened || writer[0].flow.chain.failed {return false;}
+  defer {secure_zero(writer[0].frame[..]);#assert crypto_zeroed(writer[0].frame[..]);}
+  p:=aj_prepare(writer[0].flow.chain,kind,group,payload,writer[0].frame[..],bytes_overlap(payload,writer[0].frame[..]));
+  if !p.ok {writer[0].flow.chain.failed=true;return false;}
+  frame:=writer[0].frame[0..<p.count];candidate:=af_prepare(writer[0].flow,frame);
+  if !candidate.ok {writer[0].flow.chain.failed=true;return false;}
+  ok:=true;
+  for byte:frame {if cxjournal_put(cast(int)byte)!=0 {ok=false;break;}}
+  committed:=cxjournal_commit();
+  acknowledged:=af_commit(writer[0].flow,frame,ok && committed==0);
+  writer[0].flow=acknowledged.state;return acknowledged.ok;
+}
+jf_context :: (writer:[]JfWriter,metadata:string)->bool {
+  return jf_event(writer,AjKind.context,writer[0].flow.chain.sequence,metadata);
+}
+jf_chunks :: (writer:[]JfWriter,kind:AjKind,group:int,bytes:string)->bool {
+  if !writer[0].opened || writer[0].flow.chain.failed {return false;}
+  at:=0;
+  while at<bytes.count {
+    count:=bytes.count-at;if count>AJ_PAYLOAD {count=AJ_PAYLOAD;}
+    if !jf_event(writer,kind,group,bytes[at..<at+count]) {return false;}
+    at+=count;
+  }
+  return true;
+}
+jf_request :: (writer:[]JfWriter,body:string,metadata:string)->bool {
+  if body.count==0 || body.count>AF_REQUEST {writer[0].flow.chain.failed=true;return false;}
+  if metadata.count==0 || metadata.count>8192 {writer[0].flow.chain.failed=true;return false;}
+  prefix:=0;
+  if cast(string)writer[0].previous_identity[0..<writer[0].identity_count]==metadata {
+    prefix=aj_prefix(cast(string)writer[0].previous[0..<writer[0].previous_count],body);
+  }
+  note:[16384]u8;n:=json_raw(note[..],0,"{\"configured_attempt\":");n=json_write_string(note[..],n,metadata);
+  n=json_raw(note[..],n,",\"common_request_bytes\":");n=json_write_int(note[..],n,prefix);n=json_raw(note[..],n,"}");
+  group:=writer[0].flow.chain.sequence;
+  if n<0 || !jf_chunks(writer,AjKind.model_chunk,group,body) || !jf_event(writer,AjKind.model_intent,group,cast(string)note[0..<n]) {return false;}
+  secure_zero(writer[0].previous[..]);secure_zero(writer[0].previous_identity[..]);
+  for byte,i:body {writer[0].previous[i]=byte;}
+  for byte,i:metadata {writer[0].previous_identity[i]=byte;}
+  writer[0].previous_count=body.count;writer[0].identity_count=metadata.count;writer[0].prefix_count=prefix;return true;
+}
+jf_begin :: (writer:[]JfWriter,kind:AjKind)->bool {
+  if !writer[0].opened {return false;}
+  start:=af_start(writer[0].flow,kind,writer[0].flow.group);
+  if start.ok {writer[0].flow=start.state;}return start.ok;
+}
+jf_reply :: (writer:[]JfWriter,bytes:string)->bool {
+  return jf_chunks(writer,AjKind.model_reply,writer[0].flow.group,bytes);
+}
+jf_model_end :: (writer:[]JfWriter,status:string)->bool {
+  return jf_event(writer,AjKind.model_end,writer[0].flow.group,status);
+}
+jf_intent :: (writer:[]JfWriter,kind:AjKind,target:string)->bool {
+  return jf_event(writer,kind,writer[0].flow.chain.sequence,target) && jf_begin(writer,kind);
+}
+jf_output :: (writer:[]JfWriter,bytes:string)->bool {
+  return jf_chunks(writer,AjKind.tool_output,writer[0].flow.group,bytes);
+}
+jf_result :: (writer:[]JfWriter,metadata:string)->bool {
+  return jf_event(writer,AjKind.tool_end,writer[0].flow.group,metadata);
+}
+jf_stop :: (writer:[]JfWriter,reason:string)->bool {
+  return jf_event(writer,AjKind.stop,writer[0].flow.group,reason);
+}
+
+jf_decision :: (writer:[]JfWriter,metadata:string)->bool {
+  return jf_event(writer,AjKind.decision,writer[0].flow.chain.sequence,metadata);
+}

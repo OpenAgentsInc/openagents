@@ -29,6 +29,7 @@ MC_END_BAD_REPLIES :: 3;
 MC_END_NO_CAPACITY :: 4;
 MC_END_STOPPED :: 5;
 MC_END_IDLE :: 6;
+MC_END_FAILED :: 7;
 
 MC_WAIT :: 0;                    // keep feeding events
 MC_TOOLS :: 1;                   // run mc_pending's commands and views, then mc_tools_done
@@ -48,6 +49,7 @@ mc_ending_name :: (e: int) -> string {
   if e == MC_END_NO_CAPACITY { return "no_capacity"; }
   if e == MC_END_STOPPED { return "stopped"; }
   if e == MC_END_IDLE { return "idle"; }
+  if e == MC_END_FAILED { return "failed"; }
   return "";
 }
 

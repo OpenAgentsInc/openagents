@@ -30,6 +30,7 @@ extern "C" {
 #define CXPROC_MAX (16)
 #define CXPROC_MAX_LINE (64 * 1024 * 1024)
 #define CXPROC_STDERR_KEEP (64 * 1024)
+int64_t cxproc_platform(void); /* 3 Linux x86-64, 1 macOS, 0 otherwise */
 int64_t cxproc_new(void);
 int64_t cxproc_push(int64_t h, int64_t field, int64_t byte);
 int64_t cxproc_end(int64_t h, int64_t field);

@@ -11,18 +11,18 @@
 AJ_PAYLOAD :: 32768;
 AJ_HEADER :: 57;
 AJ_OVERHEAD :: 89;
-AjKind :: enum u8 {context;model_chunk;model_intent;model_reply;model_end;command_intent;view_intent;tool_output;tool_end;stop;}
+AjKind :: enum u8 {context;model_chunk;model_intent;model_reply;model_end;command_intent;view_intent;tool_output;tool_end;stop;decision;}
 AjState :: struct {sequence:int;head:[32]u8;failed:bool;}
 AjPrepared :: struct {ok:bool;count:int;}
 AjRead :: struct {ok:bool;after:AjState;kind:AjKind;group:int;at:int;count:int;consumed:int;}
 
 #test "prepared intent is committed only after durable acknowledgement" {
   state:AjState;out:[128]u8;
-  prepared:=aj_prepare(state,AjKind.command_intent,0,"echo hi",out[..]);
+  prepared:=aj_prepare(state,AjKind.command_intent,0,"echo hi",out[..],false);
   #assert prepared.ok && prepared.count==96 && state.sequence==0;
   failed:=aj_commit(state,out[0..<prepared.count],false);
   #assert failed.failed && failed.sequence==0 && aj_same(failed.head,state.head);
-  #assert !aj_prepare(failed,AjKind.context,0,"",out[..]).ok;
+  #assert !aj_prepare(failed,AjKind.context,0,"",out[..],false).ok;
   good:=aj_commit(state,out[0..<prepared.count],true);
   #assert !good.failed && good.sequence==1 && !aj_same(good.head,state.head);
   // Python hashlib over AJR1 || pack('<QQBI',0,0,5,7) || zero[32] || "echo hi".
@@ -35,7 +35,7 @@ AjRead :: struct {ok:bool;after:AjState;kind:AjKind;group:int;at:int;count:int;c
 }
 #test "binary payloads reconstruct exactly and chained frames refuse tampering" {
   state:AjState;out:[128]u8;payload:=[4]u8.[0,255,10,34];
-  p:=aj_prepare(state,AjKind.model_chunk,0,cast(string)payload[..],out[..]);
+  p:=aj_prepare(state,AjKind.model_chunk,0,cast(string)payload[..],out[..],false);
   #assert p.ok;
   read:=aj_read(state,out[0..<p.count]);
   #assert read.ok && read.kind==AjKind.model_chunk && read.group==0;
@@ -47,7 +47,7 @@ AjRead :: struct {ok:bool;after:AjState;kind:AjKind;group:int;at:int;count:int;c
     #assert !aj_read(state,changed[0..<p.count]).ok;
   }
   next:=aj_commit(state,out[0..<p.count],true);
-  second:[128]u8;q:=aj_prepare(next,AjKind.model_intent,1,"provider/model",second[..]);
+  second:[128]u8;q:=aj_prepare(next,AjKind.model_intent,1,"provider/model",second[..],false);
   second_read:=aj_read(next,second[0..<q.count]);
   #assert q.ok && second_read.ok && second_read.kind==AjKind.model_intent && second_read.group==1;
   #assert !aj_read(state,second[0..<q.count]).ok;
@@ -60,20 +60,20 @@ AjRead :: struct {ok:bool;after:AjState;kind:AjKind;group:int;at:int;count:int;c
 #test "metadata refusal preserves output and a truncated tail is never a record" {
   out:[128]u8;for i:0..<128 {out[i]=165;}
   state:AjState;
-  #assert !aj_prepare(AjState.{sequence=-1},AjKind.context,0,"",out[..]).ok;
-  #assert !aj_prepare(AjState.{sequence=9223372036854775807},AjKind.context,0,"",out[..]).ok;
-  #assert !aj_prepare(state,AjKind.context,-1,"",out[..]).ok;
-  #assert !aj_prepare(state,AjKind.context,1,"",out[..]).ok;
-  #assert !aj_prepare(state,AjKind.context,0,"",out[0..<88]).ok;
-  #assert !aj_prepare(state,AjKind.context,0,"1234",out[0..<92]).ok;
+  #assert !aj_prepare(AjState.{sequence=-1},AjKind.context,0,"",out[..],false).ok;
+  #assert !aj_prepare(AjState.{sequence=9223372036854775807},AjKind.context,0,"",out[..],false).ok;
+  #assert !aj_prepare(state,AjKind.context,-1,"",out[..],false).ok;
+  #assert !aj_prepare(state,AjKind.context,1,"",out[..],false).ok;
+  #assert !aj_prepare(state,AjKind.context,0,"",out[0..<88],false).ok;
+  #assert !aj_prepare(state,AjKind.context,0,"1234",out[0..<92],false).ok;
   long:[32769]u8;
-  #assert !aj_prepare(state,AjKind.context,0,cast(string)long[..],out[..]).ok;
+  #assert !aj_prepare(state,AjKind.context,0,cast(string)long[..],out[..],false).ok;
   for b:out {#assert b==165;}
-  p:=aj_prepare(state,AjKind.stop,0,"",out[..]);#assert p.ok && p.count==89;
+  p:=aj_prepare(state,AjKind.stop,0,"",out[..],false);#assert p.ok && p.count==89;
   for n:0..<89 {#assert !aj_read(state,out[0..<n]).ok;}
   #assert aj_read(state,out[..]).ok; // the caller advances by consumed, not buffer capacity
-  #assert aj_prepare(state,AjKind.context,0,"",out[0..<89]).ok;
-  #assert aj_prepare(state,AjKind.context,0,"1234",out[0..<93]).ok;
+  #assert aj_prepare(state,AjKind.context,0,"",out[0..<89],false).ok;
+  #assert aj_prepare(state,AjKind.context,0,"1234",out[0..<93],false).ok;
   malformed:=out;malformed[24]=255;
   #assert !aj_read(state,malformed[..]).ok;
   malformed=out;malformed[20]=255;
@@ -83,9 +83,9 @@ AjRead :: struct {ok:bool;after:AjState;kind:AjKind;group:int;at:int;count:int;c
 #test "bounded maximum, sequence exhaustion and every kind keep exact framing" #steps 100000000 {
   state:AjState;payload:[32769]u8;payload[0]=255;payload[32767]=1;
   out:[32858]u8;for i:0..<32858 {out[i]=165;}
-  #assert !aj_prepare(state,AjKind.context,0,cast(string)payload[..],out[..]).ok;
+  #assert !aj_prepare(state,AjKind.context,0,cast(string)payload[..],out[..],false).ok;
   #assert out[0]==165 && out[32857]==165;
-  p:=aj_prepare(state,AjKind.context,0,cast(string)payload[0..<32768],out[..]);
+  p:=aj_prepare(state,AjKind.context,0,cast(string)payload[0..<32768],out[..],false);
   #assert p.ok && p.count==32857 && out[32857]==165;
   read:=aj_read(state,out[0..<p.count]);
   #assert read.ok && read.count==32768 && read.consumed==32857;
@@ -93,20 +93,20 @@ AjRead :: struct {ok:bool;after:AjState;kind:AjKind;group:int;at:int;count:int;c
   length:=cb_store_le32(out[..],21,32769);aj_test_seal(out[..],32769);
   #assert !aj_read(state,out[..]).ok;
   edge:=AjState.{sequence=9223372036854775806};
-  p=aj_prepare(edge,AjKind.stop,edge.sequence,"",out[..]);
+  p=aj_prepare(edge,AjKind.stop,edge.sequence,"",out[..],false);
   #assert p.ok && aj_read(edge,out[0..<p.count]).ok;
   exhausted:=aj_commit(edge,out[0..<p.count],true);
   #assert exhausted.sequence==9223372036854775807 && !exhausted.failed;
-  #assert !aj_prepare(exhausted,AjKind.stop,0,"",out[..]).ok;
-  for k:0..<10 {
-    p=aj_prepare(state,cast(AjKind)cast(u8)k,state.sequence,"x",out[..]);
+  #assert !aj_prepare(exhausted,AjKind.stop,0,"",out[..],false).ok;
+  for k:0..<11 {
+    p=aj_prepare(state,cast(AjKind)cast(u8)k,state.sequence,"x",out[..],false);
     read=aj_read(state,out[0..<p.count]);
     #assert read.ok && cast(int)read.kind==k && read.group==state.sequence;
     state=aj_commit(state,out[0..<p.count],true);
   }
 }
 #test "resealed malformed metadata is refused independently of its digest" {
-  state:AjState;out:[128]u8;p:=aj_prepare(state,AjKind.context,0,"",out[..]);
+  state:AjState;out:[128]u8;p:=aj_prepare(state,AjKind.context,0,"",out[..],false);
   aj_test_seal(out[..],0);#assert aj_read(state,out[0..<p.count]).ok;
   for i:0..<4 {
     changed:=out;changed[i]^=1;aj_test_seal(changed[..],0);
@@ -116,11 +116,13 @@ AjRead :: struct {ok:bool;after:AjState;kind:AjKind;group:int;at:int;count:int;c
     changed:=out;changed[i]=255;aj_test_seal(changed[..],0);
     #assert !aj_read(state,changed[0..<p.count]).ok;
   }
+  future:=out;future[20]=11;aj_test_seal(future[..],0);
+  #assert !aj_read(state,future[0..<p.count]).ok;
   for i:25..<57 {
     changed:=out;changed[i]=1;aj_test_seal(changed[..],0);
     #assert !aj_read(state,changed[0..<p.count]).ok;
   }
-  p=aj_prepare(state,AjKind.context,0,"z",out[..]);out[57]='X';aj_test_seal(out[..],1);
+  p=aj_prepare(state,AjKind.context,0,"z",out[..],false);out[57]='X';aj_test_seal(out[..],1);
   read:=aj_read(state,out[0..<p.count]);
   #assert read.ok && read.count==1 && out[read.at]=='X';
 }
@@ -129,22 +131,57 @@ aj_test_seal :: (frame:[]u8,count:int) {
   for byte,i:digest {frame[AJ_HEADER+count+i]=byte;}
 }
 
+#forall "frame admission agrees with an independent public extent model" n:-1..<5,capacity:86..<96,group:-1..<3,overlap:bool {
+  valid:=n>=0 && capacity>=89 && group>=0 && group<=1 && !overlap;
+  if valid {valid=n<=capacity-89;}
+  #assert aj_admit(AjState.{sequence=1},group,n,capacity,overlap)==valid;
+}
+#test "logical extent bounds include the limit and reject overflow before addition" {
+  s:AjState;
+  #assert aj_admit(s,0,32768,32857,false);
+  #assert !aj_admit(s,0,32769,32858,false);
+  #assert !aj_admit(s,0,9223372036854775807,9223372036854775807,false);
+  #assert !aj_admit(s,0,-9223372036854775808,9223372036854775807,false);
+  out:[96]u8;out[0]=165;
+  #assert !aj_prepare(s,AjKind.context,0,"secret",out[..],true).ok && out[0]==165;
+}
+// overlap is the truthful runtime fact for payload and out. The caller also
+// supplies live storage and truthful view extents; the pure codec observes
+// no addresses and writes nothing until all public metadata is admitted.
+aj_admit :: (state:AjState,group:int,count:int,capacity:int,overlap:bool)->bool {
+  return aj_valid(state) && group>=0 && group<=state.sequence && !overlap &&
+    count>=0 && count<=AJ_PAYLOAD && capacity>=AJ_OVERHEAD+count;
+}
+
 aj_same :: (a:[32]u8,b:[32]u8)->bool {
   for byte,i:a {if byte!=b[i] {return false;}}return true;
+}
+
+#test "a byte prefix measurement ends at the first difference or either boundary" {
+  #assert aj_prefix("","")==0 && aj_prefix("a","")==0 && aj_prefix("","a")==0;
+  #assert aj_prefix("abc","abc")==3 && aj_prefix("ab","abcd")==2 && aj_prefix("abcd","ab")==2;
+  #assert aj_prefix("xbc","abc")==0 && aj_prefix("abc","axc")==1 && aj_prefix("abc","abx")==2;
+  a:=[3]u8.[0,255,1];b:=[3]u8.[0,255,2];#assert aj_prefix(cast(string)a[..],cast(string)b[..])==2;
+}
+aj_prefix :: (previous:string,next:string)->int {
+  n:=0;
+  while n<previous.count && n<next.count {if previous[n]!=next[n] {break;}n+=1;}
+  return n;
 }
 aj_valid :: (state:AjState)->bool {
   return !state.failed && state.sequence>=0 && state.sequence<9223372036854775807;
 }
 aj_hash :: (bytes:[]u8)->[32]u8 {
   state:[112]u8;out:[32]u8;
+  defer {secure_zero(state[..]);#assert crypto_zeroed(state[..]);}
   #assert sha256_init(state[..])==SHA_OK;
   #assert sha256_update_checked(state[..],bytes,false)==SHA_OK;
   #assert sha256_final_checked(state[..],out[..],false)==SHA_OK;
   return out;
 }
-aj_prepare :: (state:AjState,kind:AjKind,group:int,payload:string,out:[]u8)->AjPrepared {
+aj_prepare :: (state:AjState,kind:AjKind,group:int,payload:string,out:[]u8,overlap:bool)->AjPrepared {
   result:AjPrepared;
-  if !aj_valid(state) || group<0 || group>state.sequence || payload.count>AJ_PAYLOAD || out.count<AJ_OVERHEAD+payload.count {return result;}
+  if !aj_admit(state,group,payload.count,out.count,overlap) {return result;}
   out[0]='A';out[1]='J';out[2]='R';out[3]='1';
   seq:=cb_store_le64(out,4,cast(u64)state.sequence);parent:=cb_store_le64(out,12,cast(u64)group);
   out[20]=cast(u8)kind;length:=cb_store_le32(out,21,cast(u32)payload.count);
@@ -168,7 +205,7 @@ aj_read :: (state:AjState,bytes:[]u8)->AjRead {
   if bytes[0]!='A' || bytes[1]!='J' || bytes[2]!='R' || bytes[3]!='1' {return result;}
   seq:=cb_load_le64(bytes,4).value;group:=cb_load_le64(bytes,12).value;
   count:=cast(int)cb_load_le32(bytes,21).value;
-  if seq!=cast(u64)state.sequence || group>seq || bytes[20]>cast(u8)AjKind.stop || count>AJ_PAYLOAD || count>bytes.count-AJ_OVERHEAD {return result;}
+  if seq!=cast(u64)state.sequence || group>seq || bytes[20]>cast(u8)AjKind.decision || count>AJ_PAYLOAD || count>bytes.count-AJ_OVERHEAD {return result;}
   for b,i:state.head {if bytes[25+i]!=b {return result;}}
   digest:=aj_hash(bytes[0..<AJ_HEADER+count]);
   for b,i:digest {if bytes[AJ_HEADER+count+i]!=b {return result;}}

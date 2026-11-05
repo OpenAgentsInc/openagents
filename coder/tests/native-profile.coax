@@ -1,0 +1,29 @@
+// Kernel observations using the same process setup as the live owned loop.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/microcoder/tools.coax";
+tool_main :: ()->int #export_c {
+  if cxproc_platform()!=3 {tool_errln("workspace profile v1 requires Linux x86-64");return 1;}
+  b:[1024]u8;dir:=fs_temp("coder-sandbox-",b[..]);#assert dir.count>0;
+  defer {r:=fs_remove(dir);}
+  ob:[1024]u8;outside:=fs_temp("coder-outside-",ob[..]);#assert outside.count>0;
+  defer {r:=fs_remove(outside);}
+  p:[1200]u8;secret:=fs_join(outside,"private",p[..]);#assert fs_write(secret,"private");
+  output:[1]McOutput;
+  r:=mc_run_command_profile(dir,"printf allowed > allowed; cat allowed",5,output[..],"workspace-write");
+  if r.exit!=0 {tool_errln(r.output);return 1;}
+  #assert r.output=="allowed\n";
+  r=mc_run_command_profile(dir,"printf denied > readonly",5,output[..],"read-only");#assert r.exit!=0;
+  readpath:[1200]u8;readonly:=fs_join(dir,"readonly",readpath[..]);#assert fs_kind(readonly)==0;
+  cmd:[4096]u8;n:=json_raw(cmd[..],0,"ln -s ");n=json_raw(cmd[..],n,secret);n=json_raw(cmd[..],n," escape");
+  r=mc_run_command_profile(dir,cast(string)cmd[0..<n],5,output[..],"workspace-write");#assert r.exit==0;
+  viewed:[1024]u8;v:=mc_view_file_profile(dir,"escape",viewed[..],"workspace-write");#assert !v.found;
+  v=mc_view_file_profile(dir,"allowed",viewed[..],"read-only");#assert v.found && v.content=="allowed";
+  r=mc_run_command_profile(dir,"python3 -c 'import socket,errno; exec(\"try: socket.socket()\\nexcept OSError as e: assert e.errno==errno.EPERM; print(123)\")'",5,output[..],"workspace-write");#assert r.exit==0 && r.output=="123\n";
+  r=mc_run_command_profile(dir,"python3 -c 'import socket,errno; exec(\"try: socket.socket(socket.AF_UNIX)\\nexcept OSError as e: assert e.errno==errno.EPERM; print(123)\")'",5,output[..],"workspace-write");#assert r.exit==0 && r.output=="123\n";
+  r=mc_run_command_profile(dir,"test -z \"$CODER_SANDBOX_SECRET\"; test ! -e /home/christopherdavid",5,output[..],"workspace-write");#assert r.exit==0;
+  r=mc_run_command_profile(dir,"sleep 30 & wait",1,output[..],"workspace-write");#assert r.timed_out;
+  r=mc_run_command_profile(dir,"printf wrong > unknown",5,output[..],"unknown");#assert r.exit!=0;
+  print("workspace writes, read-only mount, escaping symlink, IP/Unix sockets, environment and timeout passed\n");
+  return 0;
+}

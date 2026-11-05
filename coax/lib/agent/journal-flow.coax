@@ -1,0 +1,207 @@
+// The live loop's journal order and one-use effect tickets. A model request
+// is complete only after all exact-byte chunks and its intent are durable.
+// An interrupted intent is an unknown outcome, never permission to retry it.
+#load "journal.coax";
+#authority;
+
+AF_REQUEST :: 262144;
+AfPhase :: enum u8 {closed;idle;request;model;command;view;}
+AfState :: struct {chain:AjState;phase:AfPhase=AfPhase.closed;group:int;bytes:int;started:bool;unknown:bool;replaying:bool;}
+AfMove :: struct {ok:bool;state:AfState;}
+
+// Physical acknowledgement is supplied by the caller, independently of the
+// prepared frame. The tests use both outcomes with exactly the same bytes.
+af_test :: (s:AfState,kind:AjKind,group:int,payload:string,durable:bool)->AfMove {
+  frame:[1024]u8;p:=aj_prepare(s.chain,kind,group,payload,frame[..],false);
+  #assert p.ok;return af_commit(s,frame[0..<p.count],durable);
+}
+#test "request chunks, acknowledgement, one-use start, reply and completion" {
+  s:AfState;
+  #assert !af_start(s,AjKind.model_intent,0).ok;
+  opened:=af_test(s,AjKind.context,0,"task and frozen prefix",true);
+  #assert opened.ok && opened.state.phase==AfPhase.idle;s=opened.state;
+  chunk:=af_test(s,AjKind.model_chunk,1,"request part one",true);
+  #assert chunk.ok && chunk.state.phase==AfPhase.request && chunk.state.bytes==16;
+  #assert !af_start(chunk.state,AjKind.model_intent,1).ok;
+  chunk=af_test(chunk.state,AjKind.model_chunk,1," part two",true);
+  #assert chunk.ok && chunk.state.bytes==25;
+  pending:=af_test(chunk.state,AjKind.model_intent,1,"gateway/model/wire",true);
+  #assert pending.ok && pending.state.phase==AfPhase.model && !pending.state.started;
+  start:=af_start(pending.state,AjKind.model_intent,1);
+  #assert start.ok && start.state.started;
+  #assert !af_start(start.state,AjKind.model_intent,1).ok;
+  #assert !af_start(pending.state,AjKind.command_intent,1).ok && !af_start(pending.state,AjKind.model_intent,0).ok;
+  reply:=af_test(start.state,AjKind.model_reply,1,"answer",true);
+  #assert reply.ok && reply.state.phase==AfPhase.model;
+  end:=af_test(reply.state,AjKind.model_end,1,"done",true);
+  #assert end.ok && end.state.phase==AfPhase.idle && !end.state.started;
+  #assert !af_start(end.state,AjKind.model_intent,1).ok;
+  failed:=af_test(chunk.state,AjKind.model_intent,1,"gateway/model/wire",false);
+  #assert !failed.ok && failed.state.chain.failed && failed.state.chain.sequence==chunk.state.chain.sequence;
+  #assert !af_start(failed.state,AjKind.model_intent,1).ok;
+}
+#forall "shell and view effects require their own durable intent and matching result" view:bool {
+  s:=af_test(AfState.{},AjKind.context,0,"x",true).state;
+  kind:=ifx view then AjKind.view_intent else AjKind.command_intent;
+  want:=ifx view then AfPhase.view else AfPhase.command;
+  intent:=af_test(s,kind,1,"x",true);
+  #assert intent.ok && intent.state.phase==want;
+  started:=af_start(intent.state,kind,1);
+  #assert started.ok && !af_start(started.state,kind,1).ok;
+  #assert !af_test(s,AjKind.tool_output,0,"unowned",true).ok;
+  #assert !af_test(intent.state,AjKind.tool_output,0,"stale",true).ok;
+  #assert !af_test(intent.state,AjKind.model_reply,1,"wrong effect",true).ok;
+  output:=af_test(started.state,AjKind.tool_output,1,"bytes",true);
+  #assert output.ok && output.state.phase==want;
+  done:=af_test(output.state,AjKind.tool_end,1,"result metadata",true);
+  #assert done.ok && done.state.phase==AfPhase.idle && !done.state.started;
+  #assert !af_start(done.state,kind,1).ok;
+  stopped:=af_test(started.state,AjKind.stop,1,"interrupted",true);
+  #assert stopped.ok && stopped.state.phase==AfPhase.closed && stopped.state.unknown && !stopped.state.started;
+  next:=af_test(stopped.state,AjKind.context,stopped.state.chain.sequence,"another task",true);
+  #assert next.ok && next.state.phase==AfPhase.idle && !next.state.unknown;
+  #assert af_test(next.state,AjKind.stop,stopped.state.chain.sequence,"done",true).ok;
+  refused:=af_test(s,kind,1,"target",false);
+  #assert !refused.ok && refused.state.chain.failed && !af_start(refused.state,kind,1).ok;
+}
+#test "wrong phase, group, empty request and stopped ownership refuse" {
+  s:AfState;
+  #assert !af_test(s,AjKind.stop,0,"stop before open",true).ok;
+  #assert !af_test(s,AjKind.context,0,"",true).ok;
+  s=af_test(s,AjKind.context,0,"x",true).state;
+  #assert !af_test(s,AjKind.model_intent,0,"missing chunks",true).ok;
+  #assert !af_test(s,AjKind.model_chunk,1,"",true).ok;
+  #assert !af_test(s,AjKind.command_intent,0,"stale",true).ok;
+  #assert !af_test(s,AjKind.view_intent,1,"",true).ok;
+  request:=af_test(s,AjKind.model_chunk,1,"request",true).state;
+  #assert !af_test(request,AjKind.context,2,"not frozen",true).ok;
+  #assert !af_test(request,AjKind.model_chunk,2,"another request",true).ok;
+  #assert !af_test(request,AjKind.model_intent,0,"stale",true).ok;
+  #assert !af_test(request,AjKind.model_intent,1,"",true).ok;
+  request.bytes=AF_REQUEST;
+  #assert !af_test(request,AjKind.model_chunk,1,"overflow",true).ok;
+  stopped:=af_test(s,AjKind.stop,0,"done",true);
+  #assert stopped.ok && !stopped.state.unknown;
+  #assert !af_test(stopped.state,AjKind.model_reply,0,"late",true).ok;
+  #assert !af_start(s,AjKind.context,0).ok;
+}
+
+#test "minimal complete requests, exact request capacity and whole-record admission" {
+  s:=af_test(AfState.{},AjKind.context,0,"x",true).state;
+  request:=af_test(s,AjKind.model_chunk,1,"r",true);
+  #assert request.ok && request.state.bytes==1;
+  intent:=af_test(request.state,AjKind.model_intent,1,"m",true);
+  #assert intent.ok;
+  #assert !af_test(intent.state,AjKind.model_end,0,"stale",true).ok;
+  #assert !af_test(s,AjKind.model_end,0,"wrong phase",true).ok;
+  model_stop:=af_test(af_start(intent.state,AjKind.model_intent,1).state,AjKind.stop,1,"stopped",true);
+  #assert model_stop.ok && model_stop.state.unknown && !model_stop.state.started;
+  collecting:=request.state;collecting.bytes=AF_REQUEST-1;
+  full:=af_test(collecting,AjKind.model_chunk,1,"x",true);
+  #assert full.ok && full.state.bytes==AF_REQUEST;
+  #assert !af_test(full.state,AjKind.model_chunk,1,"x",true).ok;
+  frame:[1024]u8;p:=aj_prepare(AjState.{},AjKind.context,0,"x",frame[..],false);
+  #assert !af_commit(AfState.{},frame[0..<p.count+1],true).ok;
+  #assert !af_commit(AfState.{},frame[0..<0],true).ok;
+  frame[0]^=1;#assert !af_commit(AfState.{},frame[0..<p.count],true).ok;
+}
+#test "reconstruction keeps identities and unknown outcomes without an execution capability" {
+  s:=af_test(AfState.{},AjKind.context,0,"task",true).state;
+  s=af_test(s,AjKind.model_chunk,1,"body",true).state;
+  frame:[1024]u8;p:=aj_prepare(s.chain,AjKind.model_intent,1,"model",frame[..],false);
+  replay:=af_recover(s,frame[0..<p.count]);
+  #assert replay.ok && replay.state.replaying && replay.state.unknown;
+  #assert !af_start(replay.state,AjKind.model_intent,1).ok;
+  #assert !af_commit(replay.state,frame[0..<p.count],true).ok;
+  p=aj_prepare(replay.state.chain,AjKind.model_end,1,"done",frame[..],false);
+  #assert !af_prepare(replay.state,frame[0..<p.count]).ok;
+  #assert !af_commit(replay.state,frame[0..<p.count],true).ok;
+  replay=af_recover(replay.state,frame[0..<p.count]);
+  #assert replay.ok && replay.state.replaying && !replay.state.unknown;
+  p=aj_prepare(replay.state.chain,AjKind.command_intent,replay.state.chain.sequence,"command",frame[..],false);
+  replay=af_recover(replay.state,frame[0..<p.count]);
+  #assert replay.ok && replay.state.unknown && !af_start(replay.state,AjKind.command_intent,replay.state.group).ok;
+  p=aj_prepare(replay.state.chain,AjKind.stop,replay.state.group,"interrupted",frame[..],false);
+  replay=af_recover(replay.state,frame[0..<p.count]);
+  #assert replay.ok && replay.state.unknown && replay.state.phase==AfPhase.closed;
+}
+
+#test "decisions are durable idle records without effect tickets" {
+  s:=af_test(AfState.{},AjKind.context,0,"x",true).state;
+  d:=af_test(s,AjKind.decision,1,"approval 1 refused",true);
+  #assert d.ok && d.state.phase==AfPhase.idle && d.state.chain.sequence==2;
+  #assert af_test(s,AjKind.decision,1,"x",true).ok;
+  #assert !af_start(d.state,AjKind.decision,1).ok;
+  #assert !af_test(s,AjKind.decision,0,"stale",true).ok;
+  #assert !af_test(s,AjKind.decision,1,"",true).ok;
+  #assert !af_test(AfState.{},AjKind.decision,0,"closed",true).ok;
+  request:=af_test(s,AjKind.model_chunk,1,"x",true).state;
+  #assert !af_test(request,AjKind.decision,2,"busy",true).ok;
+}
+// Reads without effects, for both preflight and reconstruction.
+af_read :: (s:AfState,frame:[]u8)->AfMove {
+  result:=AfMove.{state=s};r:=aj_read(s.chain,frame);
+  if !r.ok {return result;}
+  if r.consumed!=frame.count {return result;}
+  next:=s;accepted:=false;
+  if r.kind==AjKind.context {
+      if s.phase==AfPhase.closed && r.group==s.chain.sequence && r.count>0 {
+        next.phase=AfPhase.idle;next.group=r.group;next.unknown=false;accepted=true;
+      }
+  } else if r.kind==AjKind.decision {
+      accepted=s.phase==AfPhase.idle && r.group==s.chain.sequence && r.count>0;
+  } else if r.kind==AjKind.model_chunk {
+      if r.count>0 && (s.phase==AfPhase.idle || s.phase==AfPhase.request) {
+        first:=s.phase==AfPhase.idle;group:=ifx first then s.chain.sequence else s.group;
+        used:=ifx first then 0 else s.bytes;
+        if r.group==group && r.count<=AF_REQUEST-used {
+          next.phase=AfPhase.request;next.group=group;next.bytes=used+r.count;accepted=true;
+        }
+      }
+  } else if r.kind==AjKind.model_intent {
+      if s.phase==AfPhase.request && r.group==s.group && r.count>0 {next.phase=AfPhase.model;accepted=true;}
+  } else if r.kind==AjKind.model_reply {
+      accepted=s.phase==AfPhase.model && r.group==s.group;
+  } else if r.kind==AjKind.model_end {
+      if s.phase==AfPhase.model && r.group==s.group {next.phase=AfPhase.idle;next.started=false;accepted=true;}
+  } else if r.kind==AjKind.command_intent || r.kind==AjKind.view_intent {
+      if s.phase==AfPhase.idle && r.group==s.chain.sequence && r.count>0 {
+        next.phase=ifx r.kind==AjKind.command_intent then AfPhase.command else AfPhase.view;
+        next.group=r.group;accepted=true;
+      }
+  } else if r.kind==AjKind.tool_output || r.kind==AjKind.tool_end {
+      if (s.phase==AfPhase.command || s.phase==AfPhase.view) && r.group==s.group {
+        if r.kind==AjKind.tool_end {next.phase=AfPhase.idle;next.started=false;}
+        accepted=true;
+      }
+  } else if r.kind==AjKind.stop {
+      if s.phase!=AfPhase.closed && r.group==s.group {
+        next.unknown=s.phase==AfPhase.model || s.phase==AfPhase.command || s.phase==AfPhase.view;
+        next.phase=AfPhase.closed;next.started=false;accepted=true;
+      }
+  }
+  if accepted {result.ok=true;next.chain=r.after;result.state=next;}return result;
+}
+af_prepare :: (s:AfState,frame:[]u8)->AfMove {
+  if s.replaying {return AfMove.{state=s};}
+  return af_read(s,frame);
+}
+af_commit :: (s:AfState,frame:[]u8,durable:bool)->AfMove {
+  candidate:=af_prepare(s,frame);
+  if candidate.ok && durable {return candidate;}
+  failed:=s;failed.chain.failed=true;return AfMove.{state=failed};
+}
+af_start :: (s:AfState,kind:AjKind,group:int)->AfMove {
+  result:=AfMove.{state=s};
+  if s.replaying || s.chain.failed || s.started || group!=s.group {return result;}
+  allowed:=(kind==AjKind.model_intent && s.phase==AfPhase.model) ||
+    (kind==AjKind.command_intent && s.phase==AfPhase.command) || (kind==AjKind.view_intent && s.phase==AfPhase.view);
+  if allowed {result.ok=true;result.state.started=true;}return result;
+}
+af_recover :: (s:AfState,frame:[]u8)->AfMove {
+  reading:=s;reading.replaying=true;move:=af_read(reading,frame);
+  if move.ok && move.state.phase!=AfPhase.closed {
+    move.state.unknown=move.state.phase==AfPhase.model || move.state.phase==AfPhase.command || move.state.phase==AfPhase.view;
+  }
+  return move;
+}

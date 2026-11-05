@@ -25,6 +25,7 @@ CS_DIR :: "/.openagents/coder/sessions";      // under $HOME
 CS_LINE :: 262144;
 
 CsLog :: struct {
+  failed:bool;                   // permanent storage failure for this process
   on: bool;                      // the session has a file
   json: bool;                    // also print each line to stdout (coder run --json)
   live: bool; live_sent:int; live_segment:int; // --stream-json; durable replies remain whole
@@ -172,11 +173,12 @@ cs_turns_text :: (text: string, at: int, ar: [] ClArena, out: [] u8, n_out: [] i
 // Appends the line built in l.line[0..<n] (and prints it with --json).
 cs_put :: (a: [] App, n0: int) {
   l := a[0].log;
-  if n0 < 0 || n0 >= l[0].line.count { return; }
+  if l[0].failed {return;}
+  if n0 < 0 || n0 >= l[0].line.count { cs_storage_failed(a);return; }
   n := cs_hide(l, l[0].line[0..<l[0].line.count - 1], n0);
   l[0].line[n] = 10;
   line := cast(string) l[0].line[0..<n + 1];
-  if l[0].on { x := fs_append_durable(cast(string) l[0].path[0..<l[0].npath], line); }   // on storage before the line is printed or its effect reported (chapter 2)
+  if l[0].on && !fs_append_durable(cast(string) l[0].path[0..<l[0].npath], line) {cs_storage_failed(a);return;}   // on storage before the line is printed or its effect reported (chapter 2)
   if l[0].json { r := cxterm_write(l[0].line[0..<n + 1]); }
 }
 
@@ -504,4 +506,13 @@ cs_cx_usage :: (a: [] App, usage: string) {
     v := cl_int(total, key); n = ifx v.ok && v.value >= 0 then json_write_int(o, n, v.value) else json_raw(o, n, "null");
   }
   n = json_raw(o, n, "}"); cs_put(a, n);
+}
+
+// Poison before closing concrete owners: callbacks cannot publish a success
+// through this logger, and no later turn may dispatch through it.
+cs_storage_failed :: (a:[]App) {
+  a[0].log[0].failed=true;
+  cd_command_stop(a);cd_micro_close(a);cd_codex_close(a);cd_cursor_close(a);cd_claude_close(a);
+  a[0].running=false;a[0].ask=false;a[0].exit=1;
+  tool_errln("Coder session storage failed; execution stopped. Inspect outstanding effects before retrying.");
 }

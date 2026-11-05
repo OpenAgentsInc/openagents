@@ -1,0 +1,84 @@
+// Linux x86-64 workspace profile v1. Coax chooses the complete namespace,
+// mount and syscall policy; bubblewrap and the kernel perform the effects.
+// https://github.com/containers/bubblewrap/blob/main/bwrap.xml
+#authority;
+
+np_root :: (root:string,home:string)->bool {
+  if root.count<2 || root[0]!='/' || root[root.count-1]=='/' || home.count==0 {return false;}
+  if home.count>=root.count && home[0..<root.count]==root {
+    if home.count==root.count || home[root.count]=='/' {return false;}
+  }
+  for c:root {if c==0 {return false;}}
+  return true;
+}
+NP_DENY :: [23]u32.[41,42,53,425,426,427,101,310,311,438,304,321,323,165,272,308,250,248,249,169,175,176,246];
+NP_FILTER_BYTES :: (7+23*2)*8;
+
+// Both profiles that confine a workspace and the explicit full-access
+// profile retain the owned loop's model/effect/time budgets.
+np_budget :: (model:bool,used:int,now:int,deadline:int)->bool {
+  limit:=ifx model then 64 else 128;
+  return used>=0 && used<limit && now>=0 && now<deadline;
+}
+#forall "a call needs remaining count and time independently of approval" model:bool,used:-1..<130,now:-1..<4 {
+  limit:=ifx model then 64 else 128;
+  expected:=used>=0 && used<=limit-1 && now>=0 && now<=1;
+  #assert np_budget(model,used,now,2)==expected;
+}
+#test "deadline extremes refuse rather than overflow" {
+  #assert !np_budget(true,0,0,0) && !np_budget(false,0,0,-1);
+  #assert np_budget(true,63,9223372036854775806,9223372036854775807);
+  #assert !np_budget(true,64,0,1) && !np_budget(false,128,0,1);
+  #assert !np_budget(false,0,9223372036854775807,9223372036854775807);
+}
+
+#test "the mount grant excludes broad roots and home but accepts a child workspace" {
+  #assert np_root("/home/me/project","/home/me");
+  #assert !np_root("/home/me","/home/me") && !np_root("/home","/home/me");
+  #assert !np_root("/","/home/me") && !np_root("relative","/home/me");
+  #assert !np_root("/tmp/","/home/me") && !np_root("/tmp","");
+  bad:=[4]u8.['/', 'a',0,'b'];#assert !np_root(cast(string)bad[..],"/home/me");
+  #assert np_root("/home/mesh","/home/me") && np_root("/a","/home/me");
+  #assert np_root("/home/project","/a");
+}
+#test "seccomp instructions have independent architecture and deny-list golden bytes" {
+  b:[NP_FILTER_BYTES+1]u8;for i:0..<b.count {b[i]=165;}b[NP_FILTER_BYTES]=99;
+  #assert np_filter(b[..])==NP_FILTER_BYTES && b[NP_FILTER_BYTES]==99;
+  // LD arch; JEQ AUDIT_ARCH_X86_64 skips KILL_PROCESS; LD syscall.
+  prefix:=[32]u8.[0x20,0,0,0,4,0,0,0,0x15,0,1,0,0x3e,0,0,0xc0,6,0,0,0,0,0,0,0x80,0x20,0,0,0,0,0,0,0];
+  for c,i:prefix {#assert b[i]==c;}
+  x32:=[16]u8.[0x35,0,0,1,0,0,0,0x40,6,0,0,0,1,0,5,0];
+  for c,i:x32 {#assert b[32+i]==c;}
+  denied:=NP_DENY;
+  for syscall,i:denied {
+    at:=48+i*16;#assert b[at]==0x15 && b[at+3]==1;
+    #assert b[at+4]==cast,trunc(u8)syscall && b[at+5]==cast,trunc(u8)(syscall>>8);
+    #assert b[at+6]==0 && b[at+7]==0;
+    #assert b[at+1]==0 && b[at+2]==0;
+    ret:=[8]u8.[6,0,0,0,1,0,5,0];for c,j:ret {#assert b[at+8+j]==c;}
+  }
+  allow:=[8]u8.[6,0,0,0,0,0,255,127];for c,i:allow {#assert b[NP_FILTER_BYTES-8+i]==c;}
+  exact:[NP_FILTER_BYTES]u8;#assert np_filter(exact[..])==NP_FILTER_BYTES;
+  instruction:[8]u8;np_instruction(instruction[..],0,0x1234,0x56,0x78,0x01020304);
+  golden:=[8]u8.[0x34,0x12,0x56,0x78,4,3,2,1];for c,i:golden {#assert instruction[i]==c;}
+  small:[NP_FILTER_BYTES-1]u8;#assert np_filter(small[..])==0;
+  for c:small {#assert c==0;}
+}
+np_instruction :: (out:[]u8,at:int,code:u32,jt:u8,jf:u8,k:u32) {
+  out[at]=cast,trunc(u8)code;out[at+1]=cast,trunc(u8)(code>>8);out[at+2]=jt;out[at+3]=jf;
+  for i:0..<4 {out[at+4+i]=cast,trunc(u8)(k>>(i*8));}
+}
+np_filter :: (out:[]u8)->int {
+  if out.count<NP_FILTER_BYTES {return 0;}
+  np_instruction(out,0,0x20,0,0,4);
+  np_instruction(out,8,0x15,1,0,0xc000003e);
+  np_instruction(out,16,6,0,0,0x80000000);
+  np_instruction(out,24,0x20,0,0,0);
+  // x32 shares the audit architecture but has a separate syscall table.
+  np_instruction(out,32,0x35,0,1,0x40000000);
+  np_instruction(out,40,6,0,0,0x50001);
+  denied:=NP_DENY;
+  for syscall,i:denied {np_instruction(out,48+i*16,0x15,0,1,syscall);np_instruction(out,56+i*16,6,0,0,0x50001);}
+  np_instruction(out,NP_FILTER_BYTES-8,6,0,0,0x7fff0000);
+  return NP_FILTER_BYTES;
+}

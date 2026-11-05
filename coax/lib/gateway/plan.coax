@@ -15,6 +15,7 @@
 // gw_plan_decide is the rule, pure, for tests; GwPlan runs it over GwCall.
 
 #load "rates.coax";
+#load "../agent/journal-file.coax";
 
 GW_PLAN_MAX :: 3;
 GW_BENCH_MAX :: 16;
@@ -110,6 +111,8 @@ gw_plan_decide :: (ev: GwEvent, first: bool, left: int) -> int {
 gw_bench_status :: (status: int) -> bool { return status == 401 || status == 402; }
 
 GwPlan :: struct {
+  journal: [] JfWriter;
+  journal_live: bool;
   attempts: [GW_PLAN_MAX] GwAttempt; n: int;
   at: int;                       // the attempt running, or n when none is
   log: [GW_PLAN_MAX] GwAttemptLog; nlog: int;
@@ -147,6 +150,13 @@ gw_plan_price :: (p: [] GwPlan, i: int, usage: GwUsage) -> GwUsage {
 }
 
 gw_plan_log :: (p: [] GwPlan, i: int, outcome: int, status: int, raw: GwUsage) {
+  if p[0].journal_live {
+    p[0].journal_live=false;
+    completed:=ifx outcome==GW_OUT_STOPPED then jf_stop(p[0].journal,"model transport stopped; remote outcome unknown") else jf_model_end(p[0].journal,gw_outcome_name(outcome));
+    if !completed {
+      p[0].why="durable model completion failed; outcome requires inspection";
+    }
+  }
   if p[0].nlog >= GW_PLAN_MAX { return; }
   a := p[0].attempts[i];
   usage := gw_plan_price(p, i, raw);
@@ -162,6 +172,7 @@ gw_plan_log :: (p: [] GwPlan, i: int, outcome: int, status: int, raw: GwUsage) {
 gw_plan_launch :: (p: [] GwPlan, bench: [] GwBench) -> bool {
   none: GwUsage;
   while p[0].at < p[0].n {
+    if p[0].journal.count>0 && p[0].journal[0].flow.chain.failed {p[0].at=p[0].n;return false;}
     a := p[0].attempts[p[0].at];
     if gw_benched(bench, a.gateway.name) { gw_plan_log(p, p[0].at, GW_OUT_SKIPPED, 0, none); p[0].at += 1; continue; }
     req := p[0].req; req.model = a.model;
@@ -169,6 +180,21 @@ gw_plan_launch :: (p: [] GwPlan, bench: [] GwBench) -> bool {
     body := gw_translate(a.gateway, req, p[0].body, why[..]);
     p[0].started_ms = cxproc_now_ms(); p[0].first_ms = -1;
     if body.count == 0 { p[0].why = why[0]; gw_plan_log(p, p[0].at, GW_OUT_FELL_THROUGH, 0, none); p[0].at += 1; continue; }
+    if p[0].journal.count>0 {
+      metadata:[8192]u8;m:=json_raw(metadata[..],0,"{\"gateway\":");m=json_write_string(metadata[..],m,a.gateway.name);
+      m=json_raw(metadata[..],m,",\"model\":");m=json_write_string(metadata[..],m,a.model);m=json_raw(metadata[..],m,",\"wire\":");m=json_write_int(metadata[..],m,a.gateway.wire);
+      endpoint:[8192]u8;
+      if a.gateway.url.count>endpoint.count {p[0].why="endpoint identity exceeds journal capacity";p[0].at=p[0].n;return false;}
+      for byte,j:a.gateway.url {endpoint[j]=byte;}
+      identity:=aj_hash(endpoint[0..<a.gateway.url.count]);secure_zero(endpoint[..]);
+      m=json_raw(metadata[..],m,",\"endpoint_sha256\":[");
+      for byte,j:identity {if j>0 {m=json_raw(metadata[..],m,",");}m=json_write_int(metadata[..],m,cast(int)byte);}
+      m=json_raw(metadata[..],m,"]}");
+      if m<0 || !jf_request(p[0].journal,body,cast(string)metadata[0..<m]) || !jf_begin(p[0].journal,AjKind.model_intent) {
+        p[0].why="durable request journal failed; no request started";p[0].at=p[0].n;return false;
+      }
+      p[0].journal_live=true;
+    }
     e := gw_call_start(p[0].call[..], a.gateway, body, a.headers);
     if e.count > 0 { p[0].why = e; gw_plan_log(p, p[0].at, GW_OUT_FELL_THROUGH, 0, none); p[0].at += 1; continue; }
     return true;
@@ -200,6 +226,10 @@ gw_plan_poll :: (p: [] GwPlan, bench: [] GwBench, out: [] GwEvent) -> int {
   k := 0;
   for i: 0..<n {
     x := ev[i];
+    if x.kind==GW_EV_TEXT && p[0].journal.count>0 && !jf_reply(p[0].journal,x.text) {
+      gw_call_close(p[0].call[..]);p[0].why="durable model reply failed; no tool will start";
+      p[0].at=p[0].n;return gw_plan_no_capacity(p,out,0);
+    }
     first := p[0].call[0].first;
     if (x.kind == GW_EV_TEXT || x.kind == GW_EV_REASONING) && p[0].first_ms < 0 { p[0].first_ms = cxproc_now_ms(); }
     left := p[0].n - p[0].at - 1;
@@ -209,6 +239,9 @@ gw_plan_poll :: (p: [] GwPlan, bench: [] GwBench, out: [] GwEvent) -> int {
       outcome := ifx x.kind == GW_EV_DONE then GW_OUT_DONE else ifx first then GW_OUT_CUT else GW_OUT_LAST;
       if x.kind == GW_EV_REFUSED && gw_bench_status(x.status) { gw_bench(bench, p[0].attempts[p[0].at].gateway.name); }
       gw_plan_log(p, p[0].at, outcome, ifx x.kind == GW_EV_DONE then 200 else x.status, x.usage);
+      if p[0].journal.count>0 && p[0].journal[0].flow.chain.failed {
+        p[0].at=p[0].n;return gw_plan_no_capacity(p,out,0);
+      }
       if x.kind == GW_EV_DONE { x.usage = gw_plan_price(p, p[0].at, x.usage); }
       p[0].over = true; p[0].at = p[0].n;
       if x.kind == GW_EV_REFUSED && !first { p[0].why = x.reason; return k + gw_plan_no_capacity(p, out[k..<out.count], x.status); }
