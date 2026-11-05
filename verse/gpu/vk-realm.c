@@ -238,6 +238,9 @@ static int world_rect(int32_t c[8], uint32_t w, uint32_t h) {
 // The pointer to the desk first, in the screen's pixels: 1 when the desk took it.
 static int pointer_to_desk(float sx, float sy, int phase) { return vkdesk_pointer(sx, sy, phase == 0 ? 1 : phase == 2 ? 0 : -1); }
 static void to_moved(void *user, float x, float y) { (void)user; touched = 1; vkdesk_pointer(x, y, -1); }
+static int to_extra_button(void *user,float x,float y,uint32_t code,int pressed) {
+  (void)user;touched=1;return vkdesk_button(x,y,code,pressed);
+}
 // the bare screen's mice are in the realm's draw pixels; the desk's panel is in the screen's
 static Vkp *screen_p;
 static void to_pointer_screen(void *user, float x, float y, int phase) {
@@ -493,7 +496,7 @@ int main(int argc, char **argv) {
   if (headless) vkc_open(&v);
   else if (windowed) {
     // the window's size, or the draw size, or 1600x900; the realm draws at the window's first size
-    VkwTo wto = {to_pointer_window, to_wheel, NULL, to_moved, vkdesk_key};
+    VkwTo wto = {to_pointer_window, to_wheel, NULL, to_moved, vkdesk_key,to_extra_button};
     vkw_open(&v, &win, "Verse", w ? w : 1600, h ? h : 900, fullscreen, wto);
     screen.period = win.period;
     vkp_open(&v, &p, win.vk_surface, (uint32_t)win.want_w, (uint32_t)win.want_h);
@@ -623,7 +626,10 @@ int main(int argc, char **argv) {
       if (stopping) { why = "a signal stopped it"; break; }
       if (windowed) {
         vkw_pump(&win);
-        if (win.closed) { why = "the window was closed"; break; }
+        if (win.closed) {
+          if (vkdesk_window_close(&desk)) win.closed = 0;
+          else { why = "the window was closed"; break; }
+        }
         // a new size from the compositor: a new swapchain; the realm keeps drawing at its size
         if (win.want_w > 0 && win.want_h > 0 && ((uint32_t)win.want_w != p.w || (uint32_t)win.want_h != p.h)) vkp_resize(&v, &p, (uint32_t)win.want_w, (uint32_t)win.want_h);
       } else {

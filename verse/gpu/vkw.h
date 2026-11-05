@@ -28,6 +28,7 @@ typedef struct {
   void *user;
   void (*moved)(void *user, float x, float y);                // any motion, where it is: the person is there
   int (*key)(int code, int pressed);                          // 0 up, 1 press, 2 held-focus snapshot; return 1 to take it
+  int (*button)(void *user,float x,float y,uint32_t code,int pressed); // additional physical mouse buttons
 } VkwTo;
 
 typedef struct {
@@ -49,6 +50,7 @@ typedef struct {
   double period;            // the output's frame time, in seconds
   float x, y;               // the pointer, in the window's pixels
   int down;                 // the left button is held
+  unsigned char extra_down[2]; // right and middle buttons actually forwarded
   int shift, keys_down[KEY_MAX + 1];
   unsigned char forwarded_down[KEY_MAX + 1]; // physical keys delivered to the desk
   VkwTo to;
@@ -133,6 +135,10 @@ static void vkw_pt_enter(void *d, struct wl_pointer *p, uint32_t serial, struct 
 static void vkw_pt_leave(void *d, struct wl_pointer *p, uint32_t serial, struct wl_surface *s) {
   (void)d; (void)p; (void)serial; (void)s;
   if (vkw_->down) { vkw_->down = 0; if (vkw_->to.pointer) vkw_->to.pointer(vkw_->to.user, vkw_->x, vkw_->y, 2); }
+  for(int i=0;i<2;i++) if(vkw_->extra_down[i]) {
+    if(vkw_->to.button)vkw_->to.button(vkw_->to.user,vkw_->x,vkw_->y,BTN_RIGHT+i,0);
+    vkw_->extra_down[i]=0;
+  }
 }
 static void vkw_pt_motion(void *d, struct wl_pointer *p, uint32_t time, wl_fixed_t x, wl_fixed_t y) {
   (void)d; (void)p; (void)time;
@@ -143,7 +149,15 @@ static void vkw_pt_motion(void *d, struct wl_pointer *p, uint32_t time, wl_fixed
 }
 static void vkw_pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
   (void)d; (void)p; (void)serial; (void)time;
-  if (button != BTN_LEFT) return;
+  if (button != BTN_LEFT) {
+    if(button!=BTN_RIGHT && button!=BTN_MIDDLE)return;
+    int i=(int)button-BTN_RIGHT,pressed=state==WL_POINTER_BUTTON_STATE_PRESSED;
+    if(!pressed && vkw_->extra_down[i]) {
+      if(vkw_->to.button)vkw_->to.button(vkw_->to.user,vkw_->x,vkw_->y,button,0);
+      vkw_->extra_down[i]=0;
+    } else if(pressed && !vkw_->extra_down[i] && vkw_->to.button && vkw_->to.button(vkw_->to.user,vkw_->x,vkw_->y,button,1))vkw_->extra_down[i]=1;
+    return;
+  }
   vkw_->down = state == WL_POINTER_BUTTON_STATE_PRESSED;
   if (vkw_->to.pointer) vkw_->to.pointer(vkw_->to.user, vkw_->x, vkw_->y, vkw_->down ? 0 : 2);
 }

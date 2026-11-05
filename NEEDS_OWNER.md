@@ -2,7 +2,7 @@
 
 ## Verse OS WoW recording capacity (2026-11-04, #12863)
 
-- [ ] Make at least 5 GiB available for further recorded WoW trials, or select
+- [x] Make at least 5 GiB available for further recorded WoW trials, or select
       an archive volume. This machine fell below the controller's 768 MiB
       recording reserve. Retained evidence is under
       `~/.openagents/verse-os/combat/2026-11-04-loot/`; earlier records remain
@@ -11,6 +11,11 @@
       1399/2800 XP, with full health and mana. The
       next agent work is supervised V6 facing-recovery qualification and
       continued leveling; no additional control permission is required.
+      Resolved later on 2026-11-04: removed 61 stale worktrees (41.91 GiB)
+      and 193 local branch names, preserving unmerged commits under archive
+      refs. Free space reached 43 GiB. Dirty/active worktrees and all WoW
+      evidence remain. The local inventory is
+      `~/.openagents/worktree-cleanup-2026-11-04-removed.jsonl`.
 
 ## Aethyrforge Coder HUD / Cursor installation (2026-11-04)
 

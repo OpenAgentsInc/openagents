@@ -1,0 +1,16 @@
+#authority;
+// Existing panel modes: closed=0, docked=1, flat=2, world=3.
+// Existing input routes: realm=0, desktop=1.
+#test "a window close belongs to the visible nested desktop, never an absent desktop" {
+  for mode: [3] int.[1,2,3] {
+    #assert verse_panel_close_to(mode,true)==1;
+    #assert verse_panel_close_to(mode,false)==0;
+  }
+  #assert verse_panel_close_to(0,true)==0;
+  #assert verse_panel_close_to(0,false)==0;
+  #assert verse_panel_close_to(-1,true)==0;
+  #assert verse_panel_close_to(4,true)==0;
+}
+verse_panel_close_to :: (mode: int,has_desk: bool) -> int #export_c {
+  return ifx has_desk && (mode==1 || mode==2 || mode==3) then 1 else 0;
+}

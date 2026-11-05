@@ -1110,9 +1110,27 @@ cx_rules :: (x: [] Cx, s: int, w: int) {
   if x[0].surfs[s].ruled { return; }
   t := cast(string) x[0].surfs[s].title[0..<x[0].surfs[s].nt]; ap := cast(string) x[0].surfs[s].app[0..<x[0].surfs[s].na];
   m := x[0].wm[..];
-  if game_window_fullscreen(t, ap) && wm_focus(m) == w {
+  if game_window_fullscreen(t, ap) {
     x[0].surfs[s].ruled = true;
-    if !wm_is_fullscreen(m, w) { wm_fullscreen(m); }
+    // Fill the desktop without suppressing the launcher's floating modal windows.
+    y := wm_set_floating(m,w,true);
+    y = wm_place_float(m,w,WmRect.{x=0.0,y=0.0,w=1.0,h=1.0});
+    x[0].surfs[s].noborder=true;
+    return;
+  }
+  if game_window_floating(t,ap) {
+    // Keep the original X11 client size: tiling a fixed-size installer clips its controls.
+    bw:=320; bh:=320; b:=x[0].surfs[s].cur; xi:=x[0].surfs[s].xwin;
+    if xi>=0 && x[0].xw[0].wins[xi].w>0 && x[0].xw[0].wins[xi].h>0 {
+      bw=x[0].xw[0].wins[xi].w; bh=x[0].xw[0].wins[xi].h;
+    } else if b>=0 { bw=x[0].bufs[b].w; bh=x[0].bufs[b].h; }
+    c:=m[0].screens[m[0].screen];
+    // One pixel of padding per edge absorbs fractional-coordinate rounding.
+    fw:=wm_min(1.0,cast(f32) (bw+2)/cast(f32) c.w); fh:=wm_min(1.0,cast(f32) (bh+2)/cast(f32) c.h);
+    y:=wm_set_floating(m,w,true);
+    y=wm_place_float(m,w,WmRect.{x=(1.0-fw)*0.5,y=(1.0-fh)*0.5,w=fw,h=fh});
+    x[0].surfs[s].noborder=true;
+    // Title/class properties arrive separately; a later main-window title must still fill the desk.
     return;
   }
   for i: 0..<x[0].rules[0].n {
@@ -1309,8 +1327,7 @@ cx_xw_place :: (x: [] Cx, i: int, fr: [] int) {
   xw_configure(x[0].xw[0].o[..], q.id, fr[0], fr[1], fr[2], fr[3]); cx_xw_flush(x); cx_damage_all(x);
 }
 cx_close_focused :: (x: [] Cx) {
-  f := wm_focus(x[0].wm[..]); s := ifx f != 0 then x[0].win_surf[f] else -1;
-  if s >= 0 { g := x[0].g[..]; mg_begin(g, x[0].surfs[s].top, 1); mg_end(g); mg_flush(x, x[0].surfs[s].client, -1); }
+  cx_close_win(x,wm_focus(x[0].wm[..]));
 }
 
 // ---- input from the test channel

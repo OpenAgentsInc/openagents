@@ -48,6 +48,7 @@ typedef struct {
   uint32_t sw, sh;            // the screen it is shown on, for the pointer
   int attached;               // the session's compositor (outlives this realm), not a child of ours
   int pointer_down;           // a left-button press actually forwarded to this desk
+  unsigned char extra_down[2]; // right/middle releases belong to the original desktop
   unsigned char key_down[KEY_MAX+1]; // releases still belong here after a panel mode change
   // F8: where the realm drew the desk's screen this frame, in the swapchain's pixels (0: not there)
   int (*world)(int32_t corners[8], uint32_t w, uint32_t h);
@@ -56,6 +57,7 @@ typedef struct {
 } VkDesk;
 
 static VkDesk *vkdesk_;
+static void vkdesk_say(VkDesk *d, const char *line);
 
 // Opens the compositor and the panel's image; 0, or -1 (the realm runs on without a desk).
 static int vkdesk_open(Vkc *v, VkDesk *d, const char *dir, uint32_t dw, uint32_t dh) {
@@ -115,6 +117,9 @@ image:;
   vkBindImageMemory(v->dev, d->image, d->mem, 0);
   d->staging = vkc_buffer(v, (VkDeviceSize)dw * dh * 4);
   vkdesk_ = d;
+  // The outer Wayland window hides its system cursor. Include the nested
+  // desktop's client cursor in every captured frame, including attached desks.
+  vkdesk_say(d, "pointer on\n");
   return 0;
 }
 
@@ -122,6 +127,14 @@ static void vkdesk_say(VkDesk *d, const char *line) {
   if (d->pid <= 0) return;
   size_t n = strlen(line), done = 0;
   while (done < n) { ssize_t w = write(d->to, line + done, n - done); if (w < 0 && errno == EINTR) continue; if (w <= 0) return; done += (size_t)w; }
+}
+
+// xdg_toplevel.close is also how the outer compositor delivers Super+W.
+// Coax decides whether the visible desktop owns that close request.
+static int vkdesk_window_close(VkDesk *d) {
+  if (verse_panel_close_to(d->mode,d->pid>0)!=PANEL_TO_DESK) return 0;
+  vkdesk_say(d,"close\n");
+  return 1;
 }
 
 // The picture the compositor wrote (a P6 PPM, the desk's size), into the staging buffer as BGRA.
@@ -272,13 +285,11 @@ static int vkdesk_pointer_release(VkDesk *d,int button) {
   if (button!=0 || !d->pointer_down) return 0;
   vkdesk_say(d,"button 272 0\n"); d->pointer_down=0; return 1;
 }
-static int vkdesk_pointer(float x, float y, int button) {
-  VkDesk *d = vkdesk_;
-  if (!d || d->pid <= 0) return 0;
-  if (d->mode == PANEL_CLOSED || !d->sw) return vkdesk_pointer_release(d,button);
-  int64_t px, py;
+static int vkdesk_point(VkDesk *d,float x,float y,int64_t *ox,int64_t *oy) {
+  if(d->mode==PANEL_CLOSED || !d->sw)return 0;
+  int64_t px,py;
   if (d->mode == PANEL_WORLD) {
-    if (!d->world_ok) return vkdesk_pointer_release(d,button);
+    if (!d->world_ok) return 0;
     int32_t *c = d->world_c;
     px = verse_panel_point_quad(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], VKDESK_STRIPS, d->dw, d->dh, (int64_t)x, (int64_t)y, 0);
     py = verse_panel_point_quad(c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], VKDESK_STRIPS, d->dw, d->dh, (int64_t)x, (int64_t)y, 1);
@@ -286,12 +297,29 @@ static int vkdesk_pointer(float x, float y, int button) {
     px = verse_panel_point(d->mode, d->sw, d->sh, d->dw, d->dh, (int64_t)x, (int64_t)y, 0);
     py = verse_panel_point(d->mode, d->sw, d->sh, d->dw, d->dh, (int64_t)x, (int64_t)y, 1);
   }
-  if (px < 0 || py < 0) return vkdesk_pointer_release(d,button) || d->mode == PANEL_FLAT;
+  *ox=px;*oy=py;return px>=0 && py>=0;
+}
+static int vkdesk_pointer(float x, float y, int button) {
+  VkDesk *d = vkdesk_;
+  if (!d || d->pid <= 0) return 0;
+  int64_t px,py;
+  if (!vkdesk_point(d,x,y,&px,&py)) return vkdesk_pointer_release(d,button) || d->mode == PANEL_FLAT;
   char cmd[96];
   snprintf(cmd, sizeof cmd, "move %lld %lld\n", (long long)px, (long long)py);
   vkdesk_say(d, cmd);
   if (button >= 0) { snprintf(cmd, sizeof cmd, "button 272 %d\n", button); vkdesk_say(d, cmd); d->pointer_down=button!=0; }
   return 1;
+}
+static int vkdesk_button(float x,float y,uint32_t code,int pressed) {
+  VkDesk *d=vkdesk_;if(!d || d->pid<=0 || (code!=BTN_RIGHT && code!=BTN_MIDDLE))return 0;
+  int i=(int)code-BTN_RIGHT;char cmd[96];
+  if(!pressed && d->extra_down[i]) {
+    snprintf(cmd,sizeof cmd,"button %u 0\n",code);vkdesk_say(d,cmd);d->extra_down[i]=0;return 1;
+  }
+  if(!pressed)return 0;
+  int64_t px,py;if(!vkdesk_point(d,x,y,&px,&py))return d->mode==PANEL_FLAT;
+  snprintf(cmd,sizeof cmd,"move %lld %lld\n",(long long)px,(long long)py);vkdesk_say(d,cmd);
+  snprintf(cmd,sizeof cmd,"button %u 1\n",code);vkdesk_say(d,cmd);d->extra_down[i]=1;return 1;
 }
 
 static void vkdesk_close(Vkc *v, VkDesk *d) {

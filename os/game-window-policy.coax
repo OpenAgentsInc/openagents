@@ -8,6 +8,18 @@
   #assert !game_window_fullscreen("World of Warcraft", "foot");
   #assert !game_window_fullscreen("Other", "steam_app_battlenet");
 }
-game_window_fullscreen :: (title: string, app: string) -> bool {
+game_window_fullscreen :: (title: string, app: string) -> bool #export_c {
   return app == "steam_app_battlenet" && (title == "Battle.net" || title == "World of Warcraft");
+}
+#test "runner helpers and fixed-size dialogs float instead of taking tiled columns" {
+  #assert game_window_floating("", "steam_app_battlenet");
+  #assert game_window_floating("Battle.net Login", "steam_app_battlenet");
+  #assert game_window_floating("WoW: Forever Installation", "steam_app_battlenet");
+  #assert !game_window_floating("Battle.net", "steam_app_battlenet");
+  #assert !game_window_floating("World of Warcraft", "steam_app_battlenet");
+  #assert !game_window_floating("", "foot");
+  #assert !game_window_floating("WoW: Forever Installation", "foot");
+}
+game_window_floating :: (title: string, app: string) -> bool #export_c {
+  return app == "steam_app_battlenet" && !game_window_fullscreen(title,app);
 }

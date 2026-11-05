@@ -15,6 +15,7 @@
 //     pointer is the desk's over the panel and the realm's elsewhere.
 // Library: vk-realm.c calls these through the C the Coax compiler makes (verse-panel.h).
 
+#load "verse-window-policy.coax";
 PANEL_CLOSED :: 0; PANEL_DOCKED :: 1; PANEL_FLAT :: 2; PANEL_WORLD :: 3;
 PANEL_KEY_VOICE :: 65;   // evdev KEY_F7: talk to the desk's focused program (an agent), pressed again to send
 PANEL_KEY_WORLD :: 66;   // evdev KEY_F8

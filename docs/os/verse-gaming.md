@@ -1,5 +1,18 @@
 # Battle.net and WoW in Verse OS
 
+For the lowest current display latency, run the host's `coder-battlenet`
+directly on the outer desktop and place WoW on desk 2. This bypasses the
+Verse panel's 30 Hz CPU screenshot/readback/upload path. The existing
+`verse-game` v2 socket controls the nested desktop; it does not control
+an outer-desktop game. Preserve that distinction when recording or automating.
+
+The optional nested path now draws its own desktop cursor, forwards right
+and middle mouse buttons with owned releases, and routes an outer close
+request to the focused inner window while the panel is visible. Hide the
+panel first to close Verse itself. Wine helpers float, the main launcher/game
+fills the desktop, and fixed-size dialogs float at their requested size with
+rounding padding. See the [input repair record](../verification/verse-input-2026-11-04.md).
+
 On coderos-4080, the installed Verse build is
 `~/.local/share/verse-os/current`. It reuses the existing Battle.net prefix
 at `~/Games/battlenet` and the host's installed Proton runner.
