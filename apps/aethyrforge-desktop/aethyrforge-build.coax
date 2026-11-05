@@ -165,6 +165,12 @@ tool_main :: () -> int #export_c {
   if fs_mtime_ns(af_path(p[..],root,"apps/openagents-web/build/host-audio.wasm"))<audio_stamp {
     print("Building the shared browser audio carrier…\n");audio_cmd:=[3]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coax/web/build-audio.coax"),root];if af_run(audio_cmd[..],out[..],deadline)<0 {return 1;}
   }
+  layer_stamp:=af_native_stamp(root,"aethyr/host/layers-carrier.coax",deadline);if layer_stamp<0 {return 1;}
+  for name:[4]string.["coax/web/layers-face.c","coax/web/build-layers.coax","coax/web/wasm.sh","coax/bin/coax"] {stamp:=fs_mtime_ns(af_path(p[..],root,name));if stamp>layer_stamp {layer_stamp=stamp;}}
+  layers_wasm:=af_path(p[..],root,"apps/openagents-web/build/host-layers.wasm");
+  if fs_mtime_ns(layers_wasm)<layer_stamp {
+    print("Building the shared browser image carrier…\n");layer_cmd:=[4]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coax/web/build-layers.coax"),root,layers_wasm];if af_run(layer_cmd[..],out[..],deadline)<0 {return 1;}
+  }
   if !af_native(root,here,work,coax,out[..],deadline) {return 1;}
   print("Building Aethyrforge's AppKit shell…\n");
   serve := af_path(p[..], res, "serve");
@@ -203,7 +209,7 @@ tool_main :: () -> int #export_c {
   web := af_path(p[..], res, "web"); host := af_path(p[..], res, "host"); seed := af_path(p[..], res, "seed");
   if !fs_mkdir(web) || !fs_mkdir(host) || !fs_mkdir(seed) { return 1; }
   metal_voice:=[3]string.["ditto",af_path(p[..],here,"metal-voice.html"),af_path(p[..],web,"metal-voice.html")];if af_run(metal_voice[..],out[..],deadline)<0 {return 1;}
-  for name: [8] string.["everglade5e.wgsl", "everglade-fx.wgsl", "favicon.svg", "realms/everglade", "build/everglade5e.wasm", "build/everglade-room.wasm", "build/host-audio.wasm", "render-shaders"] {
+  for name: [9] string.["everglade5e.wgsl", "everglade-fx.wgsl", "favicon.svg", "realms/everglade", "build/everglade5e.wasm", "build/everglade-room.wasm", "build/host-audio.wasm", "build/host-layers.wasm", "render-shaders"] {
     src := af_path(p[..], root, "apps/openagents-web"); from := af_path(p[..], src, name); to := af_path(p[..], web, name);
     if fs_kind(from) == FS_NONE { if name == "render-shaders" { continue; } return 1; }
     cmd := [3] string.["ditto", from, to]; if af_run(cmd[..], out[..], deadline) < 0 { return 1; }
