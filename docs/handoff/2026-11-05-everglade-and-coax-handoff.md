@@ -22,7 +22,6 @@ with a comment. Check the issue and `git log origin/main` for their results.
 | Issue | Work | Worktree |
 | --- | --- | --- |
 | #12936 | Fix the production room regression, then finish the release (rooms, then web) | `../openagents-roomperf` |
-| #12933, #12934, #12935 | Three room fire bugs | `../openagents-fire3` |
 | #12927 | Checked, wrapping and saturating integer operations; migrate the room counters | `../openagents-coax-int` |
 | #12938 | Split the carrier C unit so a gameplay edit rebuilds in under 20 s | `../openagents-carrier` |
 | #12939 | Compiler tests fail under load because job notices land in compared output | `../openagents-coax-quiet` |
@@ -104,7 +103,11 @@ The owner's playtest bugs, all closed:
 - #12932 (`f74da763f9`): the gate leaves burn, fall and can be repaired.
 
 Fire blame: #12920 (`11e703434b`) and #12923 (`f9c2037818`). Each fire
-remembers who started it, and raid fires blame no one.
+remembers who started it, and raid fires blame no one. Room fire bugs, closed
+after the handoff was first written: #12933 (`2c5936ba70`, fires no longer step
+once per caster), #12934 (`0db7bc8ead`, fire damage reaches the rules, as
+bludgeoning for now) and #12935 (`22308dd321`, tree spread charges the
+starter).
 
 Goldens and builds (#12918, #12922): `golden-check.sh --since 5c6db93d2f
 --ref origin/main` exits 0. Nine worlds still have no golden. They're reported
@@ -134,7 +137,9 @@ Books: #12610 stays open. The owner said "no more books work". Don't work it.
 
 | Issue | Owner or status |
 | --- | --- |
-| #12933–#12936, #12927, #12938, #12939 | A running agent (see above) |
+| #12936, #12927, #12938, #12939 | A running agent (see above) |
+| #12941 | No agent. The drift check's 250 ms profile failed twice after the fire fixes, on Hold Person timing, conditions and townspeople walking in place. It may be real or caused by load, and it gates release.sh. Check it first if #12936's release is stuck. |
+| #12940 | No agent. Tree fires never burn or spread on the room server; only pages step them. |
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
 | #12845 | Open, with no agent. It still needs commands, accepted results and replication behind shared interfaces, profiles for collision and per-recipient fields, Orbit League sharing more than the timing profile, and the book's adoption inventory. |
 | #12910 | Nostr chapter 104 on signet. Blocked on the signet faucet's captcha, which is in NEEDS_OWNER.md. |
