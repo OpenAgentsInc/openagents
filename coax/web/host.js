@@ -1804,11 +1804,11 @@ function drawMedia(x, pass, w, h, depth, over = false) {
 // ---- sounds: Web Audio, started by the first touch or key (browsers wait for one)
 let audio = null, audioOut = null;
 let contractAudio = null, contractAudioReady = null, audioOwner = 0, audioStarted = false, audioFailure = null;
-let audioBankStatus = 0, audioPacketStatus = 0;
+let audioBankStatus = 0, audioPacketStatus = 0, audioOfferRefusals = 0;
 const bankSounds = new Map();
 function retireContractAudio() {
   ++audioOwner;contractAudio?.close();contractAudio=null;contractAudioReady=null;
-  audio?.close().catch(()=>{});audio=null;audioOut=null;banked=false;bankSounds.clear();sounds.clear();audioFailure=null;audioBankStatus=0;audioPacketStatus=0;
+  audio?.close().catch(()=>{});audio=null;audioOut=null;banked=false;bankSounds.clear();sounds.clear();audioFailure=null;audioBankStatus=0;audioPacketStatus=0;audioOfferRefusals=0;
 }
 function prepareContractAudio() {
   if(contractAudioReady || !audio)return;
@@ -1958,9 +1958,11 @@ function playSoundText(text) {
   for (const line of text.split("\n")) {
     if (clipping) { clipHear(line); continue; }
     if(hostTransport){
+      if(!line)continue;const offer=hostServices?.audioLine(line);if(!offer){audioOfferRefusals++;continue;}
       startAudio(false);const owner=audioOwner,started=audioStarted;
-      if(dev&&line){heard.push(line);if(heard.length>512)heard.shift();}
-      contractAudioReady?.then(adapter=>owner===audioOwner&&adapter?.play(line,started)).catch(error=>{if(owner===audioOwner)audioFailure=String(error.message);});continue;
+      if(dev){heard.push(new TextDecoder().decode(offer.bytes));if(heard.length>512)heard.shift();}
+      if(!contractAudioReady){offer.release();continue;}
+      contractAudioReady.then(adapter=>owner===audioOwner&&adapter?.play(offer.bytes,started)).finally(()=>offer.release()).catch(error=>{if(owner===audioOwner)audioFailure=String(error.message);});continue;
     }
     if (line[0] === "~") { bedLine(line.slice(1)); continue; }
     if (line[0] === "!" || line[0] === "-") { if (audio) { bus ??= soundBus(audio, audioOut); busLine(audio, bus, line, audio.currentTime, decoded); } continue; }
@@ -2669,7 +2671,7 @@ if (dev) {
     start: () => { startAudio(); return audio; }, play: (text) => playSoundText(text), playing: () => playing,
     heard: () => heard.slice(), probe: (slot, right, ahead, up) => engine?.exports.coaxial_sound_probe?.(arena.state, slot, right, ahead, up) ?? -1, beds: () => [...beds].map(([name, b]) => `${name} ${b.gain.gain.value.toFixed(3)} ${b.pan.pan.value.toFixed(3)}`),
     decode: (name) => decoded(soundAsset(name)), voice: soundVoice, mixed: () => mixed,
-    contract: async () => ({version:hostTransport?1:0,owner:audioOwner,started:audioStarted,state:audio?.state??"absent",failure:audioFailure,worklet:await contractAudio?.info()}),
+    contract: async () => ({version:hostTransport?1:0,owner:audioOwner,started:audioStarted,state:audio?.state??"absent",failure:audioFailure,queue:hostServices?.audioQueueInfo()??[0,0],queueRefusals:audioOfferRefusals,worklet:await contractAudio?.info()}),
     bank: () => {soundBank();return {status:audioBankStatus,count:bankSounds.size,bytes:Object.fromEntries([...bankSounds].map(([name,asset])=>[name,asset.bytes.length])),packet:audioPacketStatus};},
     fixtureMode: mode => engine?.exports.coaxial_audio_fixture_mode?.(mode),fixtureProbe: field => Number(engine?.exports.coaxial_audio_fixture_probe?.(field)??-1n),
     bus: soundBus, busVoice, busLine,

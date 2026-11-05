@@ -3,3 +3,4 @@
 #load "audio-bank.coax";
 #load "audio-memory.coax";
 #load "audio-session.coax";
+#load "inbox-queue.coax";

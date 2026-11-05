@@ -1,0 +1,9 @@
+// Observe the real host while its actual AudioWorklet module effect is held.
+#authority;
+#test "audio product queue remains bounded before readiness and fully drains without advancing sound" {
+ q:=[8]int.[64,384,1,0,0,64,0,0];#assert haqp_accept(q[..]);#assert !haqp_accept(q[0..<7]);extra:[9]int;#assert !haqp_accept(extra[..]);
+ for i:0..<8 {q[i]+=1;#assert !haqp_accept(q[..]);q[i]-=1;}
+}
+haqp_accept :: (q:[]int)->bool #export_c {
+ if q.count!=8 {return false;}expected:=[8]int.[64,384,1,0,0,64,0,0];for value,i:expected {if q[i]!=value {return false;}}return true;
+}

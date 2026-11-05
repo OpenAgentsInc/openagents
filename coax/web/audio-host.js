@@ -21,7 +21,7 @@ export async function openCoaxAudio(context,destination,decode){
       const buffer=await decode(effect.name,bytes=>parser.decodeWav(bytes));if(closed)return -1;if(!buffer) return -1;
       const samples=buffer.samples??interleave(buffer),channels=buffer.channels??buffer.numberOfChannels;await request('install',{name:effect.name,samples,channels},[samples.buffer]);assets.set(effect.name,true);
     }
-    const bytes=parser.encoder.encode(line);return request('command',{line:bytes,started},[bytes.buffer]);
+    const bytes=typeof line==='string'?parser.encoder.encode(line):line;return request('command',{line:bytes,started},[bytes.buffer]);
   }
   return {ready,node,play(line,started){const result=tail.then(()=>command(line,started));tail=result.catch(()=>{});return result;},info:()=>request('info',{}),close(){if(closed)return;closed=true;node.disconnect();node.port.close();for(const q of pending.values())q.no(Error('audio engine retired'));pending.clear();readyReject(Error('audio engine retired'));}};
 }

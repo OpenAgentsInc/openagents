@@ -42,5 +42,17 @@ Actual browser allocation/span observations pass the unchanged native
 through the AudioWorklet and decode pipeline remains separate. Global
 browser PCM ownership, bounded command promises, socket queues and ordinary
 Vulkan play remain open.
+
+Audio offers additionally reserve an `inbox-queue.coax` lease before any
+readiness/decode promise retains a command. The queue uses the measured
+1,024-byte line scratch: at most 64 offers and 4,096 encoded payload bytes.
+The SDK encodes into bounded scratch and copies a whole admitted line into
+independent bytes. It retains no substring of a larger producer packet.
+Full or incomplete offers increment the explicit adapter refusal count;
+they create no deferred command. Empty product lines are ignored.
+The lease stays live until the command's actual worklet response or
+cancellation. Serial/epoch release protects a replacement lease; different
+engine reactors own distinct queues. This does not change whole-packet
+physical capacities or the existing line format.
 The actual six-mode bank/packet observer kills all 62 root mutants without
 equivalents; its receipt does not establish complete host conformance.

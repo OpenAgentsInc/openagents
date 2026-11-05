@@ -1,0 +1,15 @@
+// Hold the actual SDK module effect; all cue copies still pass real host.js.
+#load "../../coax/web/wasm-chrome.coax";
+#load "audio-queue-product-conformance.coax";
+haqp_wait :: (c:[]Cdp,text:string)->bool {until:=proc_now_ms()+15000;while proc_now_ms()<until {if wc_eval(c,text)=="true" {return true;}proc_sleep(50);}tool_errln(text);tool_errln(wc_eval(c,"(async()=>JSON.stringify(await coaxial.audio.contract()))()"));return false;}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {tool_errln("usage: check-browser-audio-queue-host LOCAL_URL OUT.json");return 2;}url:=args_at(a[..],0);if url.count<17||url[0..<17]!="http://127.0.0.1:" {return 2;}
+ c:[1]Cdp;if !cdp_launch(c[..],160,90,"coax-host-audio-queue-product-") {return 1;}defer {cdp_close(c[..]);}
+ text:[16384]u8;params:[8192]u8;o:[1]Jo;jo_start(o[..],params[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],url);jo_end(o[..]);nav:=cdp_call(c[..],"Page.navigate",jo_text(o[..]),CDP_CALL_MS);
+ if !haqp_wait(c[..],"!!globalThis.coaxial?.ready&&typeof coaxial.audio?.contract==='function'") {return 1;}
+ if wc_eval(c[..],"globalThis.releaseAudioModule=null;globalThis.originalAudioModule=AudioWorklet.prototype.addModule;{const gate=new Promise(resolve=>releaseAudioModule=resolve);AudioWorklet.prototype.addModule=function(...args){return gate.then(()=>originalAudioModule.apply(this,args))}}for(let i=0;i<65;i++)coaxial.audio.play('!bus 0');true")!="true" {tool_errln(cdp_error(c[..]));return 1;}
+ rows:[8]int;held:=cdp_evaluate(c[..],"coaxial.audio.contract()");d:=cdp_doc(c[..]);queue:=jv_get(d,held,"queue");rows[0]=jv_int(d,jv_at(d,queue,0),-999);rows[1]=jv_int(d,jv_at(d,queue,1),-999);rows[2]=jv_int(d,jv_get(d,held,"queueRefusals"),-999);
+ if wc_eval(c[..],"AudioWorklet.prototype.addModule=originalAudioModule;releaseAudioModule();true")!="true"||!haqp_wait(c[..],"(async()=>{const q=await coaxial.audio.contract();return q.queue[0]===0&&q.worklet?.accepted===64})()") {return 1;}
+ done:=cdp_evaluate(c[..],"coaxial.audio.contract()");d=cdp_doc(c[..]);queue=jv_get(d,done,"queue");rows[3]=jv_int(d,jv_at(d,queue,0),-999);rows[4]=jv_int(d,jv_at(d,queue,1),-999);worklet:=jv_get(d,done,"worklet");rows[5]=jv_int(d,jv_get(d,worklet,"accepted"),-999);rows[6]=jv_int(d,jv_get(d,worklet,"frames"),-999);rows[7]=jv_int(d,jv_get(d,worklet,"words"),-999);
+ jo_start(o[..],text[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.browser-audio-queue-product.v1");jo_key(o[..],"rows");jo_arr(o[..]);for v:rows {jo_int(o[..],v);}jo_end(o[..]);jo_key(o[..],"passed");jo_bool(o[..],haqp_accept(rows[..]));jo_end(o[..]);if o[0].bad||!fs_write(args_at(a[..],1),jo_text(o[..])) {return 1;}if !haqp_accept(rows[..]) {tool_errln("Actual pre-ready host audio queue differs; raw observations retained.");return 1;}print("Real host audio offers: 64 retained, 65th refused, all leases drained and pre-gesture clock held.\n");return 0;
+}

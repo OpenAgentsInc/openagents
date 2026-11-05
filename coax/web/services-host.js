@@ -8,11 +8,16 @@ export async function openHostServices(){
   clock_time_get(id,precision,at){new DataView(memory.buffer).setBigUint64(at,BigInt(Math.floor((id===0?Date.now():performance.now())*1e6)),true);return 0;},
   fd_write(fd,iov,count,written){const view=new DataView(memory.buffer);let n=0;for(let i=0;i<count;i++)n+=view.getUint32(iov+8*i+4,true);view.setUint32(written,n,true);return 0;}};
  const x=new WebAssembly.Instance(await compiled,{env:{memory},wasi_snapshot_preview1:wasi}).exports;x._initialize?.();
+ if(!x.services_audio_queue_open())throw Error('Coax refused audio offer queue storage');
  const encoder=new TextEncoder(),decoder=new TextDecoder('utf-8',{fatal:true});
  return {span:(address,capacity,count,bytes)=>!!x.services_span(BigInt(address),BigInt(capacity),BigInt(count),BigInt(bytes)),
   bankLine(line,base,capacity){const storage=new Uint8Array(memory.buffer,x.services_line_ptr(),x.services_line_capacity()),written=encoder.encodeInto(line,storage);if(written.read!==line.length)return null;const id=x.services_bank_insert(written.written,BigInt(base),BigInt(capacity));if(id<0n||!x.services_bank_source(id))return null;
    const field=i=>Number(x.services_bank_field(i));return {id:Number(id),name:decoder.decode(new Uint8Array(memory.buffer,field(0),field(1))),address:field(2),bytes:field(3)};},
-  bankCount:()=>Number(x.services_bank_count()),extent:(frames,channels)=>Number(x.services_extent(BigInt(frames),BigInt(channels))),reserve:words=>Number(x.services_reserve(BigInt(words))),release:ticket=>!!x.services_release(BigInt(ticket)),words:()=>Number(x.services_words())};
+  bankCount:()=>Number(x.services_bank_count()),extent:(frames,channels)=>Number(x.services_extent(BigInt(frames),BigInt(channels))),reserve:words=>Number(x.services_reserve(BigInt(words))),release:ticket=>!!x.services_release(BigInt(ticket)),words:()=>Number(x.services_words()),
+  audioLine(line){const storage=new Uint8Array(memory.buffer,x.services_line_ptr(),x.services_line_capacity()),written=encoder.encodeInto(line,storage);if(written.read!==line.length||x.services_audio_queue_offer(BigInt(written.written))!==0)return null;
+   const lease=[0,1,2].map(field=>x.services_audio_queue_lease(field)),release=()=>!!x.services_audio_queue_release(...lease);
+   try{return Object.freeze({bytes:storage.slice(0,written.written),release});}catch{release();return null;}},
+  audioQueueInfo:()=>[0,1].map(field=>Number(x.services_audio_queue_info(field)))};
 }
 // Each handle is one concrete SDK allocation. Its ticket outlives retirement
 // while immutable sample references remain; releasing a borrowed view ends use.

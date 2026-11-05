@@ -89,6 +89,14 @@ observer words pass and all 62 root mutants are killed without equivalents.
 Pre-contract adapters retain their existing behavior. Global browser PCM
 retention and socket pressure remain separate qualification exits.
 
+Browser audio offers hold shared Coax inbox leases before readiness or
+decode continuations retain their independent encoded lines. Actual SDK
+and held-module product receipts admit 38 and eight observed fields;
+their 46/16 root mutants are killed without equivalents. The real product
+holds 64 six-byte offers, refuses the 65th and returns all leases after
+delivery while its pre-gesture audio clock stays held. Global PCM and
+complete old-node retirement retain their separate gates.
+
 The shared lifecycle adapter records monotonic microseconds before handing
 the unchanged delta to the producer. Actual browser, sanitized Linux realm
 SDK and Metal SDK receipts admit the same ten frame/key/blur rows, including
