@@ -76,8 +76,8 @@ EXPORT("coaxial_grid_replay") uint32_t grid_replay(void) {
 }
 // Where you are, to the room about five times a second, once the browser has a player key (minting
 // one when it has none); the answer is everyone else, who walk the page (newland-walkers.coax).
-static void room_out(void) {
-  if (golden_mode || !facts_seen) return;
+static void room_out(uint32_t state) {
+  if (golden_mode || !facts_seen || coaxial_land_flying(view(state))) return;   /* Penultimate Frontier has nobody in it */
   if (!has_player && !mint_tried) {
     mint_tried = 1;
     mint_id = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
@@ -111,15 +111,15 @@ static uint32_t walk_frame(uint32_t state, coax_v_f32 out, coax_v_f32 u, float w
   int64_t n = coaxial_walk_frame(view(state), out, u, w, h, dpr, dt, still != 0 || golden_mode != 0, feet.x, feet.y, feet.z, gridwalk_face(gw()),
                                  gridwalk_act(gw()), eye.x, eye.y, eye.z, at.x, at.y, at.z,
                                  t.move_on, t.ox, t.oy, t.pad_x, t.pad_y);
-  room_out();
+  room_out(state);
   if (!golden_mode) edit_face_drain(ed(state));
-  if (!track_state.page_n) track_init(tr(), track_cstr("the-grid"));
+  if (!track_state.page_n) track_init(tr(), track_cstr(coaxial_land_flying(view(state)) ? "penultimate-frontier" : "the-grid"));
   float dx = feet.x - last_feet.x, dz = feet.z - last_feet.z;
   track_walk(tr(), (double)__builtin_sqrtf(dx * dx + dz * dz));
   last_feet = feet;
   track_frame(tr(), dt, w, h, dpr);
   // world-enter and load-engine once it draws, like every realm (the analytics contract, analytics-contract.json)
-  if (n > 0 && !entered) { entered = 1; track_world(tr(), track_cstr("the-grid")); track_loaded(tr(), track_cstr("load-engine")); }
+  if (n > 0 && !entered) { entered = 1; track_world(tr(), track_cstr(coaxial_land_flying(view(state)) ? "penultimate-frontier" : "the-grid")); track_loaded(tr(), track_cstr("load-engine")); }
   track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
 }

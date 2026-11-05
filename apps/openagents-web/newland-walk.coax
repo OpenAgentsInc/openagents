@@ -62,8 +62,9 @@ Walk :: struct {
   with: [24] u8; with_n: int; with_t: f32 = -1000;   // the friend you walked with, and when they were near
 }
 
-// The face: which page this is (host.js data-page; 1 the Grid).
-coaxial_land_page :: (s: [] LandState, page: int) #export_c { if s.count > 0 { s[0].walking = page == 1; } }
+// The face: which page this is (host.js data-page; 1 the Grid, 2 Penultimate Frontier: the Grid flown).
+coaxial_land_page :: (s: [] LandState, page: int) #export_c { if s.count > 0 { s[0].walking = page == 1 || page == 2; s[0].flying = page == 2; } }
+coaxial_land_flying :: (s: [] LandState) -> bool #export_c { return s.count > 0 && s[0].flying; }
 coaxial_land_walking :: (s: [] LandState) -> bool #export_c { return s.count > 0 && s[0].walking; }
 coaxial_walk_spawn_x :: () -> f32 #export_c { return WK_SPAWN_X; }
 coaxial_walk_spawn_z :: () -> f32 #export_c { return WK_SPAWN_Z; }
@@ -272,6 +273,42 @@ wk_dive :: (s: [] LandState, f: LandFrame, to: Cam, width: f32, height: f32) -> 
   eye := fv_mix(from.eye, to.eye, e); at := fv_mix(s[0].look, to_at, e);
   scale := (from.focal / fv_length(fv_sub(s[0].look, from.eye))) * (1 - e) + (to.focal / 6) * e;
   return wk_cam(eye, at, scale * fv_length(fv_sub(at, eye)), from.cx + (to.cx - from.cx) * e, from.cy + (to.cy - from.cy) * e, width, height);
+}
+
+// Penultimate Frontier: the camera flies a slow loop through the places, no one walking. It
+// sweeps in from high and far, passes low between the trees, and climbs out again, once a lap.
+FLY_LAP :: 80.0;            // s a lap of the places takes
+FLY_TAU :: 6.2831853;
+FLY_FAR :: 34.0; FLY_NEAR :: 10.0;   // m from the places' middle at the lap's widest and closest
+FLY_HIGH :: 14.0; FLY_LOW :: 4.5;   // m up at the lap's widest and closest
+FLY_START :: 0.785398;      // rad round from the south-east, where the homepage looks from
+wk_fly :: (mid: Fv, t: f32, width: f32, height: f32) -> Cam {
+  a := FLY_START + FLY_TAU * t / FLY_LAP;
+  in := 0.5 - 0.5 * cos(FLY_TAU * t / (FLY_LAP * 0.5));   // 0 wide, 1 close: in and out twice a lap
+  r := FLY_FAR + (FLY_NEAR - FLY_FAR) * in;
+  y := FLY_HIGH + (FLY_LOW - FLY_HIGH) * in;
+  ar := r * 0.45; aa := a + 0.5;   // looking ahead along the turn, toward the middle
+  eye := wk_at(mid, r * sin(a), y, r * cos(a));
+  at := wk_at(mid, ar * sin(aa), 1.6 + y * 0.1, ar * cos(aa));
+  return wk_cam(eye, at, wk_focal(width, height), width * 0.5, height * 0.5, width, height);
+}
+#test "Penultimate Frontier flies the Grid's scene with nobody and no HUD in it" #steps 50000000 {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  coaxial_land_page(s[..], 2);
+  #assert coaxial_land_walking(s[..]) && coaxial_land_flying(s[..]);
+  s[0].time = 9;
+  n := coaxial_walk_frame(s[..], out[..], u[..], 1280, 720, 1, 0.016, false,
+                          WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0, WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0);
+  #assert n > 1000 && n < TEST_VERTICES && n % 6 == 0 && u[5] == 0;
+  // the camera is its own, not the walker's: far out at the lap's start, and moving
+  e0 := s[0].view.eye;
+  s[0].time = 29;
+  m := coaxial_walk_frame(s[..], out[..], u[..], 1280, 720, 1, 0.016, false,
+                          WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0, WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0);
+  #assert m > 1000 && fv_length(fv_sub(s[0].view.eye, e0)) > 1;
+  g: [1] LandState; coaxial_land_page(g[..], 1);
+  #assert coaxial_land_walking(g[..]) && !coaxial_land_flying(g[..]);
 }
 
 // ---- you
@@ -535,12 +572,13 @@ coaxial_walk_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   w[0].placed = true; w[0].feet = feet; w[0].face = face; w[0].act = act;
   if !s[0].golden { wk_gate_step(s, fx, fz, f.step); }   // who walks with you, and the gate
   c := wk_cam(wk_at(mid, ex, ey, ez), wk_at(mid, ax, ay, az), wk_focal(width, height), width * 0.5, height * 0.5, width, height);
-  c = wk_dive(s, f, c, width, height);
+  if s[0].flying { c = wk_fly(mid, f.t, width, height); } else { c = wk_dive(s, f, c, width, height); }
   s[0].view = c; s[0].clip = c.clip; s[0].zoom = 0.4;   // close: the Pylons' labels say what they run
   // the homepage's boxes are not on this page
   none := Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   s[0].playtest = none; s[0].network_box = none; s[0].walk_box = none; s[0].gal_box = none; s[0].gal_open = none; s[0].gal_over = -1;
   v := land_scene(out, 0, s, c, feet, f.p, f.t, f.motion);
+  if s[0].flying { uniforms[5] = 0; return v; }   // nobody in it and no HUD: the scene alone
   you_from := v;   // (the occluders were counted from zero in land_scene, the places first)
   v = wk_you(out, v, s, c, f.p, f.motion);
   v = wk_gate_draw(out, v, s, c, mid, f.p, f.motion);   // the Everglade gate

@@ -476,6 +476,19 @@
         "alt": "Selectable Bitcoin block slabs with exact metadata, transaction and output tiles, active and stale branches, and seven learning stations",
         "module": "bitcoin-lab", "slot": "bitcoin-lab", "style": "lowpoly", "clock": "fixed:0.5",
         "golden": { "lit": 0.02, "settle": 1000, "blocks": 6 }, "assets": []
+      } },
+    { "id": "frontier", "name": "PENULTIMATE FRONTIER", "kind": "open", "listed": false, "orbit": { "r": 0.32, "a": 1.4, "size": 0.026 },
+      "realm": {
+        "slug": "penultimate-frontier",
+        "style": "lowpoly",
+        "clock": "fixed:0.0",
+        "title": "Penultimate Frontier",
+        "description": "Penultimate Frontier: a slow camera flight through the Grid, the homepage's live projects drawn as trees of commits and tasks, updating from Nostr as you watch.",
+        "alt": "A camera flying low through the Grid's glowing project trees",
+        "module": "newland", "page": 2,
+        "slot": "penultimate-frontier",
+        "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
+        "assets": []
       } }
-  ]
+]
 }

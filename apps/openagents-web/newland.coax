@@ -131,6 +131,7 @@ LandState :: struct {
   pylons: int; pyl: [MAX_PYLONS] Pyl;
   walk: [1] Walkers; walk_box: Box; walk_click: bool; dive_fade: f32;   // WALK AROUND and the Grid's walkers (newland-walkers.coax)
   walking: bool; wk: [1] Walk;   // the Grid's page (data-page 1): this scene walked, you in it (newland-walk.coax)
+  flying: bool;                   // Penultimate Frontier's page (data-page 2): the Grid flown through, nobody in it
   ed: [1] RealmEdit; grid_names_off: bool; grid_walkers_off: bool;   // the Grid's EDIT, and the board's rows it switches (zero: on)
   playtest: Box;network_box:Box;network_join:Box;network_guide:Box;network_list:Box;
   network_scroll:f32;network_scroll_max:f32;network_scroll_start:f32;network_down:bool;network_list_down:bool;network_copied:bool;network_phone:bool;network_rows:[MAX_PYLONS]Box;

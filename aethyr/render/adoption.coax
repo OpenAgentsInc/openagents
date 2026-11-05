@@ -87,6 +87,12 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
     #assert !route.shared && !route.tracked_legacy && route.profile == -1;
   }
 }
+// Penultimate Frontier (the Grid flown, newland page 2) draws with the Grid's passes until it has a catalog profile.
+#test "Penultimate Frontier is a tracked legacy consumer" {
+  route := render_adoption("penultimate-frontier", "newland");
+  #assert !route.shared && route.tracked_legacy && route.profile == -1;
+  #assert !render_adoption("penultimate-frontier", "realm").tracked_legacy;
+}
 render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c {
   if slug == "built" && app == "myrealm" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "bitcoin-lab" && app == "bitcoin-lab" { return RenderAdoption.{tracked_legacy = true}; }
@@ -104,5 +110,6 @@ render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c {
   if slug == "splat-lab" && app == "splatlab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "one-shot" && app == "oneshot" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "audio-lab" && app == "audiolab" { return RenderAdoption.{tracked_legacy = true}; }
+  if slug == "penultimate-frontier" && app == "newland" { return RenderAdoption.{tracked_legacy = true}; }
   return RenderAdoption.{};
 }
