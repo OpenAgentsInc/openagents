@@ -379,7 +379,8 @@ CK_meta_type :: (c:CK_Context,t:int,loc:CK_Loc)->int {
  ty:=c.types[t];fields:=0;members:=0;count:=0;element:="";
  if ty.kind==CK_Kind.struct_ {fields=CK_list_count(c,c.nodes[ty.decl].head);}
  if ty.kind==CK_Kind.enum_ {members=CK_list_count(c,c.nodes[ty.decl].head);}
- if ty.kind==CK_Kind.array || ty.kind==CK_Kind.view {count=ty.length;element=c.types[ty.elem].name;}
+ if ty.kind==CK_Kind.array {count=ty.length;}
+ if ty.kind==CK_Kind.array || ty.kind==CK_Kind.view {element=c.types[ty.elem].name;}
  kinds:=[12]string.["invalid","void","integer","float","bool","string","integer literal","float literal","struct","enum","array","view"];
  values:=[11]CK_MetaValue.[CK_MetaValue.{value=1},CK_MetaValue.{text=ty.name},CK_MetaValue.{text=kinds[cast(int)ty.kind]},CK_MetaValue.{value=cast(u64)ty.size},CK_MetaValue.{value=cast(u64)ty.alignment},CK_MetaValue.{value=cast(u64)ty.bits},CK_MetaValue.{value=ifx ty.is_signed then 1 else 0},CK_MetaValue.{value=cast(u64)fields},CK_MetaValue.{value=cast(u64)members},CK_MetaValue.{value=cast(u64)count},CK_MetaValue.{text=element}];
  return CK_meta_record(c,c.nodes[CK_find(c,CK_Tag.struct_,"CoaxTypeInfo")].type,values[..],loc);

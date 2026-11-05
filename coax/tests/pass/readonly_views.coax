@@ -8,6 +8,8 @@ static_view :: ()->[] const int {return TABLE[..];}
 read_param :: (v:[4]int)->int {return sum(v[..]);}
 part :: (v:[] const int)->Carrier {return Carrier.{data=v[1..<3]};}
 exercise :: ()->int {
+ #assert type_info([] const int).element_count==0;
+ #assert type_info([] const int).name=="[] const int";
  values:[4]int; for i:0..<4 {values[i]=i+1;}
  r:[] const int=values[..];
  calls:[1]int;once:[] const int=take(values[..],calls[..]);

@@ -174,3 +174,16 @@ CK_readonly_validate :: (c:CK_Context) {
  if immutable && !readonly {#assert t==0 && errors[0].code=="E0366";}
  else {#assert t==(ifx readonly then 17 else 16) && state[0].error_count==0;}
 }
+
+#test "read-only reflection reports a dynamic extent, not its access qualifier" {
+ nodes:[128]CK_Node;types:[24]CK_Type;errors:[8]CK_Error;bytes:[4096]u8;state:=[1]CK_State.[CK_State.{used=16,type_count=18}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+ names:=[11]string.["schema_version","name","kind","size","alignment","bits","is_signed","field_count","member_count","element_count","element_name"];
+ fields:=[11]int.[14,3,3,11,11,11,2,11,11,11,3];
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="CoaxTypeInfo",type=16,head=3,mark=2};types[16]=CK_Type.{kind=CK_Kind.struct_,name="CoaxTypeInfo",decl=2};
+ for i:0..<11 {nodes[3+i]=CK_Node.{kind=CK_Tag.field,name=names[i],type=fields[i],next=ifx i<10 then 4+i else 0};}
+ types[17]=CK_Type.{kind=CK_Kind.view,name="[] const int",size=16,alignment=8,elem=11,length=1};
+ record:=CK_meta_type(c,17,CK_Loc.{});
+ #assert state[0].error_count==0 && nodes[nodes[CK_at(c,nodes[record].head,9)].a].value==0;
+ #assert nodes[nodes[CK_at(c,nodes[record].head,1)].a].name=="[] const int" && nodes[nodes[CK_at(c,nodes[record].head,10)].a].name=="int";
+}
