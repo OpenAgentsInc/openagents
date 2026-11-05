@@ -547,8 +547,35 @@ WireHist :: struct {
   // the next row of each slot is a new life (born: a new player in the seat, its id the same) or a
   // jump (cut: a teleport, a placing, a seat into or out of a boat, however short), as its world says (#12835)
   born: [WIRE_SLOTS] bool; cut: [WIRE_SLOTS] bool;
+  last: [WIRE_SLOTS] s32;    // id + 1 of the entity the slot last held, kept through ticks it held none
   now: int;
 }
+// LIFE and WARP run from 1 to WIRE_LIFE_MAX - 1 and then from 1 again: never 0 (no life yet), never
+// past what a row's field holds (wire_s32), so they never stick at its clamp. A page only asks whether
+// a row's LIFE or WARP is the one it holds, and a slot counts at most one a tick, so a number comes
+// back in one slot only after WIRE_LIFE_MAX - 1 of them: over two years of a new life every tick. As
+// aethyr/entity.coax retires a slot before its generation would wrap, nothing here repeats while a
+// page could still hold the number it repeats.
+WIRE_LIFE_MAX :: 2000000000;
+wire_count_next :: (c: int) -> int { n := (ifx c < 0 then 0 else c % WIRE_LIFE_MAX) + 1; return ifx n >= WIRE_LIFE_MAX then 1 else n; }
+// The table's lives begin at numbers of this room's own (#12835): a room made again, in this process
+// or after a restart, never starts its slots' lives where an earlier room's were, so a page that
+// rejoins never takes a new entity for the one it held (their ids and slots may be the same: the
+// rules count their ids from 1 in each room). scope: what makes this room's numbers its own (the
+// room's wall-clock start and its relay room); each slot's from it by a Park-Miller step.
+wire_hist_scope :: (h: [] WireHist, scope: int) {
+  a := (ifx scope < 0 then -scope else scope) % 2147483647;
+  for q: 0..<WIRE_SLOTS {
+    a = ((a + q * 7919 + 1) % 2147483647) * 48271 % 2147483647;
+    h[0].life[q] = cast(s32) (a % (WIRE_LIFE_MAX - 1)); h[0].warp[q] = 0; h[0].last[q] = 0;
+  }
+}
+// What the rules made (a creature, a pack, a frog, a wall, a zone) has an id of its own for all its
+// life (the rules count them up and never give one twice in a room): a new id in the slot is a new
+// life, the same id is the same life, though it was out of the table a tick (its ground unknown).
+// Players and the town's people keep the tick-to-tick rule: their ids are their seats and indexes,
+// so one gone a tick and back may be someone else, and a new player says so (wire_hist_born).
+wire_made :: (kind: int) -> bool { return kind == WK_PACK || kind == WK_FROG || kind == WK_BEAST || (kind >= WK_STONE && kind <= WK_ZONE); }
 // Slot q's next row begins a new life of its entity, though the id and the slot are the same (#12835).
 wire_hist_born :: (h: [] WireHist, q: int) { if q >= 0 && q < WIRE_SLOTS { h[0].born[q] = true; } }
 // Slot q's next row is a jump (WARP), however short: a page draws nothing between it and the last (#12835).
@@ -569,10 +596,12 @@ wire_hist_put :: (h: [] WireHist, q: int, e: WireS, w: f32, all: bool, moved: bo
   // the same entity as last tick, or a new life of its id; and in one tick a walk, or a jump
   was := (now - 1 + WIRE_BASES) % WIRE_BASES;
   same := now > 0 && h[0].tick[was] == now - 1 && cast(int) h[0].id[was * WIRE_SLOTS + q] == e.id + 1;
+  // the rules' own: the same life while the id is (wire_made); its velocity still only tick to tick
+  life_same := ifx wire_made(e.kind) then cast(int) h[0].last[q] == e.id + 1 else same;
   dx := e.x - h[0].x[q]; dy := e.y - h[0].y[q]; dz := e.z - h[0].z[q];
-  jump := same && (h[0].cut[q] || dx * dx + dy * dy + dz * dz > WIRE_WARP_M * WIRE_WARP_M);
-  if !same || h[0].born[q] { same = false; jump = false; h[0].life[q] = cast(s32) ((cast(int) h[0].life[q] + 1) % 1000000); h[0].warp[q] = 0; }
-  else if jump { h[0].warp[q] = cast(s32) ((cast(int) h[0].warp[q] + 1) % 1000000); }
+  jump := life_same && (h[0].cut[q] || dx * dx + dy * dy + dz * dz > WIRE_WARP_M * WIRE_WARP_M);
+  if !life_same || h[0].born[q] { same = false; jump = false; h[0].life[q] = cast(s32) wire_count_next(cast(int) h[0].life[q]); h[0].warp[q] = 0; }
+  else if jump { same = false; h[0].warp[q] = cast(s32) wire_count_next(cast(int) h[0].warp[q]); }
   m.life = cast(int) h[0].life[q]; m.warp = cast(int) h[0].warp[q];
   h[0].born[q] = false; h[0].cut[q] = false;
   if moved && same && !jump {
@@ -580,7 +609,7 @@ wire_hist_put :: (h: [] WireHist, q: int, e: WireS, w: f32, all: bool, moved: bo
   }
   a := (row * WIRE_SLOTS + q) * WIRE_SF;
   wire_s_pack(m, h[0].f[a..<a + WIRE_SF]);
-  h[0].id[row * WIRE_SLOTS + q] = wire_s32(e.id + 1);
+  h[0].id[row * WIRE_SLOTS + q] = wire_s32(e.id + 1); h[0].last[q] = wire_s32(e.id + 1);
   h[0].x[q] = e.x; h[0].y[q] = e.y; h[0].z[q] = e.z; h[0].w[q] = w; h[0].all[q] = all;
 }
 wire_tenth :: (v: f32) -> f32 { if v != v || v > 1000 || v < -1000 { return 0; } return f32(cast(int) floor(v * 10 + 0.5)) / 10; }
@@ -965,19 +994,96 @@ wire_test_row :: (h: [] WireHist, q: int, t: int) -> WireS {
 }
 #test "wire: an id gone a tick and back is a new LIFE; a jump of more than WIRE_WARP_M in a tick is a WARP, its velocity none" {
   h: [1] WireHist;
-  wire_hist_begin(h[..], 1); wire_hist_put(h[..], 7, WireS.{id = WIRE_ID_MADE + 9, kind = WK_BEAST, x = 1}, 3, false, true);
-  wire_hist_begin(h[..], 2); wire_hist_put(h[..], 7, WireS.{id = WIRE_ID_MADE + 9, kind = WK_BEAST, x = 1.1}, 3, false, true);
+  f := WIRE_ID_FOLK + 9;
+  wire_hist_begin(h[..], 1); wire_hist_put(h[..], 7, WireS.{id = f, kind = WK_FOLK, x = 1}, 3, false, true);
+  wire_hist_begin(h[..], 2); wire_hist_put(h[..], 7, WireS.{id = f, kind = WK_FOLK, x = 1.1}, 3, false, true);
   #assert wire_test_row(h[..], 7, 1).life == 1 && wire_test_row(h[..], 7, 2).life == 1 && wire_test_row(h[..], 7, 2).warp == 0 && wire_test_row(h[..], 7, 2).vx == 3;
   // tick 3: gone; tick 4: the same id again, a new life
   wire_hist_begin(h[..], 3);
-  wire_hist_begin(h[..], 4); wire_hist_put(h[..], 7, WireS.{id = WIRE_ID_MADE + 9, kind = WK_BEAST, x = 1.1}, 3, false, true);
+  wire_hist_begin(h[..], 4); wire_hist_put(h[..], 7, WireS.{id = f, kind = WK_FOLK, x = 1.1}, 3, false, true);
   #assert wire_test_row(h[..], 7, 4).life == 2 && wire_test_row(h[..], 7, 4).warp == 0 && wire_test_row(h[..], 7, 4).vx == 0;
   // tick 5: 10 m on in a tick: a jump, drawn where it lands
-  wire_hist_begin(h[..], 5); wire_hist_put(h[..], 7, WireS.{id = WIRE_ID_MADE + 9, kind = WK_BEAST, x = 11.1}, 3, false, true);
+  wire_hist_begin(h[..], 5); wire_hist_put(h[..], 7, WireS.{id = f, kind = WK_FOLK, x = 11.1}, 3, false, true);
   #assert wire_test_row(h[..], 7, 5).life == 2 && wire_test_row(h[..], 7, 5).warp == 1 && wire_test_row(h[..], 7, 5).vx == 0;
   // a different id in the slot is its own entity, a life of its own
-  wire_hist_begin(h[..], 6); wire_hist_put(h[..], 7, WireS.{id = WIRE_ID_MADE + 10, kind = WK_BEAST, x = 11.1}, 3, false, true);
+  wire_hist_begin(h[..], 6); wire_hist_put(h[..], 7, WireS.{id = f + 1, kind = WK_FOLK, x = 11.1}, 3, false, true);
   #assert wire_test_row(h[..], 7, 6).life == 3 && wire_test_row(h[..], 7, 6).warp == 0;
+}
+#test "wire: what the rules made keeps its LIFE while its id is the slot's, through a tick out of the table (#12835)" {
+  h: [1] WireHist;
+  b := WIRE_ID_MADE + 9;
+  wire_hist_begin(h[..], 1); wire_hist_put(h[..], 7, WireS.{id = b, kind = WK_BEAST, x = 1}, 3, false, true);
+  wire_hist_begin(h[..], 2);   // its ground unknown a tick
+  wire_hist_begin(h[..], 3); wire_hist_put(h[..], 7, WireS.{id = b, kind = WK_BEAST, x = 1.1}, 3, false, true);
+  #assert wire_test_row(h[..], 7, 1).life == 1 && wire_test_row(h[..], 7, 3).life == 1 && wire_test_row(h[..], 7, 3).warp == 0 && wire_test_row(h[..], 7, 3).vx == 0;
+  // a jump after the gap is still a WARP of that life
+  wire_hist_begin(h[..], 4);
+  wire_hist_begin(h[..], 5); wire_hist_put(h[..], 7, WireS.{id = b, kind = WK_BEAST, x = 9}, 3, false, true);
+  #assert wire_test_row(h[..], 7, 5).life == 1 && wire_test_row(h[..], 7, 5).warp == 1;
+  // the next creature in the slot (a new id) is a new life, gap or none; a zone the same
+  wire_hist_begin(h[..], 6); wire_hist_put(h[..], 7, WireS.{id = b + 1, kind = WK_BEAST, x = 9}, 3, false, true);
+  #assert wire_test_row(h[..], 7, 6).life == 2 && wire_test_row(h[..], 7, 6).warp == 0;
+  wire_hist_begin(h[..], 7); wire_hist_put(h[..], 8, WireS.{id = b + 2, kind = WK_ZONE, x = 2}, 2, false, false);
+  wire_hist_begin(h[..], 8);
+  wire_hist_begin(h[..], 9); wire_hist_put(h[..], 8, WireS.{id = b + 2, kind = WK_ZONE, x = 2}, 2, false, false);
+  #assert wire_test_row(h[..], 8, 7).life == 1 && wire_test_row(h[..], 8, 9).life == 1;
+}
+#test "wire: nearly full counters go on from 1, never 0 or the field's clamp; a room's lives are its own (#12835)" {
+  #assert wire_count_next(0) == 1 && wire_count_next(41) == 42;
+  #assert wire_count_next(WIRE_LIFE_MAX - 2) == WIRE_LIFE_MAX - 1 && wire_count_next(WIRE_LIFE_MAX - 1) == 1;
+  #assert WIRE_LIFE_MAX - 1 < 2000000000 + 1 && wire_s32(WIRE_LIFE_MAX - 1) == cast(s32) (WIRE_LIFE_MAX - 1);
+  // a slot whose LIFE and WARP are at their last: the next of each is 1, and the page sees it as new
+  h: [1] WireHist;
+  h[0].life[3] = cast(s32) (WIRE_LIFE_MAX - 2);
+  wire_hist_begin(h[..], 1); wire_hist_put(h[..], 3, WireS.{id = 3, kind = WK_PLAYER, x = 1}, 4, true, true);
+  #assert wire_test_row(h[..], 3, 1).life == WIRE_LIFE_MAX - 1;
+  h[0].warp[3] = cast(s32) (WIRE_LIFE_MAX - 1);
+  wire_hist_begin(h[..], 2); wire_hist_put(h[..], 3, WireS.{id = 3, kind = WK_PLAYER, x = 9}, 4, true, true);
+  #assert wire_test_row(h[..], 3, 2).life == WIRE_LIFE_MAX - 1 && wire_test_row(h[..], 3, 2).warp == 1;
+  wire_hist_born(h[..], 3);
+  wire_hist_begin(h[..], 3); wire_hist_put(h[..], 3, WireS.{id = 3, kind = WK_PLAYER, x = 9}, 4, true, true);
+  #assert wire_test_row(h[..], 3, 3).life == 1 && wire_test_row(h[..], 3, 3).warp == 0;
+  // the same slot and id in a room made again (a restart): a different LIFE, in every slot
+  a: [1] WireHist; c: [1] WireHist;
+  wire_hist_scope(a[..], 1793859327655 + 5 * 7919); wire_hist_scope(c[..], 1793859400000 + 5 * 7919);
+  differ := 0;
+  for q: 0..<WIRE_SLOTS { if a[0].life[q] != c[0].life[q] { differ += 1; } #assert a[0].life[q] >= 0 && cast(int) a[0].life[q] < WIRE_LIFE_MAX - 1; }
+  #assert differ == WIRE_SLOTS;
+  wire_hist_begin(a[..], 1); wire_hist_put(a[..], 2, WireS.{id = 2, kind = WK_PLAYER, x = 1}, 4, true, true);
+  wire_hist_begin(c[..], 1); wire_hist_put(c[..], 2, WireS.{id = 2, kind = WK_PLAYER, x = 1}, 4, true, true);
+  #assert wire_test_row(a[..], 2, 1).life != wire_test_row(c[..], 2, 1).life && wire_test_row(a[..], 2, 1).life > 0;
+}
+#test "wire: a removal of a past life never takes the new one (#12835)" {
+  h: [1] WireHist; st: [1] WireSeat; m: [1] WireMirror;
+  // tick 1: player 4 in view; the page holds it
+  wire_hist_begin(h[..], 1); wire_test_put(h[..], 4, WireS.{id = 4, kind = WK_PLAYER, x = 1});
+  _ := wire_test_send(st[..], h[..], m[..], -1, WIRE_BUDGET, false, true);
+  wire_seat_ack(st[..], h[..], 1);
+  life1 := wire_mirror_of(m[..], 4).life;
+  // tick 2: it left; its x is lost on the way
+  wire_hist_begin(h[..], 2);
+  _ = wire_test_send(st[..], h[..], m[..], -1, WIRE_BUDGET, true, false);
+  #assert st[0].gone[4] == 5 && wire_mirror_of(m[..], 4).id == 4;
+  // tick 3: a new player sits in seat 4: its row goes, and the x owed for the last one does not
+  wire_hist_born(h[..], 4);
+  wire_hist_begin(h[..], 3); wire_test_put(h[..], 4, WireS.{id = 4, kind = WK_PLAYER, x = 30});
+  _ = wire_test_send(st[..], h[..], m[..], -1, WIRE_BUDGET, false, false);
+  w := wire_mirror_of(m[..], 4);
+  #assert st[0].gone[4] == 0 && w.id == 4 && w.x == 30 && w.life != life1;
+  // and no x for it comes after, however long the page is quiet
+  for t: 4..<4 + 2 * WIRE_RESEND {
+    wire_hist_begin(h[..], t); wire_test_put(h[..], 4, WireS.{id = 4, kind = WK_PLAYER, x = 30});
+    _ = wire_test_send(st[..], h[..], m[..], -1, WIRE_BUDGET, false, false);
+  }
+  #assert wire_mirror_of(m[..], 4).id == 4 && wire_mirror_of(m[..], 4).life == w.life;
+  // a removal that did reach the page before the new life's row: the row makes it again, new
+  wire_hist_begin(h[..], 30);
+  _ = wire_test_send(st[..], h[..], m[..], -1, WIRE_BUDGET, false, false);
+  #assert wire_mirror_of(m[..], 4).id == -1;
+  wire_hist_born(h[..], 4);
+  wire_hist_begin(h[..], 31); wire_test_put(h[..], 4, WireS.{id = 4, kind = WK_PLAYER, x = 2});
+  _ = wire_test_send(st[..], h[..], m[..], -1, WIRE_BUDGET, false, false);
+  #assert wire_mirror_of(m[..], 4).x == 2 && wire_mirror_of(m[..], 4).life != w.life;
 }
 #test "wire: the world's word makes a new LIFE with the same id and slot, and a WARP of a short jump; each once (#12835)" {
   h: [1] WireHist;

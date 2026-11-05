@@ -236,6 +236,8 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     if v[0].eg[q].live { continue; }
     v[0].eg[q].live = true; v[0].eg[q].relay = r; v[0].eg[q].tick = 0; v[0].eg[q].cache_tick = -1;
     for t: 0..<WIRE_BASES { v[0].eg[q].hist[0].tick[t] = -1; }
+    // its entities' lives numbered its own (a restart, or this slot's last room, never repeats one: #12835)
+    wire_hist_scope(v[0].eg[q].hist[..], v[0].wall_ms + r * 7919);
     for a: 0..<EG_SEATS * RA_ABS { v[0].eg[q].ab_slot[a] = 0; }
     v[0].eg[q].seed = 1 + (v[0].wall_ms / 7 + r * 7919) % 999999937;
     for s: 0..<EG_SEATS { v[0].eg[q].seat[s] = EgSeat.{}; }
