@@ -21,6 +21,21 @@
 // clock moves on, and each tick each seat gets its D frame.
 
 EG_BEHIND :: 4096;        // bytes waiting on a seat's socket at a tick's start past which its rows wait that tick
+// What each class of a seat's state is owed, and by when (#12837). A seat is behind while more than
+// EG_BEHIND bytes wait on its socket at a tick's start (the host's word, rm_conn_waiting).
+//   - Replaceable state (rows): only the newest matters, so nothing old is queued for it. Not behind,
+//     a changed row goes within WIRE_MAX_AGE ticks (1 s), from the budgets. Behind, only the seat's
+//     own row goes; the rest wait and go against what the page acknowledged once it catches up.
+//   - Lifecycle (x's, who each seat is, WANTED levels, a join's pieces): never dropped. Each goes from
+//     its allowance, behind or not, and again every WIRE_RESEND ticks until a tick that held it is
+//     acknowledged.
+//   - Outcomes and what is aimed at the seat (eg_ev_outcome, ev_who): go the tick they happen, behind
+//     or not, with no allowance.
+//   - Cues: shown and gone. From EG_CUE_BUDGET while not behind; behind, dropped (they would be late).
+// Behind for EG_RESNAP ticks or more, what the page holds is too old to build on: when the socket
+// catches up, the seat gets a snapshot (F 1), from which it goes on as from a join. Behind for good,
+// the host closes the socket (256 KiB or 3 s waiting) and the player rejoins.
+EG_RESNAP :: 60;
 // book:begin room-size
 EG_ROOMS :: 16;                 // simulated rooms at once (256 players)
 EG_SEATS :: 16;
@@ -101,6 +116,7 @@ EgIn :: struct { seq: int; kx: int; ky: int; px: int; py: int; theta: int; b: in
 EgPose :: struct { x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; g: int; clip: int; carry: int; }
 EgSeat :: struct {
   live: bool; conn: int = -1;
+  behind_t: int;   // the tick its socket went behind, 0 not behind (EG_RESNAP)
   // its generation: one more each time a socket takes the seat (a join or its player's rejoin); a
   // socket's frames count only while its generation is the seat's (room-relay.coax rl_heard, #12792)
   gen: int;
@@ -1176,6 +1192,14 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
   if v[0].eg[k].seat[s].old { eg_old_send(v, k, s); return; }   // a page from before wire 3 (room-oldwire.coax)
   st := v[0].eg[k].seat[s..<s + 1];
   now := v[0].eg[k].tick;
+  // behind long enough that what the page holds is too old to build on: a snapshot once it catches up
+  c := st[0].conn;
+  late := c >= 0 && c < CONNS && v[0].conns[c].waiting > EG_BEHIND;
+  if late && st[0].behind_t == 0 { st[0].behind_t = now; }
+  if !late && st[0].behind_t != 0 {
+    if now - st[0].behind_t >= EG_RESNAP && !st[0].full { st[0].full = true; st[0].full_t = 0; v[0].st.resnaps += 1; }
+    st[0].behind_t = 0;
+  }
   full := st[0].full;
   f := ifx full then 1 else 0;
   if full {
@@ -1210,8 +1234,7 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
   rows: [WIRE_SLOTS * 96] u8;
   // a socket still behind (EG_BEHIND bytes waiting when the tick began) gets only its own row and the
   // x's: the rest would be out of date before they went, and the next tick's go against what it heard
-  c := st[0].conn;
-  behind := !full && c >= 0 && c < CONNS && v[0].conns[c].waiting > EG_BEHIND;
+  behind := !full && late;
   if behind { v[0].eg[k].behind_n += 1; }
   // what this seat may hear (room-interest.coax, #12789): near it, room-wide, its own; never whom it blocks
   pick: [WIRE_SLOTS] f32;
@@ -1267,7 +1290,7 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
     if eg_im_event_withheld(v, k, s, q, unseen) { continue; }   // of a player it blocks or can't see (room-blocks.coax, #12789)
     a := v[0].eg[k].ev_at[q]; m := v[0].eg[k].ev_len[q] + 1;
     if v[0].eg[k].ev_out[q] || aimed { ob += m; }
-    else if cue + m > EG_CUE_BUDGET { v[0].st.cue_drop += 1; continue; }
+    else if behind || cue + m > EG_CUE_BUDGET { v[0].st.cue_drop += 1; continue; }
     else { cue += m; }
     eg_out_entry(o[..], v, k, s, f, cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]]);
   }

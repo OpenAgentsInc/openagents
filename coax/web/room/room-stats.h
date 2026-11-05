@@ -70,7 +70,7 @@ static st_conn st_c[CONNS];
 static uint32_t st_ack_all[ST_ACK_BUCKETS], st_ack_all_n;   /* every seat's input-to-ACK this window */
 static int64_t st_burst_n, st_burst_bytes_max, st_burst_ms_max, st_burst_bytes_sum, st_burst_ms_sum;
 static int64_t st_refused_was[16], st_re_tries_was, st_re_ok_was, st_re_seat_was, st_stale_was;
-static int64_t st_alloc_was[10];   /* rm_st_alloc's totals at the window's start (#12836) */
+static int64_t st_alloc_was[11];   /* rm_st_alloc's totals at the window's start (#12836) */
 
 static void st_ack_add(int i, int64_t ms) {
   int64_t b = ms / 2; b = b < 0 ? 0 : b >= ST_ACK_BUCKETS ? ST_ACK_BUCKETS - 1 : b;
@@ -214,7 +214,7 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
   st_line(o, "row wait ticks most=%lld", (long long)wait_most);
   st_line(o, "rows left for later most=%lld", (long long)left_most);
   /* the allowances beside the rows' (#12836): their bytes a second, and the entries each left waiting */
-  int64_t al[10] = {0}; rm_st_alloc(v, (coax_v_s64){al, 10});
+  int64_t al[11] = {0}; rm_st_alloc(v, (coax_v_s64){al, 11});
   st_line(o, "removal bytes a second=%.0f", (al[0] - st_alloc_was[0]) / secs);
   st_line(o, "removals waiting a second=%.1f", (al[1] - st_alloc_was[1]) / secs);
   st_line(o, "player info bytes a second=%.0f", (al[2] - st_alloc_was[2]) / secs);
@@ -225,6 +225,7 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
   st_line(o, "cues dropped a second=%.1f", (al[7] - st_alloc_was[7]) / secs);
   st_line(o, "outcome bytes a second=%.0f", (al[8] - st_alloc_was[8]) / secs);
   st_line(o, "outcomes lost a second=%.1f", (al[9] - st_alloc_was[9]) / secs);
+  st_line(o, "snapshots after a stall a second=%.2f", (al[10] - st_alloc_was[10]) / secs);
   st_line(o, "input to ack p50 ms=%lld", (long long)st_ack_q(NULL, st_ack_all, st_ack_all_n, 500));
   st_line(o, "input to ack p95 ms=%lld", (long long)st_ack_q(NULL, st_ack_all, st_ack_all_n, 950));
   st_line(o, "joins=%lld", (long long)st_burst_n);
@@ -277,7 +278,7 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
   st_out_frames = st_out_bytes = st_in_frames = st_in_bytes = 0;
   st_burst_n = st_burst_bytes_max = st_burst_ms_max = st_burst_bytes_sum = st_burst_ms_sum = 0;
   st_re_tries_was = tries; st_re_ok_was = ok; st_re_seat_was = same; st_stale_was = stale;
-    for (int q = 0; q < 10; q++) st_alloc_was[q] = al[q];
+    for (int q = 0; q < 11; q++) st_alloc_was[q] = al[q];
   for (int64_t r = 0; r < nr && r < 16; r++) st_refused_was[r] = rm_st_refused(v, r);
   for (int i = 0; i < CONNS; i++) { st_c[i].q_bytes = st_c[i].q_ms = 0; st_c[i].aged = st_c[i].wait_most = st_c[i].left_most = 0; memset(st_c[i].ack, 0, sizeof st_c[i].ack); st_c[i].ack_n = 0; }
 }

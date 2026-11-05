@@ -1038,6 +1038,55 @@ ev_test_entry :: (t: string, part: string) -> bool {
   for w: 1..<5 { #assert eg_test_ent(box[..], 2, WIRE_ID_MADE + w).kind == eg_test_ent(box[..], 0, WIRE_ID_MADE + w).kind; }
   #assert v[0].st.ev_lost == 0;
 }
+// A seat's own row every tick and nothing waiting past its age bound, within a tick's bytes (#12837).
+ev_test_healthy :: (v: [] RmServer, k: int, box: [] EgInbox, c: int, own: string) {
+  s := v[0].conns[c].seat;
+  #assert ev_test_entry(eg_test_of(box, c), own);
+  #assert v[0].eg[k].seat[s].rep[0].oldest <= WIRE_MAX_AGE + 1;
+  #assert box[0].bytes[c] <= WIRE_BUDGET + WIRE_AGED_BUDGET + WIRE_LIFE_BUDGET + EG_META_BUDGET + EG_CUE_BUDGET + WIRE_ROW + 1200;
+}
+#test "events: a slow socket beside a healthy one: short stalls catch up with no snapshot, a seat behind 4 s gets its own row and lifecycle only, and once it catches up a snapshot brings it whole within a second (#12837)" #steps 400000000000 {
+  v: [1] RmServer;
+  box: [1] EgInbox;
+  k := ev_test_server(v[..]);
+  rm_control(v[..], "event 1 0 2 12 6 1 3 3 31 1 2 1 100 15 0 0\n");
+  rm_control(v[..], "event 1 0 2 12 6 1 3 3 31 1 2 1 100 15 1 0\n");
+  ev_test_skip(v[..], k);
+  for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
+  s1 := v[0].conns[1].seat;
+  was := v[0].st.resnaps;
+  // intermittent stalls: behind 3 ticks of every 10, for 2 s; no snapshot, and caught up after each
+  for t: 0..<60 {
+    rm_conn_waiting(v[..], 1, ifx t % 10 < 3 then EG_BEHIND + 1 else 0);
+    eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+    ev_test_healthy(v[..], k, box[..], 0, "s 0 ");
+    #assert ev_test_entry(eg_test_of(box[..], 1), "s 1 ");
+    if t % 10 == 9 { #assert v[0].eg[k].seat[s1].rep[0].oldest <= WIRE_MAX_AGE + 1; }
+  }
+  #assert v[0].st.resnaps == was;
+  // behind for good (4 s): its own row and the lifecycle, no cues and no snapshot; seat 0 keeps its bounds
+  for t: 0..<120 {
+    rm_conn_waiting(v[..], 1, EG_BEHIND + 1);
+    eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
+    ev_test_healthy(v[..], k, box[..], 0, "s 0 ");
+    #assert ev_test_entry(eg_test_of(box[..], 1), "s 1 ") && !v[0].eg[k].seat[s1].full;
+    #assert box[0].bytes[1] <= WIRE_ROW + WIRE_LIFE_BUDGET + EG_META_BUDGET + 1200;
+  }
+  #assert v[0].st.resnaps == was && v[0].eg[k].behind_n >= 120;
+  // it catches up: one snapshot, heard, and within a second its page holds the raid as seat 0's does
+  rm_conn_waiting(v[..], 1, 0);
+  for t: 0..<30 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); ev_test_healthy(v[..], k, box[..], 0, "s 0 "); }
+  #assert v[0].st.resnaps == was + 1 && !v[0].eg[k].seat[s1].full && box[0].m[1].cleared >= 2;
+  same := 0; held := 0;
+  for e: 0..<WIRE_MIRROR {
+    a := wire_mirror_get(box[0].m[0..<1], e);
+    if a.id < WIRE_ID_MADE { continue; }
+    held += 1;
+    b := wire_mirror_of(box[0].m[1..<2], a.id);
+    if b.id == a.id && abs(b.x - a.x) <= 2 && abs(b.z - a.z) <= 2 { same += 1; }
+  }
+  #assert held >= 10 && same == held;
+}
 #test "events: an assist shares a raider's XP, however far the seat stands and whoever struck last; the camp's fall pays EV_XP_HELD and its last kills" #steps 16000000000 {
   v: [1] RmServer;
   box: [1] EgInbox;
