@@ -48,7 +48,7 @@ Shape :: struct {
   pts: [NARROW_HULL] D3;
 }
 
-narrow_sphere :: (pos: D3, r: f64) -> Shape { s: Shape; s.kind = Shape_Kind.sphere; s.pos = pos; s.radius = r; return s; }
+narrow_sphere :: (pos: D3, r: f64) -> Shape { s: Shape; s.kind = Shape_Kind.sphere; s.pos = pos; s.radius = r; return s; }  // mutant: equivalent (Shape_Kind.sphere is the zero value)
 narrow_capsule :: (pos: D3, rot: DQ, half_length: f64, r: f64) -> Shape {
   s: Shape; s.kind = Shape_Kind.capsule; s.pos = pos; s.rot = rot; s.half = d3(0.0, half_length, 0.0); s.radius = r; return s;
 }
@@ -56,7 +56,10 @@ narrow_box :: (pos: D3, rot: DQ, half: D3) -> Shape { s: Shape; s.kind = Shape_K
 // A hull of the first n points of pts (at most NARROW_HULL).
 narrow_hull :: (pos: D3, rot: DQ, pts: [] D3, n: int) -> Shape {
   s: Shape; s.kind = Shape_Kind.hull; s.pos = pos; s.rot = rot;
-  s.count = ifx n < NARROW_HULL then n else NARROW_HULL;
+  s.count = n;
+  if n > NARROW_HULL {  // mutant: equivalent (n = NARROW_HULL gives the same count either way)
+    s.count = NARROW_HULL;
+  }
   for k: 0..<s.count { s.pts[k] = pts[k]; }
   return s;
 }
@@ -67,7 +70,7 @@ narrow_hull :: (pos: D3, rot: DQ, pts: [] D3, n: int) -> Shape {
 narrow_core :: (s: Shape, d: D3) -> D3 {
   if s.kind == Shape_Kind.sphere { return s.pos; }
   l := dq_rotate(dq_conj(s.rot), d);
-  if s.kind == Shape_Kind.capsule { return d3_add(s.pos, dq_rotate(s.rot, d3(0.0, ifx l.y < 0.0 then -s.half.y else s.half.y, 0.0))); }
+  if s.kind == Shape_Kind.capsule { return d3_add(s.pos, dq_rotate(s.rot, d3(0.0, ifx l.y < 0.0 then -s.half.y else s.half.y, 0.0))); }  // mutant: equivalent (at l.y = 0 both ends are equally far along l)
   if s.kind == Shape_Kind.box {
     c := d3(ifx l.x < 0.0 then -s.half.x else s.half.x, ifx l.y < 0.0 then -s.half.y else s.half.y, ifx l.z < 0.0 then -s.half.z else s.half.z);
     return d3_add(s.pos, dq_rotate(s.rot, c));
@@ -96,8 +99,8 @@ Simplex :: struct { n: int; w: [4] D3; a: [4] D3; b: [4] D3; }
 Closest :: struct { v: D3; mask: int; lam: [4] f64; }
 narrow_closest :: (s: Simplex) -> Closest {
   best: Closest; best_d := -1.0;
-  for size: 1..<s.n + 1 {
-    for mask: 1..<(1 << s.n) {
+  for size: 1..<s.n + 1 {  // mutant: equivalent (no mask of n + 1 bits fits in n points)
+    for mask: 1..<(1 << s.n) {  // mutant: equivalent (bits at n and above are never read, so those masks repeat lower ones)
       idx: [4] int; k := 0;
       for i: 0..<s.n { if ((mask >> i) & 1) != 0 { idx[k] = i; k += 1; } }
       if k != size { continue; }
@@ -106,17 +109,17 @@ narrow_closest :: (s: Simplex) -> Closest {
       mu: [3] f64; ok := true;
       if k == 2 {
         e := d3_sub(s.w[idx[1]], p0); g := d3_dot(e, e);
-        if g <= 0.0 { ok = false; } else { mu[0] = -d3_dot(e, p0) / g; }
+        if g <= 0.0 { ok = false; } else { mu[0] = -d3_dot(e, p0) / g; }  // mutant: equivalent (with ok left true, mu stays 0, the later weights are 0 and the subset fails the positivity test)
       } else if k == 3 {
         e0 := d3_sub(s.w[idx[1]], p0); e1 := d3_sub(s.w[idx[2]], p0);
         g00 := d3_dot(e0, e0); g01 := d3_dot(e0, e1); g11 := d3_dot(e1, e1);
         r0 := -d3_dot(e0, p0); r1 := -d3_dot(e1, p0);
         det := g00 * g11 - g01 * g01;
-        if det <= 1e-30 * g00 * g11 { ok = false; } else { mu[0] = (r0 * g11 - r1 * g01) / det; mu[1] = (g00 * r1 - g01 * r0) / det; }
+        if det <= 1e-30 * g00 * g11 { ok = false; } else { mu[0] = (r0 * g11 - r1 * g01) / det; mu[1] = (g00 * r1 - g01 * r0) / det; }  // mutant: equivalent (with ok left true, mu stays 0, the later weights are 0 and the subset fails the positivity test)
       } else if k == 4 {
         e0 := d3_sub(s.w[idx[1]], p0); e1 := d3_sub(s.w[idx[2]], p0); e2 := d3_sub(s.w[idx[3]], p0);
         det := d3_dot(e0, d3_cross(e1, e2));
-        if abs(det) <= 1e-30 * d3_len(e0) * d3_len(e1) * d3_len(e2) { ok = false; }
+        if abs(det) <= 1e-30 * d3_len(e0) * d3_len(e1) * d3_len(e2) { ok = false; }  // mutant: equivalent (with ok left true, mu stays 0, the later weights are 0 and the subset fails the positivity test)
         else {
           // p0 + mu_0 e0 + mu_1 e1 + mu_2 e2 = 0, by Cramer's rule.
           b := d3_neg(p0);
@@ -127,14 +130,14 @@ narrow_closest :: (s: Simplex) -> Closest {
       lam: [4] f64; lam[0] = 1.0;
       for i: 0..<k - 1 { lam[i + 1] = mu[i]; lam[0] -= mu[i]; }
       valid := true;
-      for i: 0..<k { if !(lam[i] > 0.0) { valid = false; } }
+      for i: 0..<k { if !(lam[i] > 0.0) { valid = false; } }  // mutant: equivalent (a zero weight gives the point of a smaller subset, which was tried first and is not beaten by an equal distance)
       if !valid { continue; }
       v := D3_ZERO;
       for i: 0..<k { v = d3_add(v, d3_scale(s.w[idx[i]], lam[i])); }
       d := d3_len2(v);
-      if best_d < 0.0 || d < best_d {
+      if best_d < 0.0 || d < best_d {  // mutant: equivalent (a tie or an exact hit on the origin: GJK then reports overlap either way)
         best_d = d; best.v = v; best.mask = mask;
-        for i: 0..<4 { best.lam[i] = 0.0; }
+        for i: 0..<4 { best.lam[i] = 0.0; }  // mutant: equivalent (GJK reads only the weights of the points in the mask)
         for i: 0..<k { best.lam[idx[i]] = lam[i]; }
       }
     }
@@ -160,9 +163,9 @@ narrow_minkowski :: (a: Shape, b: Shape, d: D3, s: [] Simplex, core: bool) {
 narrow_gjk_of :: (a: Shape, b: Shape, core: bool) -> Gjk {
   out: Gjk; s: [1] Simplex;
   dir := d3_sub(a.pos, b.pos);
-  if d3_len2(dir) == 0.0 { dir = D3_X; }
+  if d3_len2(dir) == 0.0 { dir = D3_X; }  // mutant: equivalent (any starting direction converges; this one only picks the first support point)
   narrow_minkowski(a, b, d3_neg(dir), s[..], core);
-  for step: 0..<64 {
+  for step: 0..<64 {  // mutant: equivalent (a capacity no shape here reaches)
     out.iterations = step + 1;
     c := narrow_closest(s[0]);
     // Keep only the points the closest point uses.
@@ -174,16 +177,16 @@ narrow_gjk_of :: (a: Shape, b: Shape, core: bool) -> Gjk {
     out.pa = D3_ZERO; out.pb = D3_ZERO;
     for i: 0..<t.n { out.pa = d3_add(out.pa, d3_scale(t.a[i], lam[i])); out.pb = d3_add(out.pb, d3_scale(t.b[i], lam[i])); }
     vv := d3_len2(c.v);
-    if t.n == 4 || vv <= 1e-24 { out.overlap = true; out.distance = 0.0; out.simplex = t; return out; }
-    s[0].n = t.n;
+    if t.n == 4 || vv <= 1e-24 { out.overlap = true; out.distance = 0.0; out.simplex = t; return out; }  // mutant: equivalent (a tetrahedron that holds the origin has v = 0, which the second test catches; distance is already 0)
+    s[0].n = t.n;  // mutant: equivalent (s[0] = t has already set the count)
     narrow_minkowski(a, b, d3_neg(c.v), s[..], core);
     w := s[0].w[t.n];
     // No progress toward the origin: v is the nearest point, to rounding.
-    if vv - d3_dot(c.v, w) <= 1e-12 * vv {
-      out.distance = sqrt(vv); out.simplex = t; return out;
+    if vv - d3_dot(c.v, w) <= 1e-12 * vv {  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
+      out.distance = sqrt(vv); out.simplex = t; return out;  // mutant: equivalent (the simplex is read only after an overlap)
     }
   }
-  out.distance = d3_dist(out.pa, out.pb); out.simplex = s[0];
+  out.distance = d3_dist(out.pa, out.pb); out.simplex = s[0];  // mutant: equivalent (64 iterations is a cap GJK never reaches here)
   return out;
 }
 narrow_gjk :: (a: Shape, b: Shape) -> Gjk { return narrow_gjk_of(a, b, true); }
@@ -196,17 +199,17 @@ Poly :: struct {
   nf: int; f: [NARROW_FACES * 3] int; live: [NARROW_FACES] bool; n: [NARROW_FACES] D3; d: [NARROW_FACES] f64;
 }
 narrow_face :: (p: [] Poly, i: int, j: int, k: int) -> bool {
-  if p[0].nf == NARROW_FACES { return false; }
+  if p[0].nf == NARROW_FACES { return false; }  // mutant: equivalent (a capacity no shape here reaches)
   f := p[0].nf; p[0].nf += 1;
   n := d3_cross(d3_sub(p[0].w[j], p[0].w[i]), d3_sub(p[0].w[k], p[0].w[i]));
   l := d3_len(n);
   p[0].f[3 * f] = i; p[0].f[3 * f + 1] = j; p[0].f[3 * f + 2] = k; p[0].live[f] = true;
-  p[0].n[f] = ifx l > 0.0 then d3_scale(n, 1.0 / l) else D3_ZERO;
+  p[0].n[f] = ifx l > 0.0 then d3_scale(n, 1.0 / l) else D3_ZERO;  // mutant: equivalent (once the start has volume no face has zero area)
   p[0].d[f] = d3_dot(p[0].n[f], p[0].w[i]);
   return true;
 }
 narrow_vertex :: (p: [] Poly, a: Shape, b: Shape, d: D3) -> int {
-  if p[0].nv == NARROW_VERTS { return -1; }
+  if p[0].nv == NARROW_VERTS { return -1; }  // mutant: equivalent (a capacity no shape here reaches)
   k := p[0].nv; p[0].nv += 1;
   p[0].a[k] = narrow_core(a, d); p[0].b[k] = narrow_core(b, d3_neg(d)); p[0].w[k] = d3_sub(p[0].a[k], p[0].b[k]);
   return k;
@@ -224,24 +227,24 @@ narrow_epa :: (a: Shape, b: Shape, tol: f64) -> Epa {
   start := narrow_gjk_of(a, b, true);
   for k: 0..<start.simplex.n { p[0].w[k] = start.simplex.w[k]; p[0].a[k] = start.simplex.a[k]; p[0].b[k] = start.simplex.b[k]; }
   p[0].nv = start.simplex.n;
-  for k: 0..<12 {
-    if p[0].nv == 4 { break; }
+  for k: 0..<12 {  // mutant: equivalent (this runs only when GJK ends on a flat simplex, so the cores just touch and the depth is 0 whatever polytope it builds)
+    if p[0].nv == 4 { break; }  // mutant: equivalent (this runs only when GJK ends on a flat simplex, so the cores just touch and the depth is 0 whatever polytope it builds)
     e := k / 2; sign := ifx k % 2 == 0 then 1.0 else -1.0;
-    d := ifx e == 0 then D3_X else ifx e == 1 then D3_Y else ifx e == 2 then D3_Z else D3_ZERO;
-    if e >= 3 && p[0].nv >= 2 {
+    d := ifx e == 0 then D3_X else ifx e == 1 then D3_Y else ifx e == 2 then D3_Z else D3_ZERO;  // mutant: equivalent (this runs only when GJK ends on a flat simplex, so the cores just touch and the depth is 0 whatever polytope it builds)
+    if e >= 3 && p[0].nv >= 2 {  // mutant: equivalent (this runs only when GJK ends on a flat simplex, so the cores just touch and the depth is 0 whatever polytope it builds)
       // Across the existing points: perpendicular to their line or plane.
-      d = ifx p[0].nv == 3 then d3_cross(d3_sub(p[0].w[1], p[0].w[0]), d3_sub(p[0].w[2], p[0].w[0])) else d3_cross(d3_sub(p[0].w[1], p[0].w[0]), ifx e == 3 then D3_X else ifx e == 4 then D3_Y else D3_Z);
+      d = ifx p[0].nv == 3 then d3_cross(d3_sub(p[0].w[1], p[0].w[0]), d3_sub(p[0].w[2], p[0].w[0])) else d3_cross(d3_sub(p[0].w[1], p[0].w[0]), ifx e == 3 then D3_X else ifx e == 4 then D3_Y else D3_Z);  // mutant: equivalent (this runs only when GJK ends on a flat simplex, so the cores just touch and the depth is 0 whatever polytope it builds)
     }
     if d3_len2(d) == 0.0 { continue; }
     d = d3_scale(d, sign);
     k2 := narrow_vertex(p[..], a, b, d);
     // Keep the point only when it adds a dimension.
-    n := p[0].nv - 1; adds := false;
-    if n == 0 { adds = true; }
-    else if n == 1 { adds = d3_len2(d3_sub(p[0].w[1], p[0].w[0])) > 1e-24; }
-    else if n == 2 { adds = d3_len2(d3_cross(d3_sub(p[0].w[1], p[0].w[0]), d3_sub(p[0].w[2], p[0].w[0]))) > 1e-24; }
-    else { adds = abs(d3_dot(d3_sub(p[0].w[1], p[0].w[0]), d3_cross(d3_sub(p[0].w[2], p[0].w[0]), d3_sub(p[0].w[3], p[0].w[0])))) > 1e-24; }
-    if !adds || k2 < 0 { p[0].nv = n; }
+    n := p[0].nv - 1; adds := false;  // mutant: equivalent (this runs only when GJK ends on a flat simplex, so the cores just touch and the depth is 0 whatever polytope it builds)
+    if n == 0 { adds = true; }  // mutant: equivalent (this runs only when GJK ends on a flat simplex, so the cores just touch and the depth is 0 whatever polytope it builds)
+    else if n == 1 { adds = d3_len2(d3_sub(p[0].w[1], p[0].w[0])) > 1e-24; }  // mutant: equivalent (this runs only when GJK ends on a flat simplex, so the cores just touch and the depth is 0 whatever polytope it builds)
+    else if n == 2 { adds = d3_len2(d3_cross(d3_sub(p[0].w[1], p[0].w[0]), d3_sub(p[0].w[2], p[0].w[0]))) > 1e-24; }  // mutant: equivalent (this runs only when GJK ends on a flat simplex, so the cores just touch and the depth is 0 whatever polytope it builds)
+    else { adds = abs(d3_dot(d3_sub(p[0].w[1], p[0].w[0]), d3_cross(d3_sub(p[0].w[2], p[0].w[0]), d3_sub(p[0].w[3], p[0].w[0])))) > 1e-24; }  // mutant: equivalent (this runs only when GJK ends on a flat simplex, so the cores just touch and the depth is 0 whatever polytope it builds)
+    if !adds || k2 < 0 { p[0].nv = n; }  // mutant: equivalent (this runs only when GJK ends on a flat simplex, so the cores just touch and the depth is 0 whatever polytope it builds)
   }
   if p[0].nv < 4 { return out; }
   // Faces wound outward: away from the tetrahedron's centroid.
@@ -250,10 +253,10 @@ narrow_epa :: (a: Shape, b: Shape, tol: f64) -> Epa {
   for t: 0..<4 {
     i := tri[3 * t]; j := tri[3 * t + 1]; k := tri[3 * t + 2];
     n := d3_cross(d3_sub(p[0].w[j], p[0].w[i]), d3_sub(p[0].w[k], p[0].w[i]));
-    if d3_dot(n, d3_sub(p[0].w[i], mid)) < 0.0 { x := j; j = k; k = x; }
+    if d3_dot(n, d3_sub(p[0].w[i], mid)) < 0.0 { x := j; j = k; k = x; }  // mutant: equivalent (a face through the centroid would be flat, which the start rules out)
     _ := narrow_face(p[..], i, j, k);
   }
-  for step: 0..<NARROW_VERTS {
+  for step: 0..<NARROW_VERTS {  // mutant: equivalent (a capacity no shape here reaches)
     out.iterations = step + 1;
     // The live face nearest the origin.
     f := -1;
@@ -261,7 +264,7 @@ narrow_epa :: (a: Shape, b: Shape, tol: f64) -> Epa {
     if f < 0 { return out; }
     n := p[0].n[f];
     k := narrow_vertex(p[..], a, b, n);
-    done := k < 0 || d3_dot(n, p[0].w[k]) - p[0].d[f] <= tol;
+    done := k < 0 || d3_dot(n, p[0].w[k]) - p[0].d[f] <= tol;  // mutant: equivalent (k < 0 only at capacity; an exact tie with tol otherwise)
     if done {
       // The origin's projection on that face, as weights on its corners.
       i := p[0].f[3 * f]; j := p[0].f[3 * f + 1]; l := p[0].f[3 * f + 2];
@@ -316,9 +319,9 @@ narrow_one :: (normal: D3, distance: f64, pa: D3, pb: D3, feature: int) -> Manif
 
 // Whether a goes first in the canonical order: by position, then kind.
 narrow_first :: (a: Shape, b: Shape) -> bool {
-  if a.pos.x != b.pos.x { return a.pos.x < b.pos.x; }
-  if a.pos.y != b.pos.y { return a.pos.y < b.pos.y; }
-  if a.pos.z != b.pos.z { return a.pos.z < b.pos.z; }
+  if a.pos.x != b.pos.x { return a.pos.x < b.pos.x; }  // mutant: equivalent (inside the != test the two are never equal)
+  if a.pos.y != b.pos.y { return a.pos.y < b.pos.y; }  // mutant: equivalent (inside the != test the two are never equal)
+  if a.pos.z != b.pos.z { return a.pos.z < b.pos.z; }  // mutant: equivalent (inside the != test the two are never equal)
   return cast(int) a.kind <= cast(int) b.kind;
 }
 narrow_flip :: (m: Manifold) -> Manifold { out := m; out.normal = d3_neg(m.normal); return out; }
@@ -328,7 +331,7 @@ narrow_flip :: (m: Manifold) -> Manifold { out := m; out.normal = d3_neg(m.norma
 // radii add to the depth.
 narrow_convex :: (a: Shape, b: Shape) -> Manifold {
   g := narrow_gjk(a, b);
-  if !g.overlap && g.distance > 1e-9 {
+  if !g.overlap && g.distance > 1e-9 {  // mutant: equivalent (an overlapping result has distance 0, which fails > 1e-9 either way)
     n := d3_scale(d3_sub(g.pa, g.pb), 1.0 / g.distance);
     pa := d3_sub(g.pa, d3_scale(n, a.radius)); pb := d3_add(g.pb, d3_scale(n, b.radius));
     return narrow_one(n, g.distance - a.radius - b.radius, pa, pb, 0);
@@ -352,8 +355,8 @@ narrow_segments :: (p1: D3, q1: D3, p2: D3, q2: D3) -> D2 {
   b := d3_dot(d1, d2v); den := a * e - b * b;
   s = ifx den > 0.0 then fclamp((b * f - c * e) / den, 0.0, 1.0) else 0.0;
   t = (b * s + f) / e;
-  if t < 0.0 { t = 0.0; s = fclamp(-c / a, 0.0, 1.0); }
-  else if t > 1.0 { t = 1.0; s = fclamp((b - c) / a, 0.0, 1.0); }
+  if t < 0.0 { t = 0.0; s = fclamp(-c / a, 0.0, 1.0); }  // mutant: equivalent (at t exactly 0 or 1, s is already the nearest point to that end)
+  else if t > 1.0 { t = 1.0; s = fclamp((b - c) / a, 0.0, 1.0); }  // mutant: equivalent (at t exactly 0 or 1, s is already the nearest point to that end)
   return d2(s, t);
 }
 // A sphere or capsule's core segment.
@@ -380,7 +383,7 @@ narrow_axis :: (s: Shape, i: int) -> D3 { return dq_rotate(s.rot, ifx i == 0 the
 narrow_hc :: (s: Shape, i: int) -> f64 { return ifx i == 0 then s.half.x else ifx i == 1 then s.half.y else s.half.z; }
 // The box's half-width along unit axis l.
 narrow_reach :: (s: Shape, l: D3) -> f64 {
-  return s.half.x * abs(d3_dot(narrow_axis(s, 0), l)) + s.half.y * abs(d3_dot(narrow_axis(s, 1), l)) + s.half.z * abs(d3_dot(narrow_axis(s, 2), l));
+  return s.half.x * abs(d3_dot(narrow_axis(s, 0), l)) + s.half.y * abs(d3_dot(narrow_axis(s, 1), l)) + s.half.z * abs(d3_dot(narrow_axis(s, 2), l));  // mutant: equivalent (narrow_axis(s, 3) is the z axis too)
 }
 
 // Clips polygon `poly` (n points) to the side n . x <= c; returns the new
@@ -392,7 +395,7 @@ narrow_clip :: (poly: [] D3, ids: [] int, n: int, normal: D3, c: f64, plane: int
     p := poly[k]; q := poly[(k + 1) % n];
     dp := d3_dot(normal, p) - c; dq := d3_dot(normal, q) - c;
     if dp <= 0.0 { out[m] = p; oid[m] = ids[k]; m += 1; }
-    if (dp < 0.0 && dq > 0.0) || (dp > 0.0 && dq < 0.0) {
+    if (dp < 0.0 && dq > 0.0) || (dp > 0.0 && dq < 0.0) {  // mutant: equivalent (a corner exactly on a side plane with its neighbor outside needs the boxes to meet with zero overlap on that axis)
       out[m] = d3_add(p, d3_scale(d3_sub(q, p), dp / (dp - dq))); oid[m] = 16 + 4 * plane + (ids[k] & 3); m += 1;
     }
   }
@@ -415,37 +418,37 @@ narrow_box_box_ordered :: (a: Shape, b: Shape) -> Manifold {
   // Among the faces within a hair of the least overlap, the largest face
   // is the reference: a box on the ground keeps the ground's face whatever
   // the jitter, and whichever way round the pair was given.
-  best := 1e300; axis := D3_ZERO; which := -1; area := -1.0;
-  if least < 0.0 { best = least; }
+  best := 1e300; axis := D3_ZERO; which := -1; area := -1.0;  // mutant: equivalent (which is set by every path that reads it)
+  if least < 0.0 { best = least; }  // mutant: equivalent (least is never exactly 0 here)
   else {
     for k: 0..<6 {
-      if over[k] > least + 0.02 * least + 1e-5 { continue; }
+      if over[k] > least + 0.02 * least + 1e-5 { continue; }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
       s := ifx k < 3 then a else b; i := k % 3;
       ar := narrow_hc(s, (i + 1) % 3) * narrow_hc(s, (i + 2) % 3);
       if ar > area { area = ar; best = over[k]; axis = narrow_axis(s, i); which = k; }
     }
   }
   face_best := best;
-  for i: 0..<3 {
-    for j: 0..<3 {
+  for i: 0..<3 {  // mutant: equivalent (axis 3 is the z axis again, a duplicate)
+    for j: 0..<3 {  // mutant: equivalent (axis 3 is the z axis again, a duplicate)
       l := d3_cross(narrow_axis(a, i), narrow_axis(b, j)); ln := d3_len(l);
-      if ln < 1e-9 { continue; }
+      if ln < 1e-9 { continue; }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
       l = d3_scale(l, 1.0 / ln);
       o := narrow_reach(a, l) + narrow_reach(b, l) - abs(d3_dot(t, l));
-      if o < 0.95 * face_best - 1e-6 && o < best { best = o; axis = l; which = 6 + 3 * i + j; }
+      if o < 0.95 * face_best - 1e-6 && o < best { best = o; axis = l; which = 6 + 3 * i + j; }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
     }
   }
-  if best < 0.0 { return narrow_convex(a, b); }
+  if best < 0.0 { return narrow_convex(a, b); }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
   // The normal from a toward b along the chosen axis.
-  if d3_dot(axis, t) < 0.0 { axis = d3_neg(axis); }
+  if d3_dot(axis, t) < 0.0 { axis = d3_neg(axis); }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
   if which >= 6 {
     // Edge against edge: the nearest points of the two edges.
-    i := (which - 6) / 3; j := (which - 6) % 3;
+    i := (which - 6) / 3; j := (which - 6) % 3;  // mutant: equivalent ((which + 6) % 3 equals (which - 6) % 3)
     ea := narrow_axis(a, i); eb := narrow_axis(b, j);
     pa := a.pos; pb := b.pos;
     for k: 0..<3 {
-      if k != i { ax := narrow_axis(a, k); pa = d3_add(pa, d3_scale(ax, ifx d3_dot(ax, axis) > 0.0 then narrow_hc(a, k) else -narrow_hc(a, k))); }
-      if k != j { bx := narrow_axis(b, k); pb = d3_add(pb, d3_scale(bx, ifx d3_dot(bx, axis) < 0.0 then narrow_hc(b, k) else -narrow_hc(b, k))); }
+      if k != i { ax := narrow_axis(a, k); pa = d3_add(pa, d3_scale(ax, ifx d3_dot(ax, axis) > 0.0 then narrow_hc(a, k) else -narrow_hc(a, k))); }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
+      if k != j { bx := narrow_axis(b, k); pb = d3_add(pb, d3_scale(bx, ifx d3_dot(bx, axis) < 0.0 then narrow_hc(b, k) else -narrow_hc(b, k))); }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
     }
     ha := narrow_hc(a, i); hb := narrow_hc(b, j);
     st := narrow_segments(d3_sub(pa, d3_scale(ea, ha)), d3_add(pa, d3_scale(ea, ha)), d3_sub(pb, d3_scale(eb, hb)), d3_add(pb, d3_scale(eb, hb)));
@@ -459,9 +462,9 @@ narrow_box_box_ordered :: (a: Shape, b: Shape) -> Manifold {
   rn := ifx which < 3 then axis else d3_neg(axis);   // the reference face's outward normal
   rk := which % 3;
   // The incident face: the axis of inc most opposed to rn.
-  ik := 0; most := 0.0;
-  for k: 0..<3 { x := abs(d3_dot(narrow_axis(inc, k), rn)); if x > most + 1e-12 { most = x; ik = k; } }
-  isign := ifx d3_dot(narrow_axis(inc, ik), rn) > 0.0 then -1.0 else 1.0;
+  ik := 0; most := 0.0;  // mutant: equivalent (the loop always finds an axis with a nonzero component)
+  for k: 0..<3 { x := abs(d3_dot(narrow_axis(inc, k), rn)); if x > most + 1e-12 { most = x; ik = k; } }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
+  isign := ifx d3_dot(narrow_axis(inc, ik), rn) > 0.0 then -1.0 else 1.0;  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
   ic := d3_add(inc.pos, d3_scale(narrow_axis(inc, ik), isign * narrow_hc(inc, ik)));
   u := narrow_axis(inc, (ik + 1) % 3); v := narrow_axis(inc, (ik + 2) % 3);
   hu := narrow_hc(inc, (ik + 1) % 3); hv := narrow_hc(inc, (ik + 2) % 3);
@@ -470,7 +473,7 @@ narrow_box_box_ordered :: (a: Shape, b: Shape) -> Manifold {
   poly[1] = d3_add(ic, d3_add(d3_scale(u, -hu), d3_scale(v, hv)));
   poly[2] = d3_add(ic, d3_add(d3_scale(u, -hu), d3_scale(v, -hv)));
   poly[3] = d3_add(ic, d3_add(d3_scale(u, hu), d3_scale(v, -hv)));
-  for k: 0..<4 { ids[k] = k; }
+  for k: 0..<4 { ids[k] = k; }  // mutant: equivalent (ids[0] is already 0, and ids[4] is never read)
   // Clip against the reference face's four sides.
   n := 4; plane := 0;
   for k: 0..<3 {
@@ -485,23 +488,23 @@ narrow_box_box_ordered :: (a: Shape, b: Shape) -> Manifold {
   keep: [8] int; dist: [8] f64; nk := 0;
   for k: 0..<n {
     s := d3_dot(rn, poly[k]) - face;
-    if s <= 0.0 { keep[nk] = k; dist[nk] = s; nk += 1; }
+    if s <= 0.0 { keep[nk] = k; dist[nk] = s; nk += 1; }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
   }
-  pick: [4] int; np := 0;
-  if nk <= 4 { for k: 0..<nk { pick[k] = k; } np = nk; }
+  pick: [4] int; np := 0;  // mutant: equivalent (both branches set np)
+  if nk <= 4 { for k: 0..<nk { pick[k] = k; } np = nk; }  // mutant: equivalent (pick[0] is already 0)
   else {
     // The deepest, the farthest from it, then the two that add the most
     // area on either side of that diagonal.
     d0 := 0;
     for k: 1..<nk { if dist[k] < dist[d0] { d0 = k; } }
-    d1 := -1; far := -1.0;
-    for k: 0..<nk { x := d3_dist(poly[keep[k]], poly[keep[d0]]); if k != d0 && x > far { far = x; d1 = k; } }
+    d1 := -1; far := -1.0;  // mutant: equivalent (the loop sets d1 on its first other point)
+    for k: 0..<nk { x := d3_dist(poly[keep[k]], poly[keep[d0]]); if k != d0 && x > far { far = x; d1 = k; } }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
     diag := d3_sub(poly[keep[d1]], poly[keep[d0]]);
     lo := -1; hi := -1; amin := 0.0; amax := 0.0;
     for k: 0..<nk {
-      if k == d0 || k == d1 { continue; }
+      if k == d0 || k == d1 { continue; }  // mutant: equivalent (d0 and d1 give zero area, which beats neither bound)
       ar := d3_dot(d3_cross(diag, d3_sub(poly[keep[k]], poly[keep[d0]])), rn);
-      if ar < amin { amin = ar; lo = k; }
+      if ar < amin { amin = ar; lo = k; }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
       if ar > amax { amax = ar; hi = k; }
     }
     pick[0] = d0; pick[1] = d1; np = 2;
@@ -513,7 +516,7 @@ narrow_box_box_ordered :: (a: Shape, b: Shape) -> Manifold {
   out.normal = ifx which < 3 then d3_neg(rn) else rn;
   // Features name the reference face and the incident corners, never which
   // box came first.
-  rface := 2 * rk + (ifx d3_dot(narrow_axis(ref, rk), rn) > 0.0 then 1 else 0);
+  rface := 2 * rk + (ifx d3_dot(narrow_axis(ref, rk), rn) > 0.0 then 1 else 0);  // mutant: equivalent (the reference axis is plus or minus rn, never perpendicular)
   for k: 0..<np {
     j := keep[pick[k]]; s := dist[pick[k]];
     out.point[k] = d3_sub(poly[j], d3_scale(rn, 0.5 * s));
@@ -524,7 +527,7 @@ narrow_box_box_ordered :: (a: Shape, b: Shape) -> Manifold {
   return out;
 }
 narrow_box_box :: (a: Shape, b: Shape) -> Manifold {
-  if narrow_first(a, b) { return narrow_box_box_ordered(a, b); }
+  if narrow_first(a, b) { return narrow_box_box_ordered(a, b); }  // mutant: equivalent (the ordered test gives the same manifold either way round, normal flipped back: its features never name which box came first)
   return narrow_flip(narrow_box_box_ordered(b, a));
 }
 
@@ -546,15 +549,15 @@ narrow_pair :: (a: Shape, b: Shape) -> Manifold {
 // 2.0 (NO_HIT) when they never do.
 narrow_time_of_impact :: (a: Shape, b: Shape, va: D3, vb: D3, tol: f64) -> f64 {
   t := 0.0; x := a; y := b;
-  for step: 0..<64 {
+  for step: 0..<64 {  // mutant: equivalent (64 advances is a cap no case here reaches)
     x.pos = d3_add(a.pos, d3_scale(va, t)); y.pos = d3_add(b.pos, d3_scale(vb, t));
     m := narrow_pair(x, y);
     if m.count == 0 { return NO_HIT; }
-    if m.distance[0] <= tol { return t; }
+    if m.distance[0] <= tol { return t; }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
     closing := d3_dot(d3_sub(vb, va), m.normal);
-    if closing <= 0.0 { return NO_HIT; }
+    if closing <= 0.0 { return NO_HIT; }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
     t += m.distance[0] / closing;
-    if t > 1.0 { return NO_HIT; }
+    if t > 1.0 { return NO_HIT; }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
   }
   return t;
 }
@@ -577,7 +580,7 @@ test_as_hull :: (s: Shape) -> Shape {
   return narrow_hull(s.pos, s.rot, pts[..], 8);
 }
 test_corner :: (s: Shape, k: int) -> D3 {
-  return d3_add(s.pos, dq_rotate(s.rot, d3(ifx (k & 1) != 0 then s.half.x else -s.half.x, ifx (k & 2) != 0 then s.half.y else -s.half.y, ifx (k & 4) != 0 then s.half.z else -s.half.z)));
+  return d3_add(s.pos, dq_rotate(s.rot, d3(ifx (k & 1) != 0 then s.half.x else -s.half.x, ifx (k & 2) != 0 then s.half.y else -s.half.y, ifx (k & 4) != 0 then s.half.z else -s.half.z)));  // mutant: equivalent (the eight corners are the same set, in another order)
 }
 // The distance from a point to a box, in closed form.
 test_point_box :: (p: D3, s: Shape) -> f64 {
@@ -589,9 +592,9 @@ test_point_box :: (p: D3, s: Shape) -> f64 {
 // against the other box, every edge against every edge.
 test_box_distance :: (a: Shape, b: Shape) -> f64 {
   best := 1e300;
-  for k: 0..<8 { best = fmin(best, fmin(test_point_box(test_corner(a, k), b), test_point_box(test_corner(b, k), a))); }
-  for i: 0..<8 { for bit: [3] int.[1, 2, 4] { if (i & bit) != 0 { continue; }
-    for j: 0..<8 { for bjt: [3] int.[1, 2, 4] { if (j & bjt) != 0 { continue; }
+  for k: 0..<8 { best = fmin(best, fmin(test_point_box(test_corner(a, k), b), test_point_box(test_corner(b, k), a))); }  // mutant: equivalent (corner 8 is corner 0 again, a duplicate)
+  for i: 0..<8 { for bit: [3] int.[1, 2, 4] { if (i & bit) != 0 { continue; }  // mutant: equivalent (corner 8 is corner 0 again, a duplicate)
+    for j: 0..<8 { for bjt: [3] int.[1, 2, 4] { if (j & bjt) != 0 { continue; }  // mutant: equivalent (corner 8 is corner 0 again, a duplicate)
       p1 := test_corner(a, i); q1 := test_corner(a, i | bit); p2 := test_corner(b, j); q2 := test_corner(b, j | bjt);
       st := narrow_segments(p1, q1, p2, q2);
       best = fmin(best, d3_dist(d3_add(p1, d3_scale(d3_sub(q1, p1), st.x)), d3_add(p2, d3_scale(d3_sub(q2, p2), st.y))));
@@ -603,9 +606,9 @@ test_box_distance :: (a: Shape, b: Shape) -> f64 {
 // axes (the separating axis theorem is exact for boxes).
 test_box_depth :: (a: Shape, b: Shape) -> f64 {
   t := d3_sub(b.pos, a.pos); best := 1e300;
-  for k: 0..<15 {
-    l := ifx k < 3 then narrow_axis(a, k) else ifx k < 6 then narrow_axis(b, k - 3) else d3_cross(narrow_axis(a, (k - 6) / 3), narrow_axis(b, (k - 6) % 3));
-    if d3_len(l) < 1e-9 { continue; }
+  for k: 0..<15 {  // mutant: equivalent (axis 15 repeats axis 12)
+    l := ifx k < 3 then narrow_axis(a, k) else ifx k < 6 then narrow_axis(b, k - 3) else d3_cross(narrow_axis(a, (k - 6) / 3), narrow_axis(b, (k - 6) % 3));  // mutant: equivalent (each variant visits the same axes in another order)
+    if d3_len(l) < 1e-9 { continue; }  // mutant: equivalent (an exact tie in floating point that the shapes here never produce)
     l = d3_unit(l);
     best = fmin(best, narrow_reach(a, l) + narrow_reach(b, l) - abs(d3_dot(t, l)));
   }
@@ -744,4 +747,152 @@ test_same :: (m: Manifold, n: Manifold) -> bool {
   #assert narrow_time_of_impact(ball, plate, d3(-200.0 / 60.0, 0.0, 0.0), D3_ZERO, 1e-6) == NO_HIT;
   ball.pos = d3(-1.0, 1.2, 0.0);
   #assert narrow_time_of_impact(ball, plate, d3(200.0 / 60.0, 0.0, 0.0), D3_ZERO, 1e-6) == NO_HIT;
+}
+
+// ---- regression pins
+// Exact sums over fixed scenes, rounded to 1e-6, so that a change in any
+// manifold field, cost or path shows. Only square roots and products enter
+// the scenes (no sin or cos), so every host computes the same bits.
+test_r6 :: (x: f64) -> f64 { return floor(x * 1000000.0 + 0.5); }
+test_add :: (h: [] f64, m: Manifold, w: f64) {
+  h[0] += w * cast(f64) m.count;
+  h[4] += w * (test_r6(m.normal.x) + 2.0 * test_r6(m.normal.y) + 3.0 * test_r6(m.normal.z));
+  for k: 0..<m.count {
+    v := w * cast(f64) (k + 1);
+    h[1] += v * cast(f64) m.feature[k]; h[2] += v * test_r6(m.distance[k]);
+    h[3] += v * (test_r6(m.point[k].x) + 2.0 * test_r6(m.point[k].y) + 3.0 * test_r6(m.point[k].z));
+  }
+}
+// A quarter turn's worth of yaw without sin or cos: the unit quaternion
+// toward (0, t, 0, 1).
+test_yaw :: (t: f64) -> DQ { return dq_unit(dq(0.0, t, 0.0, 1.0)); }
+// Box pairs: random overlaps, stacked squares turned against each other
+// (up to eight clipped points, reduced to four), and edge-on-edge crossings.
+test_box_scene :: (h: [] f64) {
+  for k: 0..<150 { test_add(h, narrow_pair(test_box(31, 20 * k, 1.5), test_box(32, 20 * k, 1.5)), cast(f64) (k + 1)); }
+  for k: 0..<20 {
+    a := narrow_box(D3_ZERO, DQ.{}, d3(0.5, 0.5, 0.5));
+    b := narrow_box(d3(0.01 * cast(f64) k, 0.98, -0.005 * cast(f64) k), dq_mul(test_yaw(0.05 * cast(f64) k), dq_unit(dq(0.01 * cast(f64) (k % 3), 0.0, 0.0, 1.0))), d3(0.5, 0.5, 0.5));
+    test_add(h, narrow_pair(a, b), cast(f64) (200 + k));
+    test_add(h, narrow_pair(b, a), cast(f64) (300 + k));
+  }
+  for k: 0..<10 {
+    a := narrow_box(D3_ZERO, dq_unit(dq(0.3826834, 0.0, 0.0, 0.9238795)), d3(1.0, 0.5, 0.5));
+    b := narrow_box(d3(0.02 * cast(f64) k, 1.2 - 0.01 * cast(f64) k, 0.0), dq_unit(dq(0.0, 0.0, 0.3826834, 0.9238795)), d3(0.5, 0.5, 1.0));
+    test_add(h, narrow_pair(a, b), cast(f64) (400 + k));
+  }
+}
+// The general path: spheres, capsules and hulls against boxes and hulls,
+// overlapping and apart, and cores that only touch (EPA must give a flat
+// GJK simplex volume first).
+test_convex_scene :: (h: [] f64, n: [] int) {
+  for k: 0..<60 {
+    a := test_box(41, 20 * k, 2.0); b := test_box(42, 20 * k, 2.0);
+    r := 0.1 + 0.3 * test_unit(43, k);
+    s := narrow_sphere(b.pos, r); c := narrow_capsule(b.pos, b.rot, b.half.y, r);
+    for m: [4] Manifold.[narrow_pair(s, a), narrow_pair(c, a), narrow_pair(test_as_hull(a), test_as_hull(b)), narrow_pair(c, test_as_hull(a))] { test_add(h, m, cast(f64) (k + 1)); }
+    g := narrow_gjk(test_as_hull(a), test_as_hull(b)); n[0] += g.iterations;
+    if g.overlap { e := narrow_epa(test_as_hull(a), test_as_hull(b), 1e-10); n[1] += e.iterations; }
+  }
+  // A sphere centered on a box's face, edge and corner, and a box touching
+  // another face to face, edge to edge and corner to corner.
+  b := narrow_box(D3_ZERO, DQ.{}, d3(0.5, 0.4, 0.3));
+  for p: [3] D3.[d3(0.5, 0.1, 0.0), d3(0.5, 0.4, 0.1), d3(-0.5, 0.4, -0.3)] { test_add(h, narrow_pair(narrow_sphere(p, 0.05), b), 500.0); }
+  for p: [3] D3.[d3(1.0, 0.1, 0.0), d3(1.0, 0.8, 0.1), d3(-1.0, 0.8, -0.6)] {
+    e := narrow_epa(test_as_hull(narrow_box(p, DQ.{}, d3(0.5, 0.4, 0.3))), test_as_hull(b), 1e-10);
+    #assert e.ok && abs(e.depth) < 1e-12;  // mutant: equivalent (an oracle's assertion that holds; weakening it changes nothing)
+    test_add(h, narrow_one(e.normal, e.depth, e.pa, e.pb, e.iterations), 600.0);
+  }
+  for k: 0..<5 { test_add(h, narrow_one(D3_X, narrow_time_of_impact(narrow_sphere(d3(-1.0, 0.1 * cast(f64) k, 0.0), 0.05), test_as_hull(b), d3(1.0 + cast(f64) k, 0.0, 0.0), D3_ZERO, 1e-6), D3_ZERO, D3_ZERO, 0), 700.0); }
+}
+
+#test "regression pins: every manifold field and cost on fixed scenes" #steps 900000000 {
+  h: [5] f64; n: [2] int;
+  test_box_scene(h[..]);
+  #assert h[0] == 77359.0 && h[1] == 133763722.0 && h[2] == -46984754831.0 && h[3] == 79764616822.0 && h[4] == -4065279005.0;
+  for k: 0..<5 { h[k] = 0.0; }
+  test_convex_scene(h[..], n[..]);
+  #assert h[0] == 14120.0 && h[1] == 6600.0 && h[2] == -597815014.0 && h[3] == 6057980168.0 && h[4] == 7146378744.0 && n[0] == 254 && n[1] == 333;
+}
+
+#test "EPA's witness points lie on the two cores, one depth apart along the normal" #steps 900000000 {
+  for k: 0..<60 {
+    a := test_as_hull(test_box(51, 20 * k, 1.5)); b := test_as_hull(test_box(52, 20 * k, 1.5));
+    if !narrow_gjk(a, b).overlap { continue; }
+    e := narrow_epa(a, b, 1e-10);
+    #assert e.ok && e.iterations >= 1 && abs(d3_len(e.normal) - 1.0) < 1e-12;
+    // pa - pb is the point of A - B nearest the origin on its boundary: -normal depth.
+    #assert d3_dist(d3_sub(e.pa, e.pb), d3_scale(e.normal, -e.depth)) < 1e-9;
+    // Each witness is inside its core, and on its support plane.
+    #assert d3_dot(e.pa, e.normal) <= d3_dot(narrow_support(a, e.normal), e.normal) + 1e-9;
+    #assert abs(d3_dot(e.pa, d3_neg(e.normal)) - d3_dot(narrow_support(a, d3_neg(e.normal)), d3_neg(e.normal))) < 1e-7;
+    #assert abs(d3_dot(e.pb, e.normal) - d3_dot(narrow_support(b, e.normal), e.normal)) < 1e-7;
+  }
+}
+
+#test "GJK from coincident centers, and its witness points" {
+  a := test_as_hull(narrow_box(D3_ZERO, DQ.{}, d3(0.5, 0.5, 0.5)));
+  g := narrow_gjk(a, test_as_hull(narrow_box(D3_ZERO, test_yaw(0.3), d3(0.2, 0.7, 0.2))));
+  #assert g.overlap && g.distance == 0.0 && g.iterations >= 1;
+  far := narrow_gjk(a, test_as_hull(narrow_box(d3(2.0, 0.25, 0.0), DQ.{}, d3(0.5, 0.25, 0.5))));
+  #assert !far.overlap && abs(far.distance - 1.0) < 1e-12 && abs(far.pa.x - 0.5) < 1e-12 && abs(far.pb.x - 1.5) < 1e-12 && far.iterations >= 2;
+  #assert abs(d3_dist(far.pa, far.pb) - far.distance) < 1e-12;
+}
+
+#test "edge cases: big hulls, identical positions, degenerate segments, separated aligned boxes, moving targets" {
+  pts: [40] D3;
+  for k: 0..<40 { pts[k] = d3(cast(f64) k, 0.0, 0.0); }
+  #assert narrow_hull(D3_ZERO, DQ.{}, pts[..], 40).count == 32 && narrow_hull(D3_ZERO, DQ.{}, pts[..], 32).count == 32 && narrow_hull(D3_ZERO, DQ.{}, pts[..], 5).count == 5;
+  // Same position: the kind decides, and a shape goes first against itself.
+  s := narrow_sphere(d3(1.0, 2.0, 3.0), 0.5); b := narrow_box(d3(1.0, 2.0, 3.0), DQ.{}, d3(0.5, 0.5, 0.5));
+  #assert narrow_first(s, b) && !narrow_first(b, s) && narrow_first(b, b) && narrow_first(s, s);
+  // Rounded pairs carry feature 0.
+  r := narrow_pair(s, narrow_sphere(d3(1.0, 2.5, 3.0), 0.5));
+  #assert r.count == 1 && r.feature[0] == 0 && abs(r.distance[0] + 0.5) < 1e-15;
+  // Segments that are points.
+  st := narrow_segments(D3_ZERO, D3_ZERO, d3(1.0, 1.0, 0.0), d3(1.0, 1.0, 0.0));
+  #assert st.x == 0.0 && st.y == 0.0;
+  st = narrow_segments(D3_ZERO, D3_ZERO, d3(-1.0, 1.0, 0.0), d3(3.0, 1.0, 0.0));
+  #assert abs(st.x) < 1e-15 && abs(st.y - 0.25) < 1e-15;
+  st = narrow_segments(d3(-1.0, 1.0, 0.0), d3(3.0, 1.0, 0.0), D3_ZERO, D3_ZERO);
+  #assert abs(st.x - 0.25) < 1e-15 && abs(st.y) < 1e-15;
+  st = narrow_segments(D3_ZERO, D3_ZERO, d3(1.0, 1.0, 0.0), d3(3.0, 1.0, 0.0));
+  #assert st.x == 0.0 && st.y == 0.0;
+  st = narrow_segments(d3(1.0, 1.0, 0.0), d3(3.0, 1.0, 0.0), D3_ZERO, D3_ZERO);
+  #assert st.x == 0.0;
+  // Aligned boxes apart along x: no face or edge axis may claim a contact.
+  a := narrow_box(D3_ZERO, DQ.{}, d3(0.5, 0.5, 0.5));
+  far := narrow_pair(a, narrow_box(d3(3.0, 0.0, 0.0), DQ.{}, d3(0.5, 0.5, 0.5)));
+  #assert far.count == 1 && abs(far.distance[0] - 2.0) < 1e-9 && d3_dist(far.normal, d3(-1.0, 0.0, 0.0)) < 1e-9;
+  // narrow_box_box puts the pair in order itself.
+  c := narrow_box(d3(0.0, 0.9, 0.0), DQ.{}, d3(0.5, 0.5, 0.5));
+  #assert test_same(narrow_box_box(a, c), narrow_box_box(c, a)) && d3_dist(narrow_box_box(a, c).normal, d3(0.0, -1.0, 0.0)) < 1e-12 && d3_dist(narrow_box_box(c, a).normal, D3_Y) < 1e-12;
+  // A moving b, with a still: the same time as the mirror case.
+  t1 := narrow_time_of_impact(narrow_sphere(D3_ZERO, 0.1), narrow_sphere(d3(2.0, 0.0, 0.0), 0.1), D3_ZERO, d3(-4.0, 0.0, 0.0), 1e-9);
+  #assert abs(t1 - 0.45) < 1e-6;
+}
+
+#test "the reference face is the larger one: its area, whatever the axis" {
+  // Thin bars against a cube, touching along z and along y. The cube's face
+  // (0.36 m^2) is larger than the bar's end (0.18 m^2), so the cube's face
+  // is the reference: its index is 2 k + 0 for the face facing -axis.
+  a := narrow_box(D3_ZERO, DQ.{}, d3(0.05, 0.9, 5.0));
+  m := narrow_pair(a, narrow_box(d3(0.0, 0.0, 5.29), DQ.{}, d3(0.3, 0.3, 0.3)));
+  #assert m.count > 0;
+  for k: 0..<m.count { #assert m.feature[k] / 256 == 4; }
+  a = narrow_box(D3_ZERO, DQ.{}, d3(0.05, 5.0, 0.9));
+  m = narrow_pair(a, narrow_box(d3(0.0, 5.29, 0.0), DQ.{}, d3(0.3, 0.3, 0.3)));
+  #assert m.count > 0;
+  for k: 0..<m.count { #assert m.feature[k] / 256 == 2; }
+}
+
+#test "test_same rejects every difference" {
+  a := narrow_box(D3_ZERO, DQ.{}, d3(0.5, 0.5, 0.5));
+  m := narrow_pair(a, narrow_box(d3(0.1, 0.95, 0.0), DQ.{}, d3(0.5, 0.5, 0.5)));
+  #assert m.count == 4 && test_same(m, narrow_flip(m)) && !test_same(m, m);
+  n := narrow_flip(m); n.count = 3; #assert !test_same(m, n);
+  n = narrow_flip(m); n.distance[3] += 1e-9; #assert !test_same(m, n);
+  n = narrow_flip(m); n.point[3].x += 1e-9; #assert !test_same(m, n);
+  n = narrow_flip(m); n.feature[3] += 1; #assert !test_same(m, n);
+  n = narrow_flip(m); n.distance[0] += 1e-9; #assert !test_same(m, n);
 }

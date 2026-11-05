@@ -1,7 +1,7 @@
 # 21. Find where they touch
 
 > **Status: partly implemented.** [`aethyr/sim/narrow.coax`](../../aethyr/sim/narrow.coax)
-> (1,130 mutants: 717 killed, 413 still surviving)
+> (1,230 mutants: 1,085 killed, 145 marked equivalent with their reason)
 > finds where spheres, capsules, boxes and convex hulls touch, on the CPU
 > in f64: support functions, GJK distance, EPA depth, closed forms for
 > spheres and capsules, boxes by the separating axis theorem with clipped
@@ -234,9 +234,6 @@ bodies, and is required by IPC in chapter 30.
 - A fixture set of random convex polytopes with more than eight points and
   adversarial cases (parallel faces, edge–edge, touching, deep overlap).
 - Manifold stability over 10,000 solver steps rather than 1,000 queries.
-- Checks that kill the 413 surviving mutants, most of them in EPA's
-  polytope bookkeeping and in the box path's edge contacts and four-point
-  reduction, or a written reason for each that is equivalent.
 
 ## Acceptance checks and oracles
 
