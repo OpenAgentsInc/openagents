@@ -1,0 +1,41 @@
+// character-checkpoint-v1 ingress. Publication/ordering is one owner-row-locked
+// database transaction; player.c supplies authenticated bytes and its clock only.
+#authority;
+#load "../../lib/json/json.coax";
+#load "tests/checkpoint-fixture.coax";
+CP_KEYS :: [17]string.["v","owner","process","rev","at","sent","engine","rules","content","hp","max","xp","wanted","x_mm","y_mm","z_mm","yaw_mrad"];
+CP_LOW :: [17]int.[1,1,1,1,1,1,1,1,1,0,1,0,0,-10000000,-10000000,-10000000,-1000000];
+CP_HIGH :: [17]int.[1,2147483647,9007199254740991,9007199254740991,9007199254740991,9007199254740991,2147483647,2147483647,2147483647,99999,99999,9999999,5,10000000,10000000,10000000,1000000];
+cp_number_ok :: (field:int,n:int)->bool {return field>=0&&field<17&&n>=CP_LOW[field]&&n<=CP_HIGH[field];}
+cp_alphabet :: (s:string)->bool {
+  for c:s{if !((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'){return false;}}return true;
+}
+// A decoder's explicit invalid-integer result; zero is a valid HP/coordinate.
+cp_integer :: (d:Jv,node:int)->int {return jv_int(d,node,-9007199254740991);}
+room_checkpoint_input :: (text:string,now:int)->bool #export_c {
+  if text.count>4096||now<1||now>9007199254740991{return false;}
+  nodes:[64]JvNode;d:[1]Jv;if !jv_parse(d[..],text,nodes[..]){return false;}if jv_len(d[0],0)!=20{return false;}
+  values:[17]int;for i:0..<17{values[i]=cp_integer(d[0],jv_get(d[0],0,CP_KEYS[i]));if !cp_number_ok(i,values[i]){return false;}}
+  pid:[40]u8;room:[24]u8;pn:=jv_str(d[0],jv_get(d[0],0,"pid"),pid[..]);rn:=jv_str(d[0],jv_get(d[0],0,"room"),room[..]);
+  if pn<1||rn<1||!cp_alphabet(cast(string)pid[0..<pn])||!cp_alphabet(cast(string)room[0..<rn]){return false;}
+  dead:=jv_kind(d[0],jv_get(d[0],0,"dead"));
+  if (dead!=JV_TRUE&&dead!=JV_FALSE)||(dead==JV_TRUE&&values[9]!=0)||values[9]>values[10]{return false;}
+  // Capture may precede this retry by at most the existing outbox lease. A
+  // signed retry's send clock may differ from the API's by at most two minutes.
+  return values[5]>=now-120000&&values[5]<=now+120000&&values[4]<=values[5]&&values[4]>=values[5]-900000;
+}
+
+// Decisions consumed as SDK transaction effects: 0 writes, all others leave the
+// checkpoint unchanged. Directory and current-checkpoint facts stay locked.
+room_checkpoint_decide :: (durable:bool,known:bool,owner:int,directory:int,process:int,rev:int,xp:int,old_owner:int,old_process:int,old_rev:int,old_xp:int,same:bool)->int #export_c {
+  if !durable{return 7;}if !known{return 6;}if owner!=directory{return 3;}
+  if old_owner==owner {
+    if old_process!=process{return 5;}
+    if rev<old_rev{return 2;}if rev==old_rev{return ifx same then 1 else 4;}
+  }
+  if xp<old_xp{return 8;}return 0;
+}
+room_checkpoint_status :: (code:int)->string #export_c {
+  names:=[9]string.["applied","duplicate","stale","fenced","conflict","process","unknown","unavailable","regression"];
+  return ifx code>=0&&code<9 then names[code] else "unavailable";
+}

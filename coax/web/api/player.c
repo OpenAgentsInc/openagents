@@ -667,6 +667,76 @@ static void room_items(const request *q, PGconn *db) {
   api_json(q->fd, 200, PQgetvalue(r, 0, 0));
   PQclear(r);
 }
+// character-checkpoint-v1: SDK authentication, locked database facts, then the
+// Coax policy's transaction effects. A receipt follows a WAL-flushed commit.
+// This receiver is additive: no room producer or ticket restore uses it yet.
+static void room_checkpoint(const request *q, PGconn *db) {
+  if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a checkpoint\"}"); return; }
+  const char *secret = getenv("OA_ROOM_TICKET_KEY");
+  if (!secret || strlen(secret) < 32) { api_json(q->fd, 503, "{\"error\":\"no ticket key\"}"); return; }
+  char given[80];
+  if (!api_header(q, "X-Room-Mac", given, sizeof given) || strlen(given) != 64 || q->body_len == 0 || q->body_len > 4096) { api_json(q->fd, 401, "{\"error\":\"unsigned\"}"); return; }
+  unsigned char mac[EVP_MAX_MD_SIZE]; unsigned int ml = 0;
+  if (!HMAC(EVP_sha256(), secret, (int)strlen(secret), (const unsigned char *)q->body, q->body_len, mac, &ml) || ml != 32) { api_json(q->fd, 500, "{\"error\":\"no mac\"}"); return; }
+  char want[65]; for (unsigned i = 0; i < 32; i++) snprintf(want + 2 * i, 3, "%02x", mac[i]);
+  unsigned diff = 0; for (int i = 0; i < 64; i++) diff |= (unsigned)(want[i] ^ given[i]);
+  if (diff) { api_json(q->fd, 401, "{\"error\":\"bad mac\"}"); return; }
+  struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
+  int64_t now = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+  if (!room_checkpoint_input((coax_string){.data = (const char *)q->body, .count = q->body_len}, now)) {
+    api_json(q->fd, 400, "{\"error\":\"bad checkpoint\"}"); return;
+  }
+  char body[4097]; memcpy(body, q->body, q->body_len); body[q->body_len] = 0;
+  const char *v[2] = {body, NULL};
+  PGresult *r = NULL;
+  if (!progress_run(db, "BEGIN")) goto failed;
+  if (!progress_run(db, "SET LOCAL synchronous_commit = on")) goto failed;
+  // Lock the identity first; account linking cannot move it halfway through.
+  r = PQexecParams(db, "SELECT coalesce(account,id) FROM verse.players WHERE id = ($1::jsonb->>'pid') FOR SHARE", 1, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) goto failed;
+  bool known = PQntuples(r) == 1;
+  char *who = known ? strdup(PQgetvalue(r, 0, 0)) : strdup("");
+  PQclear(r); r = NULL;
+  if (!who) goto failed;
+  v[1] = who;
+  // The same row is updated by room_owner_next. Holding it until commit closes
+  // the check/write race with a newly issued ticket, including another shard.
+  const char *wv[1] = {who};
+  r = PQexecParams(db, "SELECT gen FROM verse.room_owners WHERE who=$1 FOR UPDATE", 1, NULL, wv, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) { free(who); goto failed; }
+  int64_t directory = PQntuples(r) ? atoll(PQgetvalue(r, 0, 0)) : 0;
+  PQclear(r);
+  r = PQexecParams(db, "SELECT (j->>'owner')::bigint,(j->>'process')::bigint,(j->>'rev')::bigint,(j->>'xp')::bigint,current_setting('fsync')='on' FROM (SELECT $1::jsonb j) s", 1, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { free(who); goto failed; }
+  int64_t owner = atoll(PQgetvalue(r,0,0)), process = atoll(PQgetvalue(r,0,1)), rev = atoll(PQgetvalue(r,0,2)), xp = atoll(PQgetvalue(r,0,3));
+  bool durable = PQgetvalue(r,0,4)[0] == 't';
+  PQclear(r);
+  r = PQexecParams(db, "SELECT owner,process,rev,(body->>'xp')::bigint,body=($1::jsonb-'sent'),accepted_at FROM verse.character_checkpoints_v1 WHERE who=$2 FOR UPDATE", 2, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK) { free(who); goto failed; }
+  bool old = PQntuples(r) == 1;
+  int64_t old_owner = old ? atoll(PQgetvalue(r,0,0)) : 0, old_process = old ? atoll(PQgetvalue(r,0,1)) : 0;
+  int64_t old_rev = old ? atoll(PQgetvalue(r,0,2)) : 0, old_xp = old ? atoll(PQgetvalue(r,0,3)) : 0;
+  bool same = old && PQgetvalue(r,0,4)[0] == 't';
+  int64_t accepted = old ? atoll(PQgetvalue(r,0,5)) : 0;
+  PQclear(r); r = NULL;
+  int64_t code = room_checkpoint_decide(durable,known,owner,directory,process,rev,xp,old_owner,old_process,old_rev,old_xp,same);
+  if (code == 0) {
+    r = PQexecParams(db, "INSERT INTO verse.character_checkpoints_v1 AS c (who,owner,process,rev,body,accepted_at) SELECT $2,(j->>'owner')::bigint,(j->>'process')::bigint,(j->>'rev')::bigint,j-'sent',verse.now_ms() FROM (SELECT $1::jsonb j) s ON CONFLICT (who) DO UPDATE SET owner=EXCLUDED.owner,process=EXCLUDED.process,rev=EXCLUDED.rev,body=EXCLUDED.body,accepted_at=EXCLUDED.accepted_at RETURNING accepted_at", 2, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { free(who); goto failed; }
+    accepted = atoll(PQgetvalue(r,0,0)); PQclear(r); r = NULL;
+  }
+  free(who);
+  if (!progress_run(db, "COMMIT")) goto failed;
+  coax_string status = room_checkpoint_status(code);
+  char out[256];
+  snprintf(out,sizeof out,"{\"v\":1,\"status\":\"%.*s\",\"owner\":%lld,\"process\":%lld,\"rev\":%lld,\"accepted_at\":%lld}", (int)status.count,status.data,(long long)owner,(long long)process,(long long)rev,(long long)((code==0||code==1)?accepted:0));
+  api_json(q->fd, 200, out); return;
+failed:
+  if (r) PQclear(r);
+  api_log("room-checkpoint: %s", PQerrorMessage(db));
+  progress_run(db, "ROLLBACK");
+  api_json(q->fd, 500, "{\"error\":\"not kept\"}");
+}
 static void room_vitals(const request *q, PGconn *db) {
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST vitals\"}"); return; }
   const char *secret = getenv("OA_ROOM_TICKET_KEY");
@@ -846,6 +916,7 @@ bool player_route(const request *q) {
   // oa-room's HP report (#12715): signed with the seat-ticket key, not a player's
   if (!strcmp(rest, "room-vitals")) { room_vitals(q, db); return true; }
   if (!strcmp(rest, "room-items")) { room_items(q, db); return true; }   // the item ledger (#12849)
+  if (!strcmp(rest, "room-checkpoint")) { room_checkpoint(q, db); return true; } // character-checkpoint-v1 (#12838)
   if (!strcmp(rest, "room-control")) { room_control(q, db); return true; }
   // the Everglade instance directory (rooms.c, #12717): a shard's report, and the instances' list
   if (rooms_route(q, db, rest)) return true;

@@ -783,13 +783,20 @@ process (`coax/web/room/room-vitals.coax`, #12793):
 
 So:
 
-- **A crash or SIGKILL while the API is up** loses at most the last 10 s of a
-  seat's HP, XP and WANTED, plus a post in flight (5 s more).
-- **A crash while the API is down** loses everything since the API last
-  answered, up to 15 minutes.
-- **A deploy (SIGTERM) loses nothing** when the API answers within 8 s.
+- **Healthy-service target:** a seat's HP, XP and WANTED are noted every 10 s,
+  with a post taking up to 5 s. This is not a measured hard crash-loss bound:
+  failed posts, retry backoff and a full outbox can extend it.
+- **A crash while the API is down** can lose everything since the last
+  accepted save. There is no finite bound during an unbounded outage; the
+  outbox's 15-minute expiry does not cap the amount of gameplay lost.
+- **A deploy (SIGTERM)** waits up to 8 s. Only accepted final receipts prove
+  saves survived; a timely HTTP answer alone does not prove acceptance.
 - **Not saved at all:** the raid in progress, the town's broken pieces and
   where each player stood are in the room's memory only (#12797).
+
+The additive [checkpoint-v1 receiver](character-checkpoints-v1.md) (#12838)
+persists whole captures, but no room producer or restore ticket uses it yet.
+Its receiver tests do not qualify live room restart recovery.
 
 ### Owner generations: only the newest ticket's room saves (#12834)
 

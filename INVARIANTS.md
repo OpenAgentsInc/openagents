@@ -661,6 +661,19 @@ set-aside seat lapses. Checks: `room.coax` "travel (#12850)", `everglade.coax`
 "net: travel", and `room_checks.coax` travel, which kills the source room
 process right after the route and then the destination's after the arrival.
 
+## Versioned character checkpoints acknowledge a committed whole capture
+
+The additive character-checkpoint-v1 receiver (`coax/web/api/checkpoint-policy.coax`,
+`player.c`, migration 0131, #12838) holds the character's owner-directory row
+locked through commit. Only the exactly issued owner may write; one owner binds
+one process, revisions rise, and equal identities require identical captured
+data (excluding retry send time). XP cannot decrease within this checkpoint
+chain. Its receipt follows a synchronous WAL commit with fsync enabled; only
+`applied` or `duplicate` acknowledge the capture. Legacy vitals receipts do not
+acknowledge checkpoint fields. No room producer or ticket restore uses this
+receiver yet; it supplies no new live crash-loss guarantee. The remaining
+integration gates are in `docs/verse/character-checkpoints-v1.md`.
+
 ## Only a character's newest owner saves its room state
 
 The API is the one directory of owner generations (`verse.room_owners`,

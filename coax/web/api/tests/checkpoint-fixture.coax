@@ -1,0 +1,80 @@
+// Independent boundary data for character-checkpoint-v1; no shipped authority.
+cp_example :: (out:[]u8,change:int,value:int,pid:string,room:string,dead:bool)->string {
+  values:=[17]int.[1,1,1000,1,1000000,1000000,1,1,1,8,20,100,2,1200,-20,-3450,100];
+  if change>=0{values[change]=value;}if change==5{values[4]=value;}
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);for i:0..<17{jo_key(o[..],CP_KEYS[i]);jo_int(o[..],values[i]);}
+  jo_key(o[..],"pid");jo_str(o[..],pid);jo_key(o[..],"room");jo_str(o[..],room);jo_key(o[..],"dead");jo_bool(o[..],dead);jo_end(o[..]);return jo_text(o[..]);
+}
+#test "checkpoint numbers have independent inclusive limits" {
+  low:=[17]int.[1,1,1,1,1,1,1,1,1,0,1,0,0,-10000000,-10000000,-10000000,-1000000];
+  high:=[17]int.[1,2147483647,9007199254740991,9007199254740991,9007199254740991,9007199254740991,2147483647,2147483647,2147483647,99999,99999,9999999,5,10000000,10000000,10000000,1000000];
+  for i:0..<17{#assert cp_number_ok(i,low[i])&&cp_number_ok(i,high[i])&&!cp_number_ok(i,low[i]-1)&&!cp_number_ok(i,high[i]+1);}
+  #assert !cp_number_ok(-1,1)&&!cp_number_ok(17,1);
+}
+#test "checkpoint requires its whole bounded versioned object" {
+  out:[8192]u8;text:=cp_example(out[..],-1,0,"p-one","everglade-1",false);#assert room_checkpoint_input(text,1000000);
+  #assert !room_checkpoint_input("",1000000)&&!room_checkpoint_input("[]",1000000)&&!room_checkpoint_input("{",1000000)&&!room_checkpoint_input("{}",1000000);
+  #assert !room_checkpoint_input(cp_example(out[..],0,2,"p-one","everglade-1",false),1000000);
+  #assert !room_checkpoint_input(cp_example(out[..],1,0,"p-one","everglade-1",false),1000000);
+  text=cp_example(out[..],-1,0,"p-one","everglade-1",false);for i:text.count..<4097{out[i]=' ';}
+  #assert room_checkpoint_input(cast(string)out[0..<4096],1000000)&&!room_checkpoint_input(cast(string)out[0..<4097],1000000);
+  #assert !room_checkpoint_input(text,0)&&!room_checkpoint_input(text,9007199254740992);
+  #assert room_checkpoint_input(cp_example(out[..],5,1,"a","z",false),1);
+  #assert room_checkpoint_input(cp_example(out[..],5,9007199254740991,"a","z",false),9007199254740991);
+  #assert !room_checkpoint_input(cp_example(out[..],5,9007199254740991,"a","z",false),9007199254740992);
+}
+#test "checkpoint identity and living/down/dead HP remain explicit" {
+  out:[8192]u8;
+  #assert room_checkpoint_input(cp_example(out[..],9,0,"p-one","everglade-1",false),1000000);
+  #assert room_checkpoint_input(cp_example(out[..],9,0,"p-one","everglade-1",true),1000000);
+  #assert !room_checkpoint_input(cp_example(out[..],-1,0,"p-one","everglade-1",true),1000000);
+  #assert !room_checkpoint_input(cp_example(out[..],9,21,"p-one","everglade-1",false),1000000);
+  #assert room_checkpoint_input(cp_example(out[..],9,20,"p-one","everglade-1",false),1000000);
+  for bad:[5]string.["","P-one","p_one","p one","p/one"]{#assert !room_checkpoint_input(cp_example(out[..],-1,0,bad,"everglade-1",false),1000000);}
+  #assert room_checkpoint_input(cp_example(out[..],-1,0,"1234567890123456789012345678901234567890","123456789012345678901234",false),1000000);
+  #assert !room_checkpoint_input(cp_example(out[..],-1,0,"12345678901234567890123456789012345678901","everglade-1",false),1000000);
+  #assert !room_checkpoint_input(cp_example(out[..],-1,0,"p-one","1234567890123456789012345",false),1000000);
+  #assert !room_checkpoint_input(cp_example(out[..],-1,0,"p-one","",false),1000000);
+  #assert !room_checkpoint_input(cp_example(out[..],-1,0,"p-one","/bad",false),1000000);
+  #assert cp_alphabet("a0-z9")&&cp_alphabet("");
+}
+#test "checkpoint integer decoding distinguishes null absent and fractional values from zero" {
+  nodes:[16]JvNode;d:[1]Jv;#assert jv_parse(d[..],"[null,0,1.5,\"0\"]",nodes[..]);
+  #assert cp_integer(d[0],1)==-9007199254740991&&cp_integer(d[0],2)==0&&cp_integer(d[0],3)==-9007199254740991&&cp_integer(d[0],4)==-9007199254740991&&cp_integer(d[0],-1)==-9007199254740991;
+}
+#test "checkpoint decisions order directory fencing before duplicate and stable identity before revision" {
+  #assert room_checkpoint_decide(true,true,2,2,100,8,20,2,100,7,20,false)==0;
+  #assert room_checkpoint_decide(true,true,2,2,100,7,20,2,100,7,20,true)==1;
+  #assert room_checkpoint_decide(true,true,2,2,100,6,20,2,100,7,20,true)==2;
+  #assert room_checkpoint_decide(true,true,2,3,100,7,20,2,100,7,20,true)==3;
+  #assert room_checkpoint_decide(true,true,4,3,100,7,20,2,100,7,20,true)==3;
+  #assert room_checkpoint_decide(true,true,2,2,100,7,20,2,100,7,20,false)==4;
+  #assert room_checkpoint_decide(true,true,2,2,101,8,20,2,100,7,20,false)==5;
+  #assert room_checkpoint_decide(true,false,2,2,100,8,20,2,100,7,20,false)==6;
+  #assert room_checkpoint_decide(false,true,2,2,100,8,20,2,100,7,20,false)==7;
+  #assert room_checkpoint_decide(true,true,2,2,100,8,19,2,100,7,20,false)==8;
+  #assert room_checkpoint_decide(true,true,3,3,101,1,20,2,100,7,20,false)==0;
+  #assert room_checkpoint_decide(true,true,2,2,100,1,20,0,0,0,0,false)==0;
+  expected:=[9]string.["applied","duplicate","stale","fenced","conflict","process","unknown","unavailable","regression"];
+  for i:0..<9{#assert room_checkpoint_status(i)==expected[i];}#assert room_checkpoint_status(-1)=="unavailable"&&room_checkpoint_status(9)=="unavailable";
+}
+#test "checkpoint distinguishes capture age from retry send time and API clock skew" {
+  out:[8192]u8;
+  for sent:[2]int.[1000000,1120000]{#assert room_checkpoint_input(cp_example(out[..],5,sent,"p-one","everglade-1",false),1000000);}
+  #assert room_checkpoint_input(cp_example(out[..],4,100000,"p-one","everglade-1",false),1000000);
+  #assert !room_checkpoint_input(cp_example(out[..],4,99999,"p-one","everglade-1",false),1000000);
+  #assert !room_checkpoint_input(cp_example(out[..],4,1000001,"p-one","everglade-1",false),1000000);
+  text:=cp_example(out[..],-1,0,"p-one","everglade-1",false);
+  #assert room_checkpoint_input(text,880000)&&room_checkpoint_input(text,1120000);
+  #assert !room_checkpoint_input(text,879999)&&!room_checkpoint_input(text,1120001);
+}
+#forall "checkpoint identity alphabet uses only literal lowercase ASCII digits and hyphen" c:0..<256 {
+  alphabet:="abcdefghijklmnopqrstuvwxyz0123456789-";allowed:=false;
+  for a:alphabet{if cast(int)a==c{allowed=true;}}one:=[1]u8.[cast(u8)c];#assert cp_alphabet(cast(string)one[..])==allowed;
+}
+#test "checkpoint down/dead is a Boolean, not an absent null number or string" {
+  out:[8192]u8;text:=cp_example(out[..],-1,0,"p-one","everglade-1",false);start:=text.count-6;
+  for bad:[5]string.["null}","0}","\"false\"}","[]}","{}"]{
+    for c,i:bad{out[start+i]=c;}#assert !room_checkpoint_input(cast(string)out[0..<start+bad.count],1000000);
+  }
+}

@@ -1278,6 +1278,48 @@ rc_travel :: (t: [] Ap, room_bin_in: string) {
   g := fs_remove(work_a); g = fs_remove(work_b); g = fs_remove(work_c);
 }
 
+// ---- versioned checkpoint receiver (#12838; producer/restore are separate) ----------------------------
+rc_checkpoint_body :: (out:[]u8,pid:string,owner:int,process:int,rev:int,at:int,sent:int,xp:int,x:int)->string {
+  keys:=[17]string.["v","owner","process","rev","at","sent","engine","rules","content","hp","max","xp","wanted","x_mm","y_mm","z_mm","yaw_mrad"];
+  values:=[17]int.[1,owner,process,rev,at,sent,1,2,3,0,20,xp,2,x,-20,-3450,100];
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);for i:0..<17{jo_key(o[..],keys[i]);jo_int(o[..],values[i]);}
+  jo_key(o[..],"pid");jo_str(o[..],pid);jo_key(o[..],"room");jo_str(o[..],"checkpoint-test");jo_key(o[..],"dead");jo_bool(o[..],true);jo_end(o[..]);return jo_text(o[..]);
+}
+rc_checkpoints :: (t:[]Ap) {
+  p:[1]Player;ok:=ap_player(t,p[..]);pid:=pl_id(p[..]);q:[1]Sb;out:[4096]u8;b:[4096]u8;
+  sb(q[..],"select verse.room_owner_next('");sb(q[..],pid);sb(q[..],"')");
+  now:=rc_wall_ms();route:="/api/playtest/room-checkpoint";
+  st:=rc_room_post(t,route,"{}","0000000000000000000000000000000000000000000000000000000000000000");
+  ap_check(t,"checkpoint: a bad signature is refused",st==401,ap_body(t));
+  st=rc_room_post(t,route,"{}","");ap_check(t,"checkpoint: a partial snapshot is refused",st==400,ap_body(t));
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,1,1000,1,now,now,100,1200),"");
+  ap_check(t,"checkpoint: an unissued owner cannot create a snapshot",st==200&&rc_is(ap_body(t),"status","fenced"),ap_body(t));
+  g:=ap_whole(ap_sql(t,sb_text(q[..]),out[..]));
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,1000,1,now,now,100,1200),"");
+  accepted:=ap_member_int(ap_body(t),"accepted_at",0);
+  ap_check(t,"checkpoint: a whole snapshot is committed before its versioned receipt",st==200&&rc_is(ap_body(t),"status","applied")&&rc_is(ap_body(t),"v","1")&&accepted>0,ap_body(t));
+  // Simulate a lost first response: replay the same capture with a fresh send clock.
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,1000,1,now,now+1,100,1200),"");
+  ap_check(t,"checkpoint: retry after a lost response keeps the original acceptance time",st==200&&rc_is(ap_body(t),"status","duplicate")&&ap_member_int(ap_body(t),"accepted_at",0)==accepted,ap_body(t));
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,1000,1,now,now,100,1201),"");
+  ap_check(t,"checkpoint: a reused identity with changed coordinates conflicts",st==200&&rc_is(ap_body(t),"status","conflict"),ap_body(t));
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,1001,2,now,now,100,1200),"");
+  ap_check(t,"checkpoint: a process cannot switch under the same owner",st==200&&rc_is(ap_body(t),"status","process"),ap_body(t));
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,1000,2,now,now,99,1200),"");
+  ap_check(t,"checkpoint: later revisions cannot reduce accepted XP",st==200&&rc_is(ap_body(t),"status","regression"),ap_body(t));
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,1000,2,now,now,101,2400),"");
+  ap_check(t,"checkpoint: the next revision advances the entire snapshot",st==200&&rc_is(ap_body(t),"status","applied"),ap_body(t));
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,1000,1,now,now,100,1200),"");
+  ap_check(t,"checkpoint: an older revision is stale",st==200&&rc_is(ap_body(t),"status","stale"),ap_body(t));
+  g=ap_whole(ap_sql(t,sb_text(q[..]),out[..]));
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g-1,1000,3,now,now,102,3600),"");
+  ap_check(t,"checkpoint: taking a new owner fences the old process",st==200&&rc_is(ap_body(t),"status","fenced"),ap_body(t));
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,2000,1,now,now,101,4800),"");
+  ap_check(t,"checkpoint: a newly issued owner starts its own process revision",st==200&&rc_is(ap_body(t),"status","applied"),ap_body(t));
+  sb_clear(q[..]);sb(q[..],"select owner || ':' || process || ':' || rev || ':' || (body->>'x_mm') || ':' || (body->>'dead') || ':' || (body->>'content') from verse.character_checkpoints_v1 where who='");sb(q[..],pid);sb(q[..],"'");
+  ap_check(t,"checkpoint: a separate database connection sees the complete committed dead/place/build state",ap_sql(t,sb_text(q[..]),out[..])=="2:2000:1:4800:true:3","");
+}
+
 tool_main :: () -> int #export_c {
   a: [1] Args;
   if !args_load(a[..]) { return 2; }
@@ -1287,7 +1329,7 @@ tool_main :: () -> int #export_c {
   }
   t: [1] Ap;
   if !ap_open(t[..]) { return 2; }
-  names := [11] string.["admission", "chat", "events", "invites", "parties", "items", "stats", "vitals", "owner", "travel", "builds"];
+  names := [12] string.["admission", "chat", "events", "invites", "parties", "items", "stats", "vitals", "owner", "travel", "builds", "checkpoints"];
   for name: names {
     run := args_count(a[..]) == 0;
     for i: 0..<args_count(a[..]) { if args_at(a[..], i) == name { run = true; } }
@@ -1300,6 +1342,7 @@ tool_main :: () -> int #export_c {
     if name == "invites" { rc_invites(t[..]); }
     if name == "parties" { rc_parties(t[..]); }
     if name == "items" { rc_items(t[..]); }
+    if name == "checkpoints" { rc_checkpoints(t[..]); }
     if name == "stats" { rc_stats(t[..]); }
     if name == "vitals" {
       rc_vitals_checks(t[..]);
