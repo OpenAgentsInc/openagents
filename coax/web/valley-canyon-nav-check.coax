@@ -1,0 +1,17 @@
+// The parent lab's key/touch entry and the source view's return path, in headless WebGPU.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+cn_eval :: (c:[]Cdp,js:string)->bool {n:=cdp_evaluate(c,js);return n>=0 && jv_raw(c[0].doc[0],n)=="true";}
+cn_wait :: (c:[]Cdp,source:bool)->bool {until:=proc_now_ms()+45000;while proc_now_ms()<until {if cn_eval(c,ifx source then "(async()=>{if(!globalThis.coaxial?.ready)return false;await coaxialClipStep(1,60);return location.pathname==='/worlds/valley-canyon'&&coaxial.sceneReady&&coaxial.guardProbe(0)===1})()" else "(async()=>{if(!globalThis.coaxial?.ready)return false;await coaxialClipStep(1,60);return location.pathname==='/worlds/valley-lab'&&coaxial.sceneReady})()") {return true;}proc_sleep(100);}return false;}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}
+ for phone:0..<2 {c:[1]Cdp;if !cdp_launch_background(c[..],ifx phone==0 then 1280 else 390,ifx phone==0 then 800 else 844,"valley-canyon-nav-") {return 1;}
+  _:=cdp_call(c[..],"Page.enable","",30000);_=cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument","{\"source\":\"globalThis.coaxialClip=true\"}",30000);
+  _=cdp_call(c[..],"Emulation.setDeviceMetricsOverride",ifx phone==0 then "{\"width\":1280,\"height\":800,\"deviceScaleFactor\":1,\"mobile\":false}" else "{\"width\":390,\"height\":844,\"deviceScaleFactor\":1,\"mobile\":true}",30000);
+  if phone==1 {_=cdp_call(c[..],"Emulation.setTouchEmulationEnabled","{\"enabled\":true,\"maxTouchPoints\":5}",30000);}
+  b:[4096]u8;p:[4096]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"url");jo_str(j[..],fs_join(args_at(a[..],0),"worlds/valley-lab#scans",p[..]));jo_end(j[..]);_=cdp_call(c[..],"Page.navigate",jo_text(j[..]),30000);ok:=cn_wait(c[..],false);
+  if ok {if phone==0 {_=cdp_call(c[..],"Input.dispatchKeyEvent","{\"type\":\"keyDown\",\"key\":\"p\"}",30000);}else {_=cdp_call(c[..],"Input.dispatchTouchEvent","{\"type\":\"touchStart\",\"touchPoints\":[{\"x\":100,\"y\":732,\"id\":4}]}",30000);_=cdp_call(c[..],"Input.dispatchTouchEvent","{\"type\":\"touchEnd\",\"touchPoints\":[]}",30000);}ok=cn_wait(c[..],true);}
+  if ok {_=cdp_call(c[..],"Input.dispatchKeyEvent","{\"type\":\"keyDown\",\"key\":\"1\"}",30000);ok=cn_wait(c[..],false);}
+  cdp_close(c[..]);if !ok {print("FAIL Canyon navigation %\n",phone);return 1;}print("PASS Canyon navigation %: parent % opens full source pair; 1 returns to parent\n",ifx phone==0 then "desktop" else "phone",ifx phone==0 then "P key" else "actual touch");
+ }return 0;
+}

@@ -38,7 +38,7 @@ ValleyLab :: struct {
   pages:[1]GeometryPages;parent_level:int;tolerance:f32=16;render_triangles:int;coarse_count:int;pixel_error:[2]f32;
   lab_tick:int;retry:[2]int;need_page:int= -1;tickets:[2]PageTicket;http:[8]PageTicket;page_url:[128]u8;page_url_n:int;rock_parent_supported:bool;
   scan:[1]Scan;scan_candidate:[1]Scan;scan_data:[SCAN_BYTES]u8;scan_registry:[1]AssetRegistry;scan_lab:bool;scan_ready:bool;scan_selected:int;scan_loaded:int= -1;scan_need:bool;scan_http:[8]int;scan_state:int;
-  inbox:[SCAN_BYTES*2+16]u8;action:int;outbox:[16]u8;out_n:int;
+  inbox:[SCAN_BYTES*2+16]u8;action:int;outbox:[64]u8;out_n:int;
   drag:bool;drag_id:int;drag_x:f32;drag_y:f32;
 
 }
@@ -255,6 +255,7 @@ valley_blur :: (s:[]ValleyLab) #export_c {
 }
 valley_key :: (s:[]ValleyLab,key:int,down:bool)->bool #export_c {
   valley_start(s);bit:=0;
+  if down && (key==80 || key==112) {valley_canyon_open(s);return true;}
   if down && key==48 {valley_scan_lab(s,0);return true;}
   if down && s[0].scan_lab {if key==118 || key==86 {s[0].mode=(s[0].mode+1)%5;return true;}if key==108 || key==76 {valley_scan_lab(s,1-s[0].scan_selected);return true;}if key==114 || key==82 {valley_scan_lab(s,s[0].scan_selected);return true;}if key==104 || key==72 || key==102 || key==70 || key==99 || key==67 {return true;}}
   if down && key>=52 && key<=54 {if s[0].field_lab {valley_field_lab(s,key-45);}else if s[0].grid_lab {valley_grid_lab(s,key-45);}else if s[0].rock_lab {valley_rock_lab(s,key-45);}else {valley_lab(s,key-45);}return true;}
@@ -301,6 +302,7 @@ valley_pointer :: (s:[]ValleyLab,x:f32,y:f32,phase:int,kind:int,id:int)->bool #e
       else if cy<70 && cx>s[0].width/s[0].d-100 {_:=valley_key(s,114,true);}
       return true;
     }
+    if s[0].scan_lab {cx:=x/s[0].d;cy:=y/s[0].d;w:=s[0].width/s[0].d;h:=s[0].height/s[0].d;top:=ifx w<700 then h-126 else 476.0f32;if cx>=16 && cx<=lo(w-16,376) && cy>=top && cy<=top+28 {valley_canyon_open(s);return true;}}
     if s[0].mode>=7 && s[0].width/s[0].d<700 {
       cx:=x/s[0].d;cy:=y/s[0].d;w:=s[0].width/s[0].d;h:=s[0].height/s[0].d;
       if cx>=16 && cx<=w-16 && cy>=h-138 && cy<=h-98 {_:=valley_key(s,ifx s[0].mode==9 then 118 else ifx s[0].mode==7 then 104 else 116,true);return true;}
@@ -402,7 +404,7 @@ valley_frame :: (s:[]ValleyLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:
   b:=HudBox.{x=320,y=190,width=lo(w/d-336,112),height=36};if b.width>30 {n=hd_panel(out,n,b,pen,s[0].scan_lab);n=hd_text_fit(out,n,"0 SCANS",b.x+5,214,10,b.width-10,pen,0);}
   b=HudBox.{x=16,y=190,width=144,height=36};n=hd_panel(out,n,b,pen,s[0].grid_lab && !s[0].field_lab);n=hd_text(out,n,"8 GROUPS",24,214,10,pen,0);b=HudBox.{x=168,y=190,width=144,height=36};n=hd_panel(out,n,b,pen,s[0].field_lab);n=hd_text(out,n,"9 FIELD",176,214,10,pen,0);
   if s[0].stage!=0 {n=valley_inspector(s,out,n,pen);}
-  if w/d>=700 {n=hd_text(out,n,ifx s[0].stage==0 then "WASD MOVE / SHIFT RUN / SPACE JUMP / 1-3 STATIONS" else ifx s[0].scan_lab then "DRAG ORBIT / V VIEW / L NEXT SCAN / R RETRY" else "DRAG ORBIT / 4-6 STAGES / H LEVEL / T PIXELS / E FLUSH / B BUDGET",20,h/d-22,11,pen,0);}
+  if w/d>=700 {n=hd_text(out,n,ifx s[0].stage==0 then "WASD MOVE / SHIFT RUN / SPACE JUMP / 1-3 STATIONS" else ifx s[0].scan_lab then "DRAG ORBIT / V VIEW / L NEXT SCAN / R RETRY / P SOURCE PAIR" else "DRAG ORBIT / 4-6 STAGES / H LEVEL / T PIXELS / E FLUSH / B BUDGET",20,h/d-22,11,pen,0);}
   else {n=hd_text_fit(out,n,ifx s[0].stage==0 then "LEFT DRAG MOVE / RIGHT DRAG LOOK / TAP JUMP" else "DRAG ORBIT / TAP VIEW OR DETAIL",16,h/d-22,10,w/d-32,pen,0);}
   if s[0].thumbs.move_on {t:=s[0].thumbs;n=hd_ring(out,n,t.ox/d,t.oy/d,44,44,0,6.2831853,pen,2);n=hd_ring(out,n,t.ox/d+t.pad_x*44,t.oy/d-t.pad_y*44,12,12,0,6.2831853,pen,0);}
   for k:0..<2 {s[0].pages[0].slot[k].pin=false;}
@@ -457,6 +459,7 @@ valley_station :: (s:[]ValleyLab,stage:int) {
 }
 valley_hash :: (s:[]ValleyLab,n:int) #export_c {
   if n<0 || n>s[0].inbox.count {return;}h:=cast(string)s[0].inbox[0..<n];
+  if h=="section" {valley_canyon_open(s);}
   if h=="scans" {valley_scan_lab(s,0);}
   if h=="field" {valley_field_lab(s,7);}if h=="field-lod" {valley_field_lab(s,8);}if h=="field-pages" {valley_field_lab(s,9);}
   if h=="groups" {valley_grid_lab(s,7);}if h=="group-lod" {valley_grid_lab(s,8);}if h=="group-pages" {valley_grid_lab(s,9);}
@@ -801,5 +804,13 @@ valley_scan_panel :: (s:[]ValleyLab,out:[]f32,n:int,pen:HdPen)->int {
   at=hd_text(out,at,"FAB STANDARD / PRIVATE LOCAL CACHE",20,y+154,10,pen,0);
   at=hd_text(out,at,[5]string.["VIEW / LIT","VIEW / ALBEDO","VIEW / NORMALS","VIEW / TRIANGLE EDGES","VIEW / DEPTH"][s[0].mode],20,y+176,11,pen,0);
   if width<700 {for k:0..<2 {b:=HudBox.{x=16+cast(f32)k*(width*0.5),y=height-88,width=width*0.5-32,height=44};at=hd_panel(out,at,b,pen,false);at=hd_text_fit(out,at,ifx k==0 then "V / VIEW" else "L / NEXT SCAN",b.x+8,b.y+28,10,b.width-16,pen,0);}}
-  else {at=hd_text(out,at,"V VIEW / L NEXT SCAN / R RETRY",20,y+210,11,pen,1);}return at;
+  else {at=hd_text(out,at,"V VIEW / L NEXT SCAN / R RETRY",20,y+210,11,pen,1);}
+  pair:=HudBox.{x=16,y=ifx width<700 then height-126 else y+230,width=lo(width-32,360),height=28};at=hd_panel(out,at,pair,pen,false);at=hd_text_fit(out,at,"P / ORIGINAL CANYON PAIR",pair.x+8,pair.y+19,10,pair.width-16,pen,0);return at;
 }
+
+#test "Valley source pair navigation fits the outbox and works by key hash and touch" #steps 1000000000 {
+  s:[1]ValleyLab;#assert valley_key(s[..],80,true) && s[0].action==1 && cast(string)s[0].outbox[0..<s[0].out_n]=="/worlds/valley-canyon?pack=valley-canyon";
+  s[0].action=0;for c,k:"section" {s[0].inbox[k]=c;}valley_hash(s[..],7);#assert s[0].action==1 && s[0].out_n==40;
+  valley_scan_lab(s[..],0);s[0].action=0;s[0].width=390;s[0].height=844;#assert valley_pointer(s[..],100,732,0,1,1) && s[0].action==1;
+}
+valley_canyon_open :: (s:[]ValleyLab) {url:="/worlds/valley-canyon?pack=valley-canyon";for c,k:url {s[0].outbox[k]=c;}s[0].out_n=url.count;s[0].action=1;}

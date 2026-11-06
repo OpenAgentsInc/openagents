@@ -1,0 +1,228 @@
+{
+  "schema": "valley.unreal.canyon-pair.v1",
+  "engine": "5.8.3-58210709+++UE5+Release-5.8",
+  "world": "/Game/AncientContent/Maps/AncientWorld",
+  "actor_package": "/Game/__ExternalActors__/AncientContent/Maps/AncientWorld/ER/3T/SGRWHDXJW2KRA0LYL6FI2",
+  "actor_path": "/Game/AncientContent/Maps/AncientWorld.AncientWorld:PersistentLevel.AncientWorldHLODLayer_Instanced_00000000c76e5050",
+  "actor_label": "AncientWorldHLODLayer_Instanced/AncientWorld_MainGrid_L0_X0_Y0_DL44BCB661",
+  "component": "InstancedStaticMeshComponent_7376",
+  "mesh": "/Game/AncientContent/Megascans/3DAssets/CanyonSandstone/SM_CanyonSandstone.SM_CanyonSandstone",
+  "nanite_triangles": 999995,
+  "nanite_vertices": 504361,
+  "fallback_triangles": 7606,
+  "material": {
+    "path": "/Game/AncientContent/Megascans/3DAssets/CanyonSandstone/MI_CanyonSandstone.MI_CanyonSandstone",
+    "textures": [
+      {
+        "name": "Albedo",
+        "asset": "/Game/AncientContent/Megascans/3DAssets/CanyonSandstone/T_CanyonSandstone_A.T_CanyonSandstone_A",
+        "width": 4096,
+        "height": 4096
+      },
+      {
+        "name": "Roughness",
+        "asset": "/Game/AncientContent/Megascans/3DAssets/CanyonSandstone/T_CanyonSandstone_R.T_CanyonSandstone_R",
+        "width": 4096,
+        "height": 4096
+      },
+      {
+        "name": "Normal",
+        "asset": null
+      }
+    ],
+    "scalars": [
+      {
+        "name": "Normal Strength",
+        "value": 1.5
+      },
+      {
+        "name": "Normal Tiling",
+        "value": 1.856937050819397
+      },
+      {
+        "name": "RefractionDepthBias",
+        "value": 0.0
+      }
+    ],
+    "vectors": [
+      {
+        "name": "Albedo Color",
+        "rgba": [
+          1.5,
+          1.5,
+          1.5,
+          1.0
+        ]
+      }
+    ]
+  },
+  "instances": [
+    {
+      "index": 0,
+      "translation_cm": [
+        -2341.011254092498,
+        -453.31197018573005,
+        -1130.1458705213108
+      ],
+      "quaternion_xyzw": [
+        0.7128280109211552,
+        0.6842124226114596,
+        0.06243538988172812,
+        0.14082403765893914
+      ],
+      "scale": [
+        7.585967715019824,
+        7.5859691926934065,
+        7.585967150477727
+      ],
+      "sdk_samples": [
+        {
+          "local_cm": [
+            0,
+            0,
+            0
+          ],
+          "world_cm": [
+            -2341.011254092498,
+            -453.31197018573005,
+            -1130.1458705213108
+          ]
+        },
+        {
+          "local_cm": [
+            100,
+            0,
+            0
+          ],
+          "world_cm": [
+            -2298.5978312025386,
+            300.00221249276717,
+            -1208.8091107344183
+          ]
+        },
+        {
+          "local_cm": [
+            0,
+            100,
+            0
+          ],
+          "world_cm": [
+            -1614.3764861025354,
+            -471.5516002664766,
+            -913.0318091341978
+          ]
+        },
+        {
+          "local_cm": [
+            0,
+            0,
+            100
+          ],
+          "world_cm": [
+            -2127.30052428789,
+            -540.7997903548109,
+            -1852.7402111781328
+          ]
+        },
+        {
+          "local_cm": [
+            -23,
+            17,
+            61
+          ],
+          "world_cm": [
+            -2096.8748856180837,
+            -683.0425396186506,
+            -1515.9264826371482
+          ]
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "translation_cm": [
+        -1748.345222726385,
+        -854.2765906057502,
+        -1575.4695577393884
+      ],
+      "quaternion_xyzw": [
+        0.711986171987779,
+        -0.443665355591716,
+        -0.44043734650886845,
+        -0.3197681768814585
+      ],
+      "scale": [
+        3.5282247979147225,
+        3.5282244279081953,
+        3.5282243955624804
+      ],
+      "sdk_samples": [
+        {
+          "local_cm": [
+            0,
+            0,
+            0
+          ],
+          "world_cm": [
+            -1748.345222726385,
+            -854.2765906057502,
+            -1575.4695577393884
+          ]
+        },
+        {
+          "local_cm": [
+            100,
+            0,
+            0
+          ],
+          "world_cm": [
+            -1671.3057314077346,
+            -977.7967423878379,
+            -1896.859338422125
+          ]
+        },
+        {
+          "local_cm": [
+            0,
+            100,
+            0
+          ],
+          "world_cm": [
+            -2070.6283748753785,
+            -996.0472566962665,
+            -1598.236292552293
+          ]
+        },
+        {
+          "local_cm": [
+            0,
+            0,
+            100
+          ],
+          "world_cm": [
+            -1869.5152013959364,
+            -555.7342518282537,
+            -1719.254056489793
+          ]
+        },
+        {
+          "local_cm": [
+            -23,
+            17,
+            61
+          ],
+          "world_cm": [
+            -1894.76612858343,
+            -667.8571422769849,
+            -1593.1287973382996
+          ]
+        }
+      ]
+    }
+  ],
+  "gltf_messages": {
+    "errors": [],
+    "warnings": [],
+    "suggestions": []
+  }
+}

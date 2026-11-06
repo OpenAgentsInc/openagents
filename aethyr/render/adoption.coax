@@ -98,7 +98,13 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
   #assert !render_adoption("valley-lab","newland").tracked_legacy;
   #assert !render_adoption("valley-la","valleylab").tracked_legacy;
 }
+#test "Valley Lab source pair has its explicit isolated renderer identity" {
+  r:=render_adoption("valley-canyon","valleycanyon");#assert r.tracked_legacy && !r.shared && r.profile== -1;
+  #assert !render_adoption("valley-canyon","valleylab").tracked_legacy && !render_adoption("valley-lab","valleycanyon").tracked_legacy;
+  #assert !render_adoption("valley-canyons","valleycanyon").tracked_legacy;
+}
 render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c {
+  if slug == "valley-canyon" && app == "valleycanyon" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "valley-lab" && app == "valleylab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "built" && app == "myrealm" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "bitcoin-lab" && app == "bitcoin-lab" { return RenderAdoption.{tracked_legacy = true}; }

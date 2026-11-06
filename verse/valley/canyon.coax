@@ -1,0 +1,40 @@
+// The exact native HLOD instance pair; geometry is the source asset, not its render fallback.
+#load "../../aethyr/points.coax";
+CANYON_TRIANGLES :: 999995;
+CANYON_VERTICES :: 504367;
+CANYON_CATALOG :: "VALLEY_CANYON_PAIR_V1 / 504367 vertices / 999995 triangles / source geometry / 4096 albedo + roughness";
+CanyonPose :: struct {translation:Point;q:Point;w:f32;scale:Point;}
+// glTF / Aethyr coordinates: metres, +Y up. UE coordinates: centimetres, +Z up.
+// C swaps Y/Z, so quaternion xyz is -C*q, scale is C*s. Subtract ONE source origin for both instances.
+canyon_pose :: (instance:int)->CanyonPose {
+  if instance==0 {return CanyonPose.{translation=v3(0,0,0),q=v3(-0.7128280109211552,-0.06243538988172812,-0.6842124226114596),w=0.14082403765893914,scale=v3(7.585967715019824,7.585967150477727,7.5859691926934065)};}
+  return CanyonPose.{translation=v3(5.92666031366113,-4.453236872180776,-4.009646204200202),q=v3(-0.711986171987779,0.44043734650886845,0.443665355591716),w= -0.3197681768814585,scale=v3(3.5282247979147225,3.5282243955624804,3.5282244279081953)};
+}
+canyon_rotate :: (p:Point,pose:CanyonPose)->Point {t:=times(cross(pose.q,p),2);return add(p,add(times(t,pose.w),cross(pose.q,t)));}
+canyon_point :: (p:Point,instance:int)->Point {pose:=canyon_pose(instance);return add(pose.translation,canyon_rotate(v3(p.x*pose.scale.x,p.y*pose.scale.y,p.z*pose.scale.z),pose));}
+canyon_normal :: (p:Point,instance:int)->Point {pose:=canyon_pose(instance);return unit_or(canyon_rotate(v3(p.x/pose.scale.x,p.y/pose.scale.y,p.z/pose.scale.z),pose),v3(0,1,0));}
+#test "Canyon source instances retain scale and source origin instead of flooring each asset" {
+  #assert canyon_point(v3(0,0,0),0).x==0 && canyon_point(v3(0,0,0),0).y==0;
+  p:=canyon_point(v3(0,0,0),1);#assert abs(p.x-5.9266603)<0.000001 && abs(p.y+4.453237)<0.000001 && abs(p.z+4.009646)<0.000001;
+  n:=canyon_normal(v3(1,0,0),0);#assert abs(dot(n,n)-1)<0.000001;
+}
+#test "Canyon coordinate transform agrees with independent Unreal SDK samples" {
+  p:=canyon_point(v3(1,0,0),0);#assert abs(p.x-0.424134228899594)<0.000002 && abs(p.y+0.786632402131075)<0.000002 && abs(p.z-7.533141826784972)<0.000002;
+  p=canyon_point(v3(-0.23,0.61,0.17),0);#assert abs(p.x-2.44136368474414)<0.000002 && abs(p.y+3.857806121158374)<0.000002 && abs(p.z+2.297305694329206)<0.000002;
+}
+CanyonBounds :: struct {low:Point;high:Point;}
+canyon_bounds :: ()->CanyonBounds {
+  a:=v3(-0.657790899,-0.0481042676,-0.296127528);b:=v3(0.217893705,0.785208821,0.565942883);low:=v3(1000,1000,1000);high:=times(low,-1);
+  for instance:0..<2 {for corner:0..<8 {p:=canyon_point(v3(ifx (corner&1)==0 then a.x else b.x,ifx (corner&2)==0 then a.y else b.y,ifx (corner&4)==0 then a.z else b.z),instance);
+    low=v3(ifx p.x<low.x then p.x else low.x,ifx p.y<low.y then p.y else low.y,ifx p.z<low.z then p.z else low.z);high=v3(ifx p.x>high.x then p.x else high.x,ifx p.y>high.y then p.y else high.y,ifx p.z>high.z then p.z else high.z);
+  }}return CanyonBounds.{low=low,high=high};
+}
+
+canyon_matrix_point :: (u:[]f32,at:int,p:Point) {u[at]=p.x;u[at+1]=p.y;u[at+2]=p.z;}
+canyon_matrix :: (u:[]f32,instance:int) {
+  t:=canyon_point(v3(0,0,0),instance);x:=sub(canyon_point(v3(1,0,0),instance),t);y:=sub(canyon_point(v3(0,1,0),instance),t);z:=sub(canyon_point(v3(0,0,1),instance),t);
+  for k:0..<24 {u[k]=0;}
+  canyon_matrix_point(u,0,v3(x.x,y.x,z.x));u[3]=t.x;canyon_matrix_point(u,4,v3(x.y,y.y,z.y));u[7]=t.y;canyon_matrix_point(u,8,v3(x.z,y.z,z.z));u[11]=t.z;
+  pose:=canyon_pose(instance);nx:=canyon_rotate(v3(1/pose.scale.x,0,0),pose);ny:=canyon_rotate(v3(0,1/pose.scale.y,0),pose);nz:=canyon_rotate(v3(0,0,1/pose.scale.z),pose);
+  canyon_matrix_point(u,12,v3(nx.x,ny.x,nz.x));canyon_matrix_point(u,16,v3(nx.y,ny.y,nz.y));canyon_matrix_point(u,20,v3(nx.z,ny.z,nz.z));
+}

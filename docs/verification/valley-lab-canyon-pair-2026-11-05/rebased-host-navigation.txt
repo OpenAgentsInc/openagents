@@ -1,0 +1,2 @@
+PASS Canyon navigation desktop: parent P key opens full source pair; 1 returns to parent
+PASS Canyon navigation phone: parent actual touch opens full source pair; 1 returns to parent

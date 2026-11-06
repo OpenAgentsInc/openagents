@@ -1,0 +1,42 @@
+// Exact-byte vertex deduplication of Unreal's source glTF export, never geometric simplification.
+// Native Coax tooling: SOURCE_DIR OUTPUT_DIR (directories already exist).
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../verse/valley/scan.coax";
+CP_SOURCE :: 3000000;
+CP_RECORD :: 48;
+cp_path :: (root:string,name:string,b:[]u8)->string {return fs_join(root,name,b);}
+cp_equal :: (b:[]u8,at:int,v:[]u32)->bool {for w:0..<9 {if scan_u32(b,at+w*4)!=v[w] {return false;}}return true;}
+cp_hash :: (v:[]u32)->u32 {h:u32=2166136261;for w:v {h=mul_wrap(h^w,16777619);}return h;}
+#test "source dedup checks all position normal uv color words and hash is ordered" {a:=[9]u32.[1,2,3,4,5,6,7,8,9];b:[48]u8;for w:0..<9 {scan_put(b[..],w*4,a[w]);}#assert cp_equal(b[..],0,a[..]);for w:0..<9 {c:=a;c[w]+=1;#assert !cp_equal(b[..],0,c[..]) && cp_hash(a[..])!=cp_hash(c[..]);}}
+tool_main :: ()->int #export_c {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}path:[4096]u8;src:=args_at(a[..],0);dest:=args_at(a[..],1);
+  text:[65536]u8;tn:=fs_read(cp_path(src,"canyon.gltf",path[..]),text[..]);if tn<0 {return 3;}d:[1]Jv;nodes:[2048]JvNode;if !jv_parse(d[..],cast(string)text[0..<tn],nodes[..]) {return 4;}
+  doc:=d[0];access:=jv_get(doc,0,"accessors");views:=jv_get(doc,0,"bufferViews");offsets:[5]int;counts:[5]int;
+  for k:0..<5 {at:=jv_at(doc,access,k);view:=jv_at(doc,views,jv_int(doc,jv_get(doc,at,"bufferView"),-1));if view<0 || jv_get(doc,view,"byteStride")>=0 || jv_get(doc,at,"byteOffset")>=0 {return 4;}offsets[k]=jv_int(doc,jv_get(doc,view,"byteOffset"),0);counts[k]=jv_int(doc,jv_get(doc,at,"count"),0);}
+  count:=counts[1];if count<=0 || count>CP_SOURCE || counts[0]!=count || counts[2]!=count || counts[3]!=count || counts[4]!=count || count%3!=0 {return 4;}
+  input:[134217728]u8;encoded:[134217728]u8;indices:[CP_SOURCE*4]u8;map:[CP_SOURCE]u32;table:[8388608]s32;
+  nb:=fs_read(cp_path(src,"canyon.bin",path[..]),input[..]);if nb<0 {return 5;}
+  for k:0..<5 {span:=count*[5]int.[4,12,4,12,8][k];if offsets[k]<0 || offsets[k]>nb || span>nb-offsets[k] {return 5;}}
+  vertices:=0;low:=v3(100000,100000,100000);high:=times(low,-1);
+  for k:0..<count {record:[9]u32;for axis:0..<3 {record[axis]=scan_u32(input[..],offsets[1]+k*12+axis*4);record[3+axis]=scan_u32(input[..],offsets[3]+k*12+axis*4);}for axis:0..<2 {record[6+axis]=scan_u32(input[..],offsets[4]+k*8+axis*4);}record[8]=scan_u32(input[..],offsets[2]+k*4);
+    for axis:0..<8 {if (record[axis]&0x7f800000)==0x7f800000 {return 6;}}
+    slot:=cast(int)(cp_hash(record[..])&8388607);found:= -1;
+    for probe:0..<8388608 {entry:=cast(int)table[slot];if entry==0 {break;}if cp_equal(encoded[..],(entry-1)*CP_RECORD,record[..]) {found=entry-1;break;}slot=(slot+1)&8388607;}
+    if found<0 {if (vertices+1)*CP_RECORD>encoded.count {return 7;}found=vertices;table[slot]=cast(s32)(vertices+1);for w:0..<9 {scan_put(encoded[..],vertices*CP_RECORD+w*4,record[w]);}vertices+=1;}
+    map[k]=cast(u32)found;p:=scan_point(input[..],offsets[1]+k*12);if !finite3(p) {return 6;}low=v3(ifx p.x<low.x then p.x else low.x,ifx p.y<low.y then p.y else low.y,ifx p.z<low.z then p.z else low.z);high=v3(ifx p.x>high.x then p.x else high.x,ifx p.y>high.y then p.y else high.y,ifx p.z>high.z then p.z else high.z);
+  }
+  for k:0..<count {index:=cast(int)scan_u32(input[..],offsets[0]+k*4);if index>=count {return 8;}scan_put(indices[..],k*4,map[index]);}
+  if !fs_write(cp_path(dest,"canyon.vertices.bin",path[..]),cast(string)encoded[0..<vertices*CP_RECORD]) || !fs_write(cp_path(dest,"canyon.indices.bin",path[..]),cast(string)indices[0..<count*4]) {return 9;}
+  h:[64]u8;#assert asset_hex(asset_id(cast(string)encoded[0..<vertices*CP_RECORD]),h[..]);print("source vertices=% deduplicated=% triangles=% vertex_bytes=% index_bytes=%\nvertex_sha256=%\n",count,vertices,count/3,vertices*CP_RECORD,count*4,cast(string)h[..]);#assert asset_hex(asset_id(cast(string)indices[0..<count*4]),h[..]);print("index_sha256=%\nbounds % % % : % % %\n",cast(string)h[..],low.x,low.y,low.z,high.x,high.y,high.z);
+  catalog:= "VALLEY_CANYON_PAIR_V1 / 504367 vertices / 999995 triangles / source geometry / 4096 albedo + roughness";if vertices!=504367 || count!=2999985 {return 10;}
+  files:=[5]string.["","canyon.vertices.bin","canyon.indices.bin","Albedo.png","Roughness.png"];kinds:=[5]u32.[1,2,3,4,4];names:=[5]string.["catalog","vertices","indices","albedo","roughness"];
+  for k:0..<272 {encoded[k]=0;}at:=272;
+  for k:0..<5 {n:=0;if k==0 {for c,j:catalog {input[j]=c;}n=catalog.count;}else {n=fs_read(cp_path(ifx k<3 then dest else src,files[k],path[..]),input[..]);}if n<0 || at+n>encoded.count {return 11;}
+    entry:=32+k*48;scan_put(encoded[..],entry,kinds[k]);scan_put(encoded[..],entry+4,cast(u32)at);scan_put(encoded[..],entry+8,cast(u32)n);for c,j:names[k] {encoded[entry+16+j]=c;}for j:0..<n {encoded[at+j]=input[j];}at=(at+n+3)/4*4;
+  }
+  scan_put(encoded[..],0,0x314b5056);scan_put(encoded[..],4,5);scan_put(encoded[..],8,cast(u32)at);scan_put(encoded[..],12,cast(u32)at);scan_put(encoded[..],16,32);scan_put(encoded[..],20,272);
+  if !fs_write(cp_path(dest,"canyon.pack",path[..]),cast(string)encoded[0..<at]) {return 12;}#assert asset_hex(asset_id(cast(string)encoded[0..<at]),h[..]);print("pack_bytes=% pack_sha256=%\n",at,cast(string)h[..]);return 0;
+}

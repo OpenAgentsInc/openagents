@@ -1002,7 +1002,8 @@ async function rebuildGpu(check, until) {
   check();
   if (!renderUrl) {
     // the legacy path keeps its assets' GPU objects on the rows: fetched again (the browser's cache)
-    for (const a of firstAssets) Object.assign(a, { done: false, fetching: false, failed: false, buffer: null, texture: null });
+    for (const a of assets) if (firstAssets.includes(a) || firstPacks.has(a.pack))
+      Object.assign(a, { done: false, fetching: false, failed: false, buffer: null, texture: null });
     for (const pack of firstPacks) Object.assign(pack, { done: false, fetching: false });
   } else engine?.exports.coaxial_render_reset?.();   // the renderer's bookkeeping starts over with its resources
   gpu = opened;
@@ -1500,6 +1501,18 @@ async function loadPack(pack) {
     if (session) bytes = await privatePack(session, bytes);
     send(PACK_KIND, `${loaded} ${loaded}`);
     if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;
+    // Optional pack gate v1: SHA256 is a platform effect; acceptance stays in the realm's Coax.
+    const packGate = engine.exports;
+    if (packGate.coaxial_pack_gate_version) {
+      if (packGate.coaxial_pack_gate_version() !== 1) throw new Error("unsupported asset pack gate version");
+      const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+      if (renderUrl) await renderReload;if (!parts.every(currentAsset) || engine.exports !== packGate) return;
+      const address = packGate.coaxial_pack_digest(arena.state), capacity = packGate.coaxial_pack_digest_capacity();
+      if (!Number.isInteger(address) || address <= 0 || capacity !== digest.length || address > memory.buffer.byteLength - capacity)
+        throw new Error("asset pack digest destination refused");
+      new Uint8Array(memory.buffer, address, capacity).set(digest);
+      if (packGate.coaxial_pack_admit(arena.state, bytes.length) !== 1) throw new Error("asset pack SHA256 refused by Coax");
+    }
     entries = unpack(bytes);
     const { device } = gpu, of = (kind) => entries.filter((e) => e.kind === kind);
     const [catalog, vertices, indices, layers] = parts;

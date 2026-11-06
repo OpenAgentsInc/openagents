@@ -1,0 +1,3 @@
+Mode: release
+Wasm bytes: 128591
+Wasm SHA256: 5327ba27a02af9c2fbbd13de4b12a241ac674f08a5c82dbfab0969e9f9b67460

@@ -88,6 +88,7 @@ host-sockets 24000
 host-packs 42000
 # Initial procedural Valley Lab and shared walker, no fetched assets.
 valleylab 160000
+valleycanyon 80000
 # #12921: buffered V2 frame input adds checked per-step control state.
 # Linux measured garden 286741, villa 524872, fairy 660104, realm 517429 bytes; about 5% room.
 # Optional socket-owned room timing and clock intervals; 21,910 release bytes.

@@ -1,0 +1,3 @@
+ok   #test Valley source pair navigation fits the outbox and works by key hash and touch (1 case, 176615794 steps, 1954 ms)
+1 of 494 checks (--only 'source pair navigation'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

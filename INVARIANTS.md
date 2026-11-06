@@ -1790,6 +1790,14 @@ shared and counted once; the last `asset_release` frees them. Checks:
 `aethyr/assets.coax` (a planted edited texture, the limit to the byte, a
 seeded model of uses; mutation 0 survivors with `--root-only`).
 
+A realm opting into browser pack digest gate v1 admits the complete received
+VPK1 digest and byte count in Coax before unpack/upload. The browser computes
+SHA-256 as a platform effect and bounds the 32-byte destination; the realm's
+authority module pins the expected identity. Failed admission exposes no
+part of that pack to the GPU. Checks: `verse/valley/canyon-pack-policy.coax`
+(mutation zero survivors) and `coax/web/valley-canyon-check.coax`'s same-length
+vertex edit. The versioned optional ABI is `coax/web/PACK-GATE.md`.
+
 ## A lost GPU device or an engine trap keeps the realm's session
 
 The browser host (`coax/web/host.js`) answers `GPUDevice.lost` for its current
@@ -1813,6 +1821,12 @@ is not saved. Check: `coax/web/gpu-recovery.coax` against a realm page
 (the Grid: recovered in about 0.35 s on SwiftShader with the same digest in
 12 of 12 runs, with its waiting writes delivered; the trap's save put back
 with the same digest).
+
+Legacy recovery clears the initial pack's asset rows as well as ordinary
+asset rows before binding the replacement device. A completed old-device
+pack buffer/texture is never a ready resource for that replacement. Check:
+`coax/web/valley-canyon-check.coax` restores the original source pair's exact
+state and pixels with no cross-device buffer bind error.
 
 ## The Grid steps only on its session's record
 

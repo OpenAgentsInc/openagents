@@ -1,0 +1,8 @@
+ok   #test Canyon requires every source part and matching catalogue before drawing (1 case, 95049 steps, 1 ms)
+ok   #test Canyon pointer orbit mode isolation and two full source draws stay bounded (1 case, 941 steps, 0 ms)
+ok   #test Canyon source frames fit declared budget at desktop phone and high DPR (1 case, 25063266 steps, 285 ms)
+ok   #test Canyon source instances retain scale and source origin instead of flooring each asset (1 case, 1335 steps, 0 ms)
+ok   #test Canyon coordinate transform agrees with independent Unreal SDK samples (1 case, 660 steps, 0 ms)
+ok   #test Canyon pack gate pins every digest byte and exact length before GPU upload (1 case, 11773 steps, 0 ms)
+6 of 75 checks (--only 'Canyon'), 6 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

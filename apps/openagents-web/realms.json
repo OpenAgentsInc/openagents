@@ -462,6 +462,15 @@
         "style": "lowpoly", "clock": "fixed:0.5", "timing": true,
         "golden": { "lit": 0.05, "settle": 1000, "blocks": 6 }, "assets": []
       } },
+    { "id": "valleycanyon", "name": "VALLEY LAB CANYON PAIR", "kind": "open", "listed": false, "orbit": { "r": 0.4, "a": 3.4, "size": 0.02 },
+      "realm": {
+        "slug": "valley-canyon", "title": "Valley Lab - Canyon Pair", "module": "valleycanyon", "slot": "valley-canyon",
+        "description": "An isolated original Canyon Sandstone pair from Ancient World's L0 X0 Y0 cell: exact source geometry, poses and original 4K material maps in Aethyr.",
+        "alt": "Two original Canyon Sandstone outcrops at their recovered Ancient World placements",
+        "style": "lowpoly", "clock": "fixed:0.5", "timing": true,
+        "golden": { "lit": 0.001, "settle": 1000, "blocks": 6 },
+        "assets": ["private:valley-canyon"]
+      } },
     { "id": "splatlab", "name": "SPLAT LAB", "kind": "open", "listed": false, "orbit": { "r": 0.41, "a": 3.3, "size": 0.02 },
       "realm": {
         "slug": "splat-lab",

@@ -6,7 +6,9 @@ hierarchy, parent simplification, screen-error cuts and HTTP page stations now
 run locally, including adjacent nonplanar grid parents and a deterministic
 six-rock field with shared HTTP pages. The isolated `0 SCANS` station now also
 loads two exact Quixel-ID matches from a private local cache, through Coax
-download/import, SHA-256 admission and the same bounded GPU path.
+download/import, SHA-256 admission and the same bounded GPU path. A dedicated
+Canyon Pair view also reconstructs two actual Ancient World instances using
+all 1,999,990 source triangles, original 4K maps and recovered world poses.
 
 Build **Valley Lab**, an unlisted world at `/worlds/valley-lab`, where a
 visitor can inspect each engine system alone and then watch those same
@@ -615,14 +617,60 @@ sampling/PBR and a separately qualified arbitrary-mesh baseline before claiming
 source-material or scan-LOD parity. First scene placement still needs explicit
 transformed collision proxies; the scan inspector has not added them to walking.
 
+## Landed: an exact source section, the Canyon Sandstone pair
+
+The selected section is the two Canyon Sandstone instances in Ancient World's
+`L0_X0_Y0_DL44BCB661` HLOD cell, component
+`InstancedStaticMeshComponent_7376`. The installed Unreal SDK exports the
+original source-model geometry, albedo/roughness maps and exact world poses
+through a data-only headless commandlet project. Game modules and sample
+plugins are not run. A new isolated inspection view under Valley Lab opens
+with **P**, the scan station's touch button or `#section`:
+`/worlds/valley-canyon?pack=valley-canyon`. `1` returns to the lab.
+
+Both instances retain all 999,995 source triangles, source normals, UVs and
+vertex paint. Exact attribute deduplication produces one shared 504,367-vertex
+GPU asset, preserving all 2,999,985 original indexed corner records. The view
+uses the original 4096 x 4096 albedo and roughness maps and RGB 1.5 material
+override. One common scene origin preserves their original pivots, relative
+height, scale and rotation; there is no individual flooring or hand placement.
+An independent oracle checks every source corner and every transformed vertex
+against the exported SDK receipt; the maximum vertex pose error is below
+0.000001 m. Actual desktop/phone GPU checks cover both poses and five material
+views, reset and exact device-loss recovery.
+
+The 71 MB source pack remains in the shared private Aethyrforge cache and is
+exposed through the existing optional private-asset channel. Public builds do
+not require or upload it. Before any pack upload, the new optional pack gate
+v1 sends the browser-computed SHA-256 and byte count to a Coax authority module.
+A changed source byte is rejected as a whole. Pack-gate and renderer-adoption
+mutations have zero survivors. Device recovery now clears packed asset rows
+as well as ordinary rows, fixing the old-device buffer bind found on this path.
+
+This source view has a separate declared resource budget for full immutable
+geometry, both 4K mipmapped layers and scene/shadow draws. The original lab's
+primitive frame/mesh budgets remain independent. It uses ordinary GPU triangle
+passes, not Nanite's runtime algorithms or the structured grid reducer.
+
+**Full Unreal image parity remains unqualified.** Exact source geometry,
+material maps and transforms are verified; Aethyr studio lighting, shadows
+and tone mapping are used for inspection. Matching terrain, surrounding
+components, the complete original material graph, sky/Lumen/exposure and an
+actual matched Unreal reference render remain separate fidelity work.
+No book draft or full-valley completion status is upgraded by this view.
+
+The [source-section record](../verification/valley-lab-canyon-pair-2026-11-05/README.md)
+contains exact source identities, original poses, reproducible SDK/Coax tools,
+independent all-corner checks, browser observations and screenshots.
+
 ## Next implementation task
 
 Qualify **Valley on the shared frame/pass/resource renderer**, using the
 current CPU-copy path as the reference. Give real GPU vertex/index/page
 allocations explicit ranges and generations, fence upload completions and
 retirement, and test late old-device acknowledgements, replacement and exact
-cleanup on this actual lab route. The deterministic field now supplies a
-bounded repeated-asset workload; its CPU page cache does not satisfy GPU
+cleanup on this actual lab route. The deterministic field and original Canyon Pair now supply
+small procedural and full-source repeated-asset workloads; its CPU page cache does not satisfy GPU
 ownership exits.
 
 Then compose these field placements into the first walkable valley tile,

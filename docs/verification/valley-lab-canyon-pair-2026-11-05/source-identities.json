@@ -1,0 +1,50 @@
+{
+  "schema": "valley.source-identities.v1",
+  "files": [
+    {
+      "package": "AncientContent/Megascans/3DAssets/CanyonSandstone/SM_CanyonSandstone.uasset",
+      "bytes": 77140649,
+      "sha256": "b888a1a33eeb4552eb2ebc15cecf40e54b684a4354985f5a92e49952fbdcf9f2"
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/CanyonSandstone/MI_CanyonSandstone.uasset",
+      "bytes": 126011,
+      "sha256": "13e1a77162c1a41c3c741536d872c00312728ef8c2874562e870a0a61299f78b"
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/CanyonSandstone/T_CanyonSandstone_A.uasset",
+      "bytes": 10486370,
+      "sha256": "b46921e701383f3974d79bb0fe95200ba42fae42d55fc462ce2cdf8e1e095b82"
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/CanyonSandstone/T_CanyonSandstone_R.uasset",
+      "bytes": 3620320,
+      "sha256": "c1cf89b1f11ccea7f7f7257352d73b9d9617bf74987b25a49f5dbd463cd8f333"
+    },
+    {
+      "package": "__ExternalActors__/AncientContent/Maps/AncientWorld/ER/3T/SGRWHDXJW2KRA0LYL6FI2.uasset",
+      "bytes": 166453,
+      "sha256": "b7e655498bf17df9d8169b13618286f8aacd38ab1ec34e9dc7d74e4e4d699380"
+    },
+    {
+      "export": "canyon.gltf",
+      "bytes": 1704,
+      "sha256": "9e73dc5f5696c64f3cfa53471b134e7241891955996cbf7db04525af0da9732f"
+    },
+    {
+      "export": "canyon.bin",
+      "bytes": 119999400,
+      "sha256": "62840fd1875d2de96e880f4319ba56a3987c019ac29e7ea6a3dda3cbf6454412"
+    },
+    {
+      "export": "Albedo.png",
+      "bytes": 25754002,
+      "sha256": "2eb23cc6d7ad33020fff327979c2c0327b31e9ad2ca0b2e09c753c6e693ccfcb"
+    },
+    {
+      "export": "Roughness.png",
+      "bytes": 9064946,
+      "sha256": "6081f242ecd51bdea5046320916973a0d33c239e3ffded1fe338c09a4a5de63e"
+    }
+  ]
+}

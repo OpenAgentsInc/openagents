@@ -1,0 +1,6 @@
+u 0 0 uniform 32
+vertices 1 0
+sheets 1 1
+sheet 1 2
+shadow_map 2 0
+shadow_cmp 2 1

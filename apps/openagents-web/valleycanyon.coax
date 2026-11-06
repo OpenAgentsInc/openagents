@@ -1,0 +1,64 @@
+// Valley Lab's isolated exact source pair. GPU-resident source geometry; shared Aethyr camera/UI.
+#load "../../verse/valley/canyon.coax";
+#load "../../verse/valley/canyon-pack-policy.coax";
+#load "../../aethyr/ui/draw.coax";
+#load "../../aethyr/budget.coax";
+#load "../../aethyr/assets.coax";
+CANYON_HUD :: 32768;
+// Includes the 71 MB immutable source pack and its GPU geometry, index and mipmapped 4K layers.
+CANYON_BUDGET :: FrameBudget.{steps=0,vertices=12100000,draws=4,bytes=640000000};
+ValleyCanyon :: struct {ready:bool;pack_digest:[32]u8;pack_verified:bool;pack_checks:int;pose_words:[48]u32;assets:[4]int;failed:bool;catalog:[256]u8;asset_registry:[1]AssetRegistry;orbit:f32=0.65;tilt:f32=0.12;distance:f32=14;mode:int;solo:int=2;drag:bool;x:f32;y:f32;d:f32=1;width:f32=1280;height:f32=800;eye:Point;draws:[4]u32;meter:[1]BudgetMeter;action:int;outbox:[64]u8;out_n:int;}
+#test "Canyon requires every source part and matching catalogue before drawing" {
+  s:[1]ValleyCanyon;s[0].pack_verified=true;#assert !canyon_ready(s[..]);for k:0..<CANYON_CATALOG.count {s[0].catalog[k]=CANYON_CATALOG[k];}canyon_asset(s[..],0,CANYON_CATALOG.count);canyon_asset(s[..],1,24209616);canyon_asset(s[..],2,11999940);#assert !canyon_ready(s[..]);canyon_asset(s[..],3,2);#assert canyon_ready(s[..]);canyon_asset(s[..],2,4);#assert !canyon_ready(s[..]) && s[0].failed;
+}
+#test "Canyon pointer orbit mode isolation and two full source draws stay bounded" {
+  s:[1]ValleyCanyon;s[0].width=390;s[0].height=844;#assert canyon_key(s[..],86) && s[0].mode==1;#assert canyon_key(s[..],73) && s[0].solo==0;
+  _:=canyon_pointer(s[..],200,300,0);_ = canyon_pointer(s[..],230,330,1);#assert s[0].orbit<0.65 && s[0].tilt>0.12;_ = canyon_pointer(s[..],230,330,2);#assert !s[0].drag;
+}
+canyon_ready :: (s:[]ValleyCanyon)->bool #export_c {return s[0].pack_verified && !s[0].failed && s[0].assets[0]>0 && s[0].assets[1]==24209616 && s[0].assets[2]==11999940 && s[0].assets[3]==2;}
+canyon_asset :: (s:[]ValleyCanyon,index:int,bytes:int) #export_c {
+  if index<0 || index>3 {return;}s[0].assets[index]=bytes;if bytes==0 {s[0].failed=true;return;}
+  if index==0 {if bytes!=CANYON_CATALOG.count {s[0].failed=true;return;}s[0].asset_registry[0]=asset_registry(256);data:=[1]string.[cast(string)s[0].catalog[0..<bytes]];ids:=[1]AssetId.[asset_id(CANYON_CATALOG)];if asset_admit(s[0].asset_registry[..],data[..],ids[..])!=ASSET_OK {s[0].failed=true;}}
+  if (index==1 && bytes!=24209616) || (index==2 && bytes!=11999940) || (index==3 && bytes!=2) {s[0].failed=true;}
+}
+canyon_key :: (s:[]ValleyCanyon,key:int)->bool #export_c {
+  if key==118 || key==86 {s[0].mode=(s[0].mode+1)%5;return true;}if key==105 || key==73 {s[0].solo=(s[0].solo+1)%3;return true;}
+  if key==114 || key==82 {s[0].orbit=0.65;s[0].tilt=0.12;s[0].distance=14;s[0].mode=0;s[0].solo=2;return true;}
+  if key==49 || key==27 {url:="/worlds/valley-lab";for c,k:url {s[0].outbox[k]=c;}s[0].out_n=url.count;s[0].action=1;return true;}return false;
+}
+canyon_pointer :: (s:[]ValleyCanyon,x:f32,y:f32,phase:int)->bool #export_c {
+  if phase==0 {cx:=x/s[0].d;cy:=y/s[0].d;if cy<80 {if cx<160 {_:=canyon_key(s,49);}else {_:=canyon_key(s,82);}return true;}
+    if cy>s[0].height/s[0].d-90 {if cx<s[0].width/s[0].d*0.5 {_:=canyon_key(s,86);}else {_:=canyon_key(s,73);}return true;}s[0].drag=true;s[0].x=x;s[0].y=y;return true;}
+  if phase==1 && s[0].drag {s[0].orbit-=(x-s[0].x)/s[0].d*0.006;s[0].tilt=clamp(s[0].tilt+(y-s[0].y)/s[0].d*0.006,-0.7,1.3);s[0].x=x;s[0].y=y;}if phase>=2 {s[0].drag=false;}return true;
+}
+canyon_wheel :: (s:[]ValleyCanyon,dy:f32) #export_c {s[0].distance=clamp(s[0].distance+dy*0.01,2,80);}
+canyon_uniform_point :: (u:[]f32,at:int,p:Point) {u[at]=p.x;u[at+1]=p.y;u[at+2]=p.z;}
+#test "Canyon source frames fit declared budget at desktop phone and high DPR" #steps 1000000000 {
+  s:[1]ValleyCanyon;s[0].pack_verified=true;out:[CANYON_HUD*12]f32;u:[128]f32;for k:0..<CANYON_CATALOG.count {s[0].catalog[k]=CANYON_CATALOG[k];}canyon_asset(s[..],0,CANYON_CATALOG.count);canyon_asset(s[..],1,24209616);canyon_asset(s[..],2,11999940);canyon_asset(s[..],3,2);
+  for screen:0..<3 {for mode:0..<5 {s[0].mode=mode;n:=canyon_frame(s[..],out[..],u[..],[3]f32.[1280,390,1170][screen],[3]f32.[800,844,2532][screen],[3]f32.[1,1,3][screen]);#assert n>0 && n<CANYON_HUD && budget_ok(s[0].meter[0]) && s[0].draws[1]==2999985 && s[0].draws[3]==2;}}
+}
+canyon_frame :: (s:[]ValleyCanyon,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #export_c {
+  if !(w>0 && h>0 && d>0) {return 0;}s[0].width=w;s[0].height=h;s[0].d=d;s[0].ready=true;bounds:=canyon_bounds();target:=times(add(bounds.low,bounds.high),0.5);
+  eye:=add(target,v3(sin(s[0].orbit)*cos(s[0].tilt)*s[0].distance,sin(s[0].tilt)*s[0].distance,cos(s[0].orbit)*cos(s[0].tilt)*s[0].distance));s[0].eye=eye;
+  forward:=unit_or(sub(target,eye),v3(0,0,-1));right:=unit_or(cross(forward,v3(0,1,0)),v3(1,0,0));up:=cross(right,forward);
+  for k:0..<128 {u[k]=0;}u[0]=w;u[1]=h;u[2]=d;u[3]=1;u[4]=cast(f32)s[0].mode;u[6]=1.5;
+  canyon_uniform_point(u,8,eye);canyon_uniform_point(u,12,right);u[15]=ifx w<h then 1.7f32 else 1.7f32*h/w;
+  canyon_uniform_point(u,16,up);u[19]=ifx w<h then 1.7f32*w/h else 1.7f32;canyon_uniform_point(u,20,forward);
+  canyon_uniform_point(u,24,unit_or(v3(-0.4,0.8,0.45),v3(0,1,0)));
+  light:=unit_or(v3(-0.4,0.8,0.45),v3(0,1,0));lr:=unit_or(cross(v3(0,1,0),light),v3(1,0,0));lu:=cross(light,lr);canyon_uniform_point(u,80,lr);canyon_uniform_point(u,84,lu);canyon_uniform_point(u,88,light);canyon_uniform_point(u,92,target);u[96]=16;
+  for instance:0..<2 {at:=32+instance*24;canyon_matrix(u[at..<at+24],instance);}for k:0..<48 {s[0].pose_words[k]=f32_bits(u[32+k]);}
+  s[0].draws=[4]u32.[0,cast(u32)(CANYON_TRIANGLES*3),cast(u32)(ifx s[0].solo==2 then 0 else s[0].solo),cast(u32)(ifx s[0].solo==2 then 2 else 1)];
+  pen:=HdPen.{d=d,top=0,bottom=h/d,cyan=false,sans=false};n:=hd_text(out,0,"VALLEY LAB / CANYON PAIR",20,34,ifx w/d<700 then 13.0f32 else 18.0f32,pen,0);
+  n=hd_text(out,n,"1 BACK",20,62,11,pen,0);n=hd_text(out,n,"RESET",w/d-80,62,11,pen,0);
+  n=hd_text_fit(out,n,ifx canyon_ready(s) then (ifx s[0].solo==2 then "ORIGINAL SOURCE / 1,999,990 TRIANGLES" else "ORIGINAL SOURCE / 999,995 TRIANGLES") else ifx s[0].failed then "PRIVATE SOURCE PACK MISSING OR REFUSED" else "LOADING ORIGINAL SOURCE PACK",20,94,11,w/d-40,pen,1);
+  n=hd_text_fit(out,n,"ANCIENT WORLD / L0 X0 Y0 / INSTANCE 0 + 1",20,116,10,w/d-40,pen,0);
+  n=hd_text_fit(out,n,"ORIGINAL 4K ALBEDO + ROUGHNESS / SOURCE POSES",20,h/d-142,10,w/d-40,pen,0);
+  n=hd_text_fit(out,n,"AETHYR STUDIO LIGHTING / ORIGINAL SOURCE POSES",20,h/d-120,10,w/d-40,pen,1);
+  n=hd_text(out,n,[5]string.["VIEW / PBR","VIEW / ALBEDO","VIEW / NORMALS","VIEW / ROUGHNESS","VIEW / VERTEX PAINT"][s[0].mode],20,h/d-98,11,pen,0);
+  for k:0..<2 {b:=HudBox.{x=16+cast(f32)k*w/d*0.5,y=h/d-82,width=w/d*0.5-32,height=44};n=hd_panel(out,n,b,pen,false);n=hd_text_fit(out,n,ifx k==0 then "V / VIEW" else ifx s[0].solo==2 then "I / BOTH" else ifx s[0].solo==0 then "I / INSTANCE 0" else "I / INSTANCE 1",b.x+8,b.y+28,11,b.width-16,pen,0);}
+  n=hd_text_fit(out,n,"DRAG ORBIT / WHEEL ZOOM / R RESET",20,h/d-16,10,w/d-40,pen,0);
+  s[0].meter[0]=budget_meter(CANYON_BUDGET);budget_measure(s[0].meter[..],n+(ifx canyon_ready(s) then CANYON_TRIANGLES*6*cast(int)s[0].draws[3] else 0),4,budget_arena_bytes(size_of(ValleyCanyon),CANYON_HUD,12,128)+71028884+24209616+11999940+178956968);#assert budget_ok(s[0].meter[0]);return n;
+}
+canyon_probe :: (s:[]ValleyCanyon,f:int)->int #export_c {if f==6 {return s[0].pack_checks;}if f==7 {return ifx s[0].failed then 1 else 0;}if f>=10 && f<58 {return cast(int)s[0].pose_words[f-10];}if f==0 {return ifx canyon_ready(s) then 1 else 0;}if f==1 {return CANYON_TRIANGLES*cast(int)s[0].draws[3];}if f==2 {return s[0].mode;}if f==3 {return s[0].solo;}if f==4 {return s[0].meter[0].used[BUDGET_BYTES];}return s[0].meter[0].used[BUDGET_VERTICES];}
+
+canyon_pack_gate :: (s:[]ValleyCanyon,bytes:int)->bool #export_c {s[0].pack_checks+=1;s[0].pack_verified=canyon_pack_accept(s[0].pack_digest[..],bytes);if !s[0].pack_verified {s[0].failed=true;}return s[0].pack_verified;}

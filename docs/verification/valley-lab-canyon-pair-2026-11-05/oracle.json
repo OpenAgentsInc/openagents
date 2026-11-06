@@ -1,0 +1,45 @@
+{
+  "source_triangles_per_instance": 999995,
+  "section_triangles": 1999990,
+  "gpu_vertices": 504367,
+  "source_corner_attributes": "all 2,999,985 indexed corner records bit-exact",
+  "winding": "all original source triangle orders preserved",
+  "texture_maps": "both original 4096x4096 PNGs byte-exact",
+  "sdk_sample_error_m": 1.1124747496538134e-06,
+  "all_vertex_pose_error_m": 9.256126780599061e-07,
+  "all_vertex_normal_error": 1.2816648062297098e-07,
+  "pack_bytes": 71028884,
+  "pack_sha256": "9087df269134827845b90554bbd23d6b63ec790a49cdf570fa95300d56fda96c",
+  "entries": [
+    {
+      "kind": 1,
+      "name": "catalog",
+      "bytes": 102,
+      "sha256": "af9d51c67524b33bbd1f09011564b93467a32e2fa2a592586318aa978ebc3b84"
+    },
+    {
+      "kind": 2,
+      "name": "vertices",
+      "bytes": 24209616,
+      "sha256": "588da55d8fe634651a1729e3a56568624fe4165c65548dd9167645c091d5ae0a"
+    },
+    {
+      "kind": 3,
+      "name": "indices",
+      "bytes": 11999940,
+      "sha256": "86b1e816f989084acc3c6c44533d739fd3592d93da0580f8022a5cdd9b5a1b59"
+    },
+    {
+      "kind": 4,
+      "name": "albedo",
+      "bytes": 25754002,
+      "sha256": "2eb23cc6d7ad33020fff327979c2c0327b31e9ad2ca0b2e09c753c6e693ccfcb"
+    },
+    {
+      "kind": 4,
+      "name": "roughness",
+      "bytes": 9064946,
+      "sha256": "6081f242ecd51bdea5046320916973a0d33c239e3ffded1fe338c09a4a5de63e"
+    }
+  ]
+}

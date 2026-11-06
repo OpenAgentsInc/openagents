@@ -1,0 +1,36 @@
+// Valley Lab source pair: actual source normals/UV/paint, 4K maps and shared shadow effects.
+#load "splash.coax";
+#load "../../../aethyr/render/sampling.coax";
+cv_at :: (u:[]f32,at:int)->V3 {return v3(u[at],u[at+1],u[at+2]);}
+cv_add :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+cv_sub :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
+cv_scale :: (a:V3,k:f32)->V3 {return v3(a.x*k,a.y*k,a.z*k);}
+cv_word :: (vertices:[]u32,at:int)->f32 {return f32_from_bits(vertices[at]);}
+cv_world :: (id:u32,instance:u32,vertices:[]u32,u:[]f32)->V3 {at:=cast(int)id*12;p:=v4(cv_word(vertices,at),cv_word(vertices,at+1),cv_word(vertices,at+2),1);m:=32+cast(int)instance*24;return v3(wg_dot4(wg_at4(u,m),p),wg_dot4(wg_at4(u,m+4),p),wg_dot4(wg_at4(u,m+8),p));}
+cv_shadow :: (world:V3,u:[]f32)->V3 {p:=cv_sub(world,cv_at(u,92));return v3(wg_dot3(p,cv_at(u,80))/u[96],wg_dot3(p,cv_at(u,84))/u[96],0.5-wg_dot3(p,cv_at(u,88))/(4*u[96]));}
+vc_bg_vs :: (i:u32,j:u32)->V4 {return splash_bg_vs(i,j);}
+vc_bg_fs :: (p:V4,u:[]f32)->V4 {return v4(0.065,0.075,0.09,1);}
+vc_vertex :: struct {a:V4;b:V4;c:V4;}
+vc_fx_vs :: (i:u32,j:u32,a:vc_vertex,u:[]f32)->SplashV {return splash_fx_vs(i,j,splash_fx_vs_in.{a=a.a,b=a.b,c=a.c,d=v4(0,0,0,0)},u);}
+vc_fx_fs :: (v:SplashV,u:[]f32)->V4 {return splash_fx_fs(v,u);}
+CanyonSurface :: struct {pos:V4;world:V3;normal:V3;uv:V2;paint:V4;}
+vc_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32)->CanyonSurface {
+  at:=cast(int)id*12;world:=cv_world(id,instance,vertices,u);n:=v3(cv_word(vertices,at+3),cv_word(vertices,at+4),cv_word(vertices,at+5));m:=44+cast(int)instance*24;
+  r:=cv_sub(world,cv_at(u,8));z:=wg_dot3(r,cv_at(u,20));return CanyonSurface.{pos=v4(wg_dot3(r,cv_at(u,12))*u[15],wg_dot3(r,cv_at(u,16))*u[19],300.0/299.95*(z-0.05),z),world=world,normal=v3(wg_dot3(cv_at(u,m),n),wg_dot3(cv_at(u,m+4),n),wg_dot3(cv_at(u,m+8),n)),uv=v2(cv_word(vertices,at+6),cv_word(vertices,at+7)),paint=wg_unpack4x8unorm(vertices[at+8])};
+}
+CanyonShadow :: struct {pos:V4;}
+vc_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32)->CanyonShadow {q:=cv_shadow(cv_world(id,instance,vertices,u),u);return CanyonShadow.{pos=v4(q.x,q.y,q.z,1)};}
+vc_shadow_fs :: (s:CanyonShadow) {}
+cv_srgb :: (x:f32)->f32 {return ifx x<=0.0031308 then 12.92*x else 1.055*pow(x,1.0f32/2.4f32)-0.055;}
+cv_tone :: (x:f32)->f32 {return cv_srgb(fmin(1.0f32,(x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14)));}
+#test "Canyon material helpers retain linear roughness and bounded filmic response" {#assert abs(cv_srgb(0.21404114)-0.5)<0.00001;#assert cv_tone(0)==0 && cv_tone(1)>0.9 && cv_tone(100)<=1;}
+vc_scene_fs :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
+  a:=render_sample_layer8(sheets,sheet,s.uv,0);rough:=cv_srgb(render_sample_layer8(sheets,sheet,s.uv,1).x);rough=fmax(0.045f32,rough);
+  n:=wg_normalize3(s.normal);albedo:=cv_scale(v3(a.x,a.y,a.z),u[6]);
+  if u[4]>0.5 && u[4]<1.5 {return v4(cv_srgb(albedo.x),cv_srgb(albedo.y),cv_srgb(albedo.z),1);}
+  if u[4]>1.5 && u[4]<2.5 {return v4(n.x*0.5+0.5,n.y*0.5+0.5,n.z*0.5+0.5,1);}
+  if u[4]>2.5 && u[4]<3.5 {return v4(rough,rough,rough,1);}if u[4]>3.5 {return v4(s.paint.x,s.paint.y,s.paint.z,1);}
+  l:=cv_at(u,24);v:=wg_normalize3(cv_sub(cv_at(u,8),s.world));halfway:=wg_normalize3(cv_add(l,v));nl:=fmax(0.0f32,wg_dot3(n,l));nv:=fmax(0.0001f32,wg_dot3(n,v));nh:=fmax(0.0f32,wg_dot3(n,halfway));vh:=fmax(0.0f32,wg_dot3(v,halfway));alpha:=rough*rough;aa:=alpha*alpha;den:=nh*nh*(aa-1)+1;distribution:=aa/(3.14159265*den*den);k:=(rough+1)*(rough+1)/8;g:=nv/(nv*(1-k)+k)*nl/(nl*(1-k)+k);f:=0.04+0.96*pow(1-vh,5.0f32);spec:=distribution*g*f/(4*nv*fmax(nl,0.0001f32));
+  q:=cv_shadow(s.world,u);shadow:f32=1;if abs(q.x)<1 && abs(q.y)<1 && q.z>0 && q.z<1 {shadow=gpu_compare(shadow_map,shadow_cmp,v2(q.x*0.5+0.5,0.5-q.y*0.5),q.z-0.00015);}
+  ambient:=0.16+0.12*(n.y*0.5+0.5);direct:=nl*shadow*3.5;colour:=cv_add(cv_scale(albedo,ambient+direct/3.14159265),cv_scale(v3(spec,spec,spec),direct));return v4(cv_tone(colour.x),cv_tone(colour.y),cv_tone(colour.z),1);
+}

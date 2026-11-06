@@ -1,0 +1,3 @@
+shot: WebGPU adapter: hardware apple metal-3
+{"ready":false,"source":0,"packChecks":0,"failed":1}
+/tmp/valley-canyon-missing.png
