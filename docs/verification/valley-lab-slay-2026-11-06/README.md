@@ -359,8 +359,8 @@ Sampling the face weights every quarter shot frame showed three snaps:
 
 - The shot's face clip (source 1121 to 1159) switched on at frame 120 and off
   at frame 158 in one frame, from a neutral face to an expression and back
-  (summed weights about 5.2 and 5.4 in one step). It now holds the first and last
-  expression and eases in and out over 12 source frames (half a second).
+  (summed weights about 5.2 and 5.4 in one step). It now holds its first frame
+  before that range and its last frame after it, as Unreal does (see below).
 - Looping clips (the F view) jumped from their last frame to their first. The
   last 0.4 s (at most a third of the clip) now blends into the head of the
   clip, and the loop resumes past that head.
@@ -369,3 +369,23 @@ Sampling the face weights every quarter shot frame showed three snaps:
 
 The one remaining fast change in the shot, at frame 134, is a blink in the
 source (eye close goes from 0 to 1 within a frame and reopens by frame 140).
+
+### Whole-shot comparison with Unreal
+
+Unreal rendered all 200 source frames of TF0290 (1001 to 1200, 1280x800), and
+our page captured every second frame through 1165 (the last frames are only the
+blade against black, which the capture tool refuses as flat). Our capture tool
+started at Unreal's 1001.
+
+- Before 1121 Unreal shows her focused, narrowed-eye expression from 1001: it
+  holds the clip's first frame. Ours showed the rest face, eyes wide and aimed
+  by the rest pose, then eased in over 1109 to 1121 as her hand came up. Ours
+  now holds the first frame too, and after 1159 the last (the snarl), as Unreal
+  does.
+- Head and camera motion, measured by phase correlation of a face crop against
+  frame 1081: within 3 pixels of Unreal through 1129 (both drift 19 pixels left
+  and 12 up as she reaches), and frame to frame within a few pixels through the
+  grab at 1147.
+- Still different: Unreal draws the temple behind her, depth of field and
+  motion blur on the final shoulder and bracer pass; our skin has more
+  specular sheen on the cheeks.
