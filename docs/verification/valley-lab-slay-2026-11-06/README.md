@@ -497,3 +497,23 @@ background's maximum blur: a soft halo around her head. The scene pass now
 writes the view depth, weighted by coverage, into the aux target
 (`aux.y / aux.z`). `cv_post_z` uses that depth where it is nearer than the
 depth buffer, so the strands stay sharp at her focus.
+
+### Echo in Everglade (N, ?stage=echo)
+
+Echo stands a metre to the player's right at the Cultist Raid spawn on the
+commons, and the camera orbits her: close on her face, then back, once
+round (her back mid-turn), and wide on the two of them. The two pages
+render apart on one shared path, `verse/valley/echo-orbit.coax`, and the
+frames are laid over each other.
+
+- **Everglade** (`/worlds/everglade?stage=echo&clock=0.95&weather=rain`):
+  N starts the orbit, J hides the player for a second plate, and the HUD is
+  off. The clock and weather pins make the two plates match.
+- **Valley Lab** (N): Echo on the same path through Everglade's lens
+  (`fy = clamp(aspect * 1.25, 0.95, 1.9)`), relit for rainy night (a dim
+  warm key, a cool fill, no orb light), with the skin blur at f/16 and no
+  HUD. K swaps the frame for her coverage matte (the aux target's `z`).
+- **Composite:** Echo over the plate through her matte, a contact shadow
+  projected through the same camera, and the player's matte (the
+  difference between the two plates) on top of her where he is nearer the
+  camera.

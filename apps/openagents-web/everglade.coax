@@ -63,6 +63,7 @@
 #load "../../verse/everglade/quests.coax";
 #load "../../aethyr/flock.coax";
 #load "../../verse/everglade/ranger.coax";
+#load "../../verse/valley/echo-orbit.coax";
 #load "../../verse/everglade/folk.coax";
 #load "../../verse/everglade/rumours.coax";
 #load "../../verse/everglade/watch.coax";
@@ -1404,6 +1405,7 @@ hold_bit :: (key: int) -> int {
 
 everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c #effects(all) {
   if !s[0].started { everglade_start(s); }
+  if rp_echo_key(s, key) { return true; }   // ?stage=echo: N starts Echo's orbit (everglade-raid-preview.coax)
   if ega_key(s, key) { return true; }   // a SETTINGS row waiting for its key, or Esc shutting the pane (everglade-access.coax)
   if join_key(s, key) { return true; }   // the CHARACTER picker takes the keys while it is up
   if s[0].talk >= 0 { return talk_key(s, key, mods); }
@@ -1533,6 +1535,7 @@ everglade_controls :: (s: [] Everglade, dt: f32, dyaw: f32, dpitch: f32) #export
 // own hood and cloak, so then too.
 EYE_IN_CLOAK :: 0.9;   // m along the camera's ray from your head
 you_inside :: (s: [] Everglade) -> bool {
+  if s[0].rp.echo_hide_you { return true; }   // ?stage=echo's J: a plate without you, for your matte
   o := s[0].orbit;
   pulled := finite(o.shown) && o.shown < lo(f32(EYE_IN_CLOAK), verse_orbit_ray(o).far - 0.1);
   return (verse_orbit_inside(o) || pulled) && s[0].lift < 0.5;

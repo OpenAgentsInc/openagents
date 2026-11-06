@@ -62,7 +62,9 @@ RaidPreview :: struct {
   // his staff's orb and how bright it burns (its light, rp_lamps)
   arch_on: bool; arch_name: Point; arch_orb: Point; arch_glow: f32;
   arch_feet: Point; arch_left: Point;   // where he stands, and his left (his staff's side)
-  stage: f32;                // ?stage=darian (4 m) or darian-15: the camera this far off his left side; -1 ?stage=front (RP_FRONT_EYE); 0 none
+  stage: f32;                // ?stage=darian (4 m) or darian-15: the camera this far off his left side; -1 ?stage=front (RP_FRONT_EYE); -3 ?stage=echo; 0 none
+  echo_t: f32; echo_run: bool;   // ?stage=echo: s into Echo's orbit, once N starts it
+  echo_hide_you: bool;            // ?stage=echo: J hides you (a second plate gives your matte)
 }
 
 // ?raid=preview (and &cine=1): you by the commons facing the South Gate, the raid to come.
@@ -72,6 +74,15 @@ rp_facts :: (s: [] Everglade, url: string) {
   if eg_query_is(url, "stage", "darian-15") { s[0].rp.stage = 15; }
   if eg_query_is(url, "stage", "front") { s[0].rp.stage = -1; }   // the siege's front from above the South Gate (#12860)
   if eg_query_is(url,"stage","benchmark-south-gate") {s[0].rp.stage=-2;}
+  // ?stage=echo: you where the raid preview puts you, facing the South Gate, and Valley Lab's Echo
+  // beside you, filmed apart on the same path (verse/valley/echo-orbit.coax) and laid over this one
+  if eg_query_is(url, "stage", "echo") {
+    s[0].rp.stage = -3;
+    s[0].spawn = v3(RP_YOU[0], 0, RP_YOU[1]); s[0].spawn_face = yaw_of(0, -1);
+    s[0].feet = v3(RP_YOU[0], ground_at(s, RP_YOU[0], RP_YOU[1]), RP_YOU[1]);
+    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].warp = true; s[0].above = false; s[0].lift = 0;
+  }
   if !eg_query_is(url, "raid", "preview") { return; }
   s[0].rp.on = true;
   s[0].rp.cine = eg_query_is(url, "cine", "1");
@@ -110,9 +121,26 @@ RP_STEPS :: 3;              // raiders' footfalls a frame at most: a charge is a
 rp_frame :: (s: [] Everglade, dt: f32) {
   s[0].rp.steps = 0;
   if s[0].rp.on && s[0].pack_ready { s[0].rp.t += dt; }
+  if s[0].rp.stage == -3 && s[0].rp.echo_run { s[0].rp.echo_t = lo(s[0].rp.echo_t + dt, f32(ECHO_ORBIT_SECONDS)); }
 }
 // Whether the HUD is off: through the flight, till it settles behind you.
-rp_hud_off :: (s: [] Everglade) -> bool { return s[0].rp.on && s[0].rp.cine && s[0].rp.t < f32(RP_HUD_AT); }
+rp_hud_off :: (s: [] Everglade) -> bool { return s[0].rp.stage == -3 || (s[0].rp.on && s[0].rp.cine && s[0].rp.t < f32(RP_HUD_AT)); }
+// ?stage=echo: N (again: from the start) runs Echo's orbit; J hides you.
+rp_echo_key :: (s: [] Everglade, key: int) -> bool {
+  if s[0].rp.stage == -3 && (key == 74 || key == 106) { s[0].rp.echo_hide_you = !s[0].rp.echo_hide_you; return true; }
+  if s[0].rp.stage != -3 || (key != 78 && key != 110) { return false; }
+  s[0].rp.echo_run = true; s[0].rp.echo_t = 0; return true;
+}
+// Echo stands a metre to your right on the commons (RP_YOU), facing the gate as you do.
+RP_ECHO_SIDE :: 1.0;
+rp_echo_shot :: (s: [] Everglade) -> Shot {
+  x := RP_YOU[0] + f32(RP_ECHO_SIDE); z := RP_YOU[1];
+  feet := v3(x, ground_at(s, x, z), z);
+  o: [6] f32;
+  echo_orbit_path(s[0].rp.echo_t, o[..]);
+  // her right is +x, her front -z
+  return Shot.{eye = add(feet, v3(o[0], o[1], -o[2])), at = add(feet, v3(o[3], o[4], -o[5]))};
+}
 
 // ---- the flight
 
@@ -138,6 +166,7 @@ RP_FRONT_EYE :: Point.{x = 14, y = 13, z = -50};
 RP_FRONT_AT :: Point.{x = -2, y = 0.5, z = -84};
 // The camera: with &cine=1 the flight, then your own (`follow`) from its last key; else yours.
 rp_shot :: (s: [] Everglade, follow: Shot) -> Shot {
+  if s[0].rp.stage == -3 { return rp_echo_shot(s); }
   if s[0].rp.stage == -2 {return Shot.{eye=Point.{x=18,y=18,z=-86},at=Point.{x=0,y=1.4,z=-54}};}
   if s[0].rp.stage < 0 { return Shot.{eye = RP_FRONT_EYE, at = RP_FRONT_AT}; }
   if s[0].rp.stage > 0 && s[0].rp.arch_on {
