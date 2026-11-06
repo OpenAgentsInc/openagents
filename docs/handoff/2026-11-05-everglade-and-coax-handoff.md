@@ -22,7 +22,6 @@ with a comment. Check the issue and `git log origin/main` for their results.
 | Issue | Work | Worktree |
 | --- | --- | --- |
 | #12936 | Fix the production room regression, then finish the release (rooms, then web) | `../openagents-roomperf` |
-| #12938 | Split the carrier C unit so a gameplay edit rebuilds in under 20 s | `../openagents-carrier` |
 
 If one of them stops without closing its issue, read its last issue comment
 and its worktree's `git status` and `git log`. Pick up from there; don't
@@ -127,6 +126,11 @@ Compiler:
   refuse plain arithmetic (E0840). The room and ledger counters use them.
 - #12925: build timings, a cache for each step, and two emitter fixes. A
   gameplay edit went from 56 s to 44 s, and a test-name edit from 46 s to 6 s.
+- #12938 (`85cfc9d1b1`, `2ac55b62bc`, `9215df3ad4`): big render units are
+  emitted as up to 16 cached C parts, and the release link runs in 8
+  partitions. A gameplay edit to everglade5e takes about 20 s in release and
+  11 s in dev on coderos-4080. About 9 s of that is still Coax to C, mostly
+  authority checks.
 - #12926: capacity refusals name the limit, its top users and a fix. The
   traversal limit can now be raised with `#traversal N` or `--traversal N`.
 - #12937 and #12939 (`199402193d`): the job pool's load notices print only
@@ -140,7 +144,7 @@ Books: #12610 stays open. The owner said "no more books work". Don't work it.
 
 | Issue | Owner or status |
 | --- | --- |
-| #12936, #12938 | A running agent (see above) |
+| #12936 | A running agent (see above) |
 | #12944 | No agent. **Blocker.** The room server fails to link on main, with 21 duplicate `cb_*` symbols, since `010c25bbed` (Codex lane). This blocks room builds, the API room checks, the drift check and the #12936 release. The #12936 agent knows. |
 | #12945 | No agent. Other failures on main: the `results-cache-policy` test, traversal budgets for `everglade5e-room-raid` and `rigid.coax d3_dot`, and listing drift in Aethyr chapter 89. |
 | #12941 | No agent. The drift check's 250 ms profile failed twice after the fire fixes, on Hold Person timing, conditions and townspeople walking in place. It may be real or caused by load, and it gates release.sh. Check it first if #12936's release is stuck. |
