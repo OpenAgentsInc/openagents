@@ -370,6 +370,26 @@ rm_players :: (v: [] RmServer) -> int #export_c {
   #assert !net_authoritative(rm_profile(RM_REALM_ORBIT));
 }
 
+#test "Orbit v2 (#12845): the room ignores reported transforms and steps admitted controls" #steps 2000000000 {
+  v:[1]RmServer;rm_init(v[..]);rm_clock(v[..],0,1762190000000);
+  #assert rm_join(v[..],0,"GET /api/room/orbit-league-v2/qualified HTTP/1.1\r\n\r\n")==0;
+  r:=v[0].conns[0].room;before:=v[0].rooms[r].cars[0];
+  rm_heard(v[..],0,"H 2 1 1 1");
+  buf:[256]u8;buf[0]='c';forged:=before;forged.pos.x=100;
+  n:=room_put_body(buf[..],1,forged);rm_heard(v[..],0,cast(string)buf[0..<n]);
+  #assert v[0].rooms[r].cars[0].pos.x==before.pos.x;
+  v[0].rooms[r].s[0].phase=PHASE_PLAY;
+  rm_heard(v[..],0,"I 1 1000 0 0 3 10 0");
+  for t:0..<30 {rm_clock(v[..],t*1000/60,1762190000000+t*1000/60);rm_tick(v[..]);}
+  #assert v[0].rooms[r].cars[0].pos.z>before.pos.z+0.1;
+  n=rm_state(v[..],0);#assert n>0 && v[0].out[0]=='S';
+  // The same room name on the frozen profile has a separate world and retains its reported body.
+  #assert rm_join(v[..],1,"GET /api/room/orbit-league/qualified HTTP/1.1\r\n\r\n")==0;
+  old:=v[0].conns[1].room;#assert old!=r;
+  rm_heard(v[..],1,cast(string)buf[0..<room_put_body(buf[..],1,forged)]);
+  #assert v[0].rooms[old].cars[0].pos.x==100;
+}
+
 #test "profiles: Orbit League and Everglade run by their own profiles on the one beat" {
   v: [1] RmServer;
   o := rm_profile(RM_REALM_ORBIT); e := rm_profile(RM_REALM_EVERGLADE);

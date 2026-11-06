@@ -1,0 +1,43 @@
+{
+  "profile": "openagents.orbit.session",
+  "version": 2,
+  "path": "/api/room/orbit-league-v2/NAME",
+  "legacy_path": "/api/room/orbit-league/NAME",
+  "pins": {"engine": 1, "rules": 1, "content": 1, "schema": 0},
+  "trust": "server owns cars, ball, fuel, collisions, goals and match clock; clients send controls",
+  "hz": 60,
+  "substeps": 2,
+  "durability": "none",
+  "resume": "connection loss ends the anonymous seat; a new connection is a new generation",
+  "client": {
+    "hello": "H 2 ENGINE RULES CONTENT",
+    "input": "I SEQ THROTTLE STEER FLAGS PAINT CLOCK HEARD",
+    "axes": [-1000, 1000],
+    "flags": {"handbrake": 1, "jump": 2, "boost": 4},
+    "paint": [0, 31],
+    "integer_max": 2000000000,
+    "stale_controls_ms": 1000,
+    "sequence": "positive, strictly newer than accepted and pending; latest controls step on the server beat",
+    "heard": "last complete state tick; a partial or rejected state is not acknowledged",
+    "reported_body": "refused; legacy c frames cannot move an authoritative car"
+  },
+  "server": {
+    "state": "S TICK SEAT GENERATION ACK ECHO PHASE PHASE_MS CLOCK_MS BLUE MAGENTA KICKS PLAYERS;ENTRIES",
+    "row": "s ID BACK MASK VALUES",
+    "removal": "x ID",
+    "refusal": "R REASON",
+    "row_id": "0 ball; 1 + seat for cars",
+    "fields": ["x", "y", "z", "qx", "qy", "qz", "qw", "vx", "vy", "vz", "wx", "wy", "wz", "paint", "fuel", "life"],
+    "units": "positions and velocities: thousandths; quaternion: millionths; paint and life: whole; fuel: thousandths",
+    "public_fields": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15],
+    "owner_fields": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    "party_fields": [],
+    "replication": "complete snapshots; every row is absolute (BACK 0)",
+    "receipt_ring": 32,
+    "identity": "a seat reused or a kickoff advances life; an old removal cannot erase its successor",
+    "baseline": "this small-room profile selects absolute rows; only complete snapshots are applied or acknowledged"
+  },
+  "limits": {"players": 4, "client_frame": 256, "server_frame": 2048},
+  "presentation": "authoritative car snapshots; no self-asserted transform or replay of rejected controls",
+  "legacy": "the published unversioned c/s profile remains a separate reported-car/server-ball hybrid and does not qualify as authoritative"
+}
