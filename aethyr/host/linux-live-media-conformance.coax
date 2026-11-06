@@ -1,0 +1,21 @@
+// Actual Vulkan upload/readback, cache residency and replacement-device facts.
+#authority;
+#test "live media receipt requires exact bytes and every physical lifetime boundary" {
+ q:=[18]int.[7,64512,7,0,7,1,7,64512,0,7,0,1,0,0,1,0,0,1];
+ #assert hlim_accept(q[..]);#assert !hlim_accept(q[0..<17]);extra:[19]int;#assert !hlim_accept(extra[..]);
+ for i:0..<q.count {changed:=q;changed[i]+=1;#assert !hlim_accept(changed[..]);}
+}
+hlim_accept :: (q:[]int)->bool #export_c {
+ want:=[18]int.[7,64512,7,0,7,1,7,64512,0,7,0,1,0,0,1,0,0,1];
+ if q.count!=want.count {return false;}for value,i:want {if q[i]!=value {return false;}}return true;
+}
+#test "missing malformed late-decode and escaped-file images fail independently while six remain drawable" {
+ q:[40]int;row:=[10]int.[6,0,1,0,0,7,55296,1,0,0];
+ for r:0..<4 {for value,i:row {q[r*10+i]=value;}}
+ #assert hlim_refusal(q[..]);#assert !hlim_refusal(q[0..<39]);extra:[41]int;#assert !hlim_refusal(extra[..]);
+ for i:0..<q.count {changed:=q;changed[i]+=1;#assert !hlim_refusal(changed[..]);}
+}
+hlim_refusal :: (q:[]int)->bool #export_c {
+ if q.count!=40 {return false;}want:=[10]int.[6,0,1,0,0,7,55296,1,0,0];
+ for row:0..<4 {for value,i:want {if q[row*10+i]!=value {return false;}}}return true;
+}

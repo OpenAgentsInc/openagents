@@ -386,7 +386,9 @@ int64_t cxfs_list(void) {
     fs_entries_n++;
   }
   closedir(d);
-  qsort(fs_entries, (size_t)fs_entries_n, sizeof *fs_entries, by_bytes);
+  // An empty directory owns no entries allocation; libc requires a nonnull
+  // base argument even when its element count is zero.
+  if (fs_entries_n > 1) qsort(fs_entries, (size_t)fs_entries_n, sizeof *fs_entries, by_bytes);
   return fs_entries_n;
 }
 int64_t cxfs_entry_len(int64_t i) { return i >= 0 && i < fs_entries_n ? (int64_t)strlen(fs_entries[i]) : -1; }

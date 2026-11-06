@@ -248,6 +248,18 @@ Image byte parity and the separately measured disabled presentation path do
 not enable a desktop default or substitute for the remaining complete host
 services.
 
+Linux live media uses the same canonical image cache and Coax bundled-path
+descriptor. The SDK checks containment of the actual opened descriptor before
+reading its exact stable regular-file extent. Missing, malformed, late-decode
+and symlink-escape inputs fail independently; six other images remain drawable.
+Actual RTX readback matches all 64,512 image bytes before and after physical
+device replacement, retaining the CPU cache and releasing every old/closed
+ledger handle. The 48-mutant observation gate and all 58 actual fields pass
+normally and under ASan/UBSan/LSan on Lavapipe. NVIDIA's instrumented ICD
+initialization refusal remains explicit. These component receipts do not
+substitute for ordinary Vulkan world/service integration; see
+`docs/verification/host-contract-2026-11-05/linux-live-media.md`.
+
 Version 1 media command packets expose their actual physical allocation via
 `coaxial_media_capacity`. The shared `media-packet.coax` admits empty packets
 without storage; nonempty packets require that export and the complete

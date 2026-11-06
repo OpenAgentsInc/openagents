@@ -1,0 +1,61 @@
+// SDK uploads/readbacks over canonical bundled bytes; no new world frames.
+#load "../render/native-host.coax";
+#load "../render/host-image-cache.coax";
+#load "../render/host-image.coax";
+#load "media-notice.coax";
+#load "linux-live-media-conformance.coax";
+#load "../render/tests/qualification-files.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/image/png.coax";
+hlmi_open_bytes :: (root:[]u8)->bool #foreign;
+hlmi_prepare_bytes :: (packet:[]u8)->int #foreign;
+hlmi_info_bytes :: (url:[]u8,field:int)->int #foreign;
+hlmi_copy_bytes :: (url:[]u8,out:[]u8)->int #foreign;
+hlmi_notice :: (out:[]u8)->int #foreign;
+hlmi_done :: () #foreign;
+hlmi_drop :: ()->int #foreign;
+hlmi_recover :: () #foreign;
+hlmi_close :: ()->int #foreign;
+hlmi_device :: (field:int)->int #foreign;
+hlmi_link_bytes :: (target:[]u8,path:[]u8)->bool #foreign;
+hlmi_bytes :: (text:string,out:[]u8)->int {if text.count>out.count {return -1;}for byte,i:text {out[i]=byte;}return text.count;}
+hlmi_open :: (text:string)->bool {bytes:[4096]u8;n:=hlmi_bytes(text,bytes[..]);return n>=0&&hlmi_open_bytes(bytes[0..<n]);}
+hlmi_prepare :: (text:string)->int {bytes:[16384]u8;n:=hlmi_bytes(text,bytes[..]);return ifx n<0 then -1 else hlmi_prepare_bytes(bytes[0..<n]);}
+hlmi_info :: (text:string,field:int)->int {bytes:[4096]u8;n:=hlmi_bytes(text,bytes[..]);return ifx n<0 then -1 else hlmi_info_bytes(bytes[0..<n],field);}
+hlmi_copy :: (text:string,out:[]u8)->int {bytes:[4096]u8;n:=hlmi_bytes(text,bytes[..]);return ifx n<0 then -1 else hlmi_copy_bytes(bytes[0..<n],out);}
+hlmi_link :: (target:string,path:string)->bool {a:[4096]u8;b:[4096]u8;an:=hlmi_bytes(target,a[..]);bn:=hlmi_bytes(path,b[..]);return an>=0&&bn>=0&&hlmi_link_bytes(a[0..<an],b[0..<bn]);}
+hlmi_line :: (text:string,row:int)->string {start:=0;at:=0;for c,i:text {if c=='\n' {if at==row {return text[start..<i];}start=i+1;at+=1;}}return ifx at==row then text[start..<text.count] else "";}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=3 {tool_errln("usage: check-linux-live-media BUNDLED_WEB_ROOT CANONICAL_BANK NEW_OUT");return 2;}
+ bank:=args_at(a[..],1);out:=args_at(a[..],2);if !fs_mkdir(out) {return 1;}listing:[1]FsList;if fs_list(out,listing[..])!=0 {return 2;}paths:[4][4096]u8;names_bytes:[4096]u8;urls_bytes:[4096]u8;
+ names_n:=fs_read(fs_join(bank,"media.list",paths[0][..]),names_bytes[..]);urls_n:=fs_read(fs_join(bank,"media.urls",paths[1][..]),urls_bytes[..]);if names_n<1||urls_n<1 {return 1;}
+ names:=cast(string)names_bytes[0..<names_n];urls:=cast(string)urls_bytes[0..<urls_n];packet:[16384]u8;o:[1]Jo;jo_start(o[..],packet[..]);inputs:[1]RtqInputs;
+ for i:0..<7 {url:=hlmi_line(urls,i);name:=hlmi_line(names,i);if url==""||name=="" {return 1;}if i>0 {jo_put(o[..],"\n");}jo_put(o[..],"image ");jo_put(o[..],url);jo_put(o[..]," 0 0 48 48");if !rtq_input_add(inputs[..],fs_join(bank,name,paths[0][..])) {return 1;}}
+ if !hlmi_open(args_at(a[..],0)) {return 1;}opened:=true;defer {if opened {_:=hlmi_close();}}
+ q:[18]int;q[4]=hlmi_prepare(jo_text(o[..]));notice:[16384]u8;again:[16384]u8;nn:=hlmi_notice(notice[..]);q[5]=ifx nn>0 then 1 else 0;hlmi_done();golden:[16384]u8;actual:[16384]u8;
+ for phase:0..<2 {
+  for i:0..<7 {url:=hlmi_line(urls,i);name:=hlmi_line(names,i);suffix:[256]u8;s:[1]Jo;jo_start(s[..],suffix[..]);jo_put(s[..],name);jo_put(s[..],".rgba");reference:=fs_join(bank,jo_text(s[..]),paths[0][..]);if !rtq_input_add(inputs[..],reference) {return 1;}
+   en:=fs_read(reference,golden[..]);n:=hlmi_copy(url,actual[..]);if en<1||n!=en {return 1;}different:=0;for byte,k:actual[0..<n] {if byte!=golden[k] {different+=1;}}
+   if phase==0 {q[0]+=1;q[1]+=n;q[2]+=hlmi_info(url,1);q[3]+=different;}else {q[9]+=hlmi_info(url,1);q[10]+=different;}
+  }
+  if phase==0 {q[8]=hlmi_drop();q[6]=hlmi_info("",5);q[7]=hlmi_info("",6);hlmi_recover();if hlmi_prepare(jo_text(o[..]))!=7 {return 1;}rn:=hlmi_notice(again[..]);q[11]=ifx rn==nn&&nn>0&&cast(string)again[0..<rn]==cast(string)notice[0..<nn] then 1 else 0;hlmi_done();}
+ }
+ q[14]=hlmi_device(0);q[15]=hlmi_device(1);q[16]=hlmi_device(2);q[12]=hlmi_close();opened=false;q[13]=hlmi_device(3);q[17]=ifx rtq_inputs_match(inputs[..]) then 1 else 0;
+ failures:[40]int;source:[8388608]u8;packet_text:=jo_text(o[..]);
+ for mode:0..<4 {
+  label:[64]u8;l:[1]Jo;jo_start(l[..],label[..]);jo_put(l[..],"failure-");jo_int(l[..],mode);mount_buf:[4096]u8;mount:=fs_join(out,jo_text(l[..]),mount_buf[..]);if !fs_mkdir(mount) {return 1;}
+  for directory:[3]string.["realms","realms/everglade","realms/everglade/hotbar"] {if !fs_mkdir(fs_join(mount,directory,paths[0][..])) {return 1;}}
+  for i:0..<7 {
+   name:=hlmi_line(names,i);input:=fs_join(bank,name,paths[0][..]);sn:=fs_read(input,source[..]);if sn<1 {return 1;}relative:[4096]u8;p:[1]Jo;jo_start(p[..],relative[..]);jo_put(p[..],"realms/everglade/hotbar/");jo_put(p[..],name);dest:=fs_join(mount,jo_text(p[..]),paths[1][..]);
+   if i>0 {if !fs_write(dest,cast(string)source[0..<sn]) {return 1;}}
+   else if mode==1 {if !fs_write(dest,"not an image") {return 1;}}
+   else if mode==2 {bad:=PNG_BAD_FILTER5;if !fs_write(dest,cast(string)bad[..]) {return 1;}}
+   else if mode==3 {outside:=fs_join(out,"outside.jpg",paths[2][..]);if !fs_write(outside,cast(string)source[0..<sn]) {return 1;}absolute:[4096]u8;if !hlmi_link(fs_realpath(outside,absolute[..]),dest) {return 1;}}
+  }
+  if !hlmi_open(mount) {return 1;}opened=true;at:=mode*10;failures[at]=hlmi_prepare(packet_text);url:=hlmi_line(urls,0);for field:1..<5 {failures[at+field]=hlmi_info(url,field);}failures[at+5]=hlmi_info("",5);failures[at+6]=hlmi_info("",6);
+  want:[7]HostMediaNotice;for i:0..<7 {want[i]=HostMediaNotice.{url=hlmi_line(urls,i),ready=i>0,failed=i==0,width=ifx i>0 then 48 else 0,height=ifx i>0 then 48 else 0};}
+  expected:=htn_format(want[..],notice[..]);actual_notice:=hlmi_notice(again[..]);failures[at+7]=ifx expected>0&&actual_notice==expected&&cast(string)again[0..<actual_notice]==cast(string)notice[0..<expected] then 1 else 0;
+  failures[at+8]=hlmi_close();opened=false;failures[at+9]=hlmi_device(3);
+ }
+ q[14]=hlmi_device(0);q[15]=hlmi_device(1);q[16]=hlmi_device(2);report:[65536]u8;jo_start(o[..],report[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.linux-live-media.v1");jo_key(o[..],"observations");jo_arr(o[..]);for value:q {jo_int(o[..],value);}jo_end(o[..]);jo_key(o[..],"failures");jo_arr(o[..]);for value:failures {jo_int(o[..],value);}jo_end(o[..]);jo_key(o[..],"passed");passed:=hlim_accept(q[..])&&hlim_refusal(failures[..])&&rtq_inputs_match(inputs[..]);jo_bool(o[..],passed);jo_key(o[..],"scope");jo_str(o[..],"Actual bundled-file decoder/cache, Vulkan upload/readback and replacement device; no world/presentation claim.");jo_key(o[..],"inputs");rtq_inputs_json(o[..],inputs[..],"");jo_end(o[..]);if o[0].bad||!fs_write(fs_join(out,"receipt.json",paths[2][..]),jo_text(o[..])) {return 1;}return ifx passed then 0 else 1;
+}
