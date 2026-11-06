@@ -1,17 +1,17 @@
 // Version 1 optional pack digest gate. Browser hashes received bytes; Coax owns admission.
 #load "../../aethyr/assets.coax";
 #authority;
-CANYON_PACK_BYTES :: 1023634576;
-// Full Slay groom (118,339 curves) plus the TF0290 source camera template.
-CANYON_PACK_SHA256 :: "5807c40f1c56dd67727bc7a72605049e6ca533c177251ab9b8c156fd0560dc0c";
-CANYON_PACK_DIGEST :: [32]u8.[0x58,0x07,0xc4,0x0f,0x1c,0x56,0xdd,0x67,0x72,0x7b,0xc7,0xa7,0x26,0x05,0x04,0x9e,0x6c,0xa5,0x33,0xc1,0x77,0x25,0x1a,0xb9,0xb8,0xc1,0x56,0xfd,0x05,0x60,0xdc,0x0c];
+CANYON_PACK_BYTES :: 1023642576;
+// Full Slay groom (118,339 curves), the TF0290 source camera template and SHS1 v3 with the orb Rect Light.
+CANYON_PACK_SHA256 :: "bcff9de83ab0fc38ecac6363ccbed5f88681eba418f6fb848d08f0637be6cc3f";
+CANYON_PACK_DIGEST :: [32]u8.[0xbc,0xff,0x9d,0xe8,0x3a,0xb0,0xfc,0x38,0xec,0xac,0x63,0x63,0xcc,0xbe,0xd5,0xf8,0x86,0x81,0xeb,0xa4,0x18,0xf6,0xfb,0x84,0x8d,0x08,0xf0,0x63,0x7b,0xe6,0xcc,0x3f];
 #test "Canyon pack gate pins every digest byte and exact length before GPU upload" {
-  digest:[33]u8;hex:="5807c40f1c56dd67727bc7a72605049e6ca533c177251ab9b8c156fd0560dc0c";
+  digest:[33]u8;hex:="bcff9de83ab0fc38ecac6363ccbed5f88681eba418f6fb848d08f0637be6cc3f";
   for k:0..<32 {digest[k]=cast(u8)(asset_digit(hex[k*2])*16+asset_digit(hex[k*2+1]));}
-  #assert canyon_pack_accept(digest[0..<32],1023634576);
-  #assert !canyon_pack_accept(digest[0..<31],1023634576) && !canyon_pack_accept(digest[..],1023634576);
+  #assert canyon_pack_accept(digest[0..<32],1023642576);
+  #assert !canyon_pack_accept(digest[0..<31],1023642576) && !canyon_pack_accept(digest[..],1023642576);
   #assert !canyon_pack_accept(digest[0..<32],1023634575) && !canyon_pack_accept(digest[0..<32],1023634577);
-  for k:0..<32 {digest[k]^=1;#assert !canyon_pack_accept(digest[0..<32],1023634576);digest[k]^=1;}
+  for k:0..<32 {digest[k]^=1;#assert !canyon_pack_accept(digest[0..<32],1023642576);digest[k]^=1;}
 }
 canyon_pack_accept :: (digest:[]u8,bytes:int)->bool #effects(all) {
   if digest.count!=32 || bytes!=CANYON_PACK_BYTES {return false;}

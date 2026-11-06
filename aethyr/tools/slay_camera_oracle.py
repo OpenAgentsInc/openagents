@@ -25,7 +25,7 @@ assert all(len(s) == 200 for s in scales.values())
 f32 = lambda x: struct.unpack('<f', struct.pack('<f', x))[0]
 shot = shot_path.read_bytes()
 header = struct.unpack_from('<5If7I', shot)
-assert header[0] == 0x31534853 and header[1] == 2 and header[2] == len(shot)
+assert header[0] == 0x31534853 and header[1] == 3 and header[2] == len(shot)
 assert header[3] == 200 and header[4] == 135 and header[5] == 24
 data, stride = header[7:9]
 

@@ -7,6 +7,7 @@
 #load "../../aethyr/assets.coax";
 #load "../../aethyr/sticks.coax";
 #load "../../verse/valley/slay-shot-play.coax";
+#load "../../verse/valley/slay-lights.coax";
 #load "../../verse/valley/face-ambient.coax";
 #load "../../aethyr/locomotion.coax" as locomotion;
 #load "../../aethyr/walk.coax" as pc;
@@ -101,7 +102,7 @@ canyon_asset :: (s:[]ValleyCanyon,index:int,bytes:int) #export_c #effects(all) {
  if (index==1 && bytes!=187564308) || (index==2 && bytes!=73674948) || (index==3 && bytes!=35) {s[0].failed=true;}
 }
 #test "Replay restarts the Slay shot from its first frame and stops on its last" #steps 1000000000 {
- s:[1]ValleyCanyon;names:[64]u8;shot_fixture(s[0].shot[0].data[0..<540],names[..]);s[0].shot[0].bytes=540;s[0].shot[0].ready=true;s[0].source_shot=true;s[0].portrait=true;s[0].shot[0].frame=1;
+ s:[1]ValleyCanyon;names:[64]u8;shot_fixture(s[0].shot[0].data[0..<620],names[..]);s[0].shot[0].bytes=620;s[0].shot[0].ready=true;s[0].source_shot=true;s[0].portrait=true;s[0].shot[0].frame=1;
  #assert canyon_key(s[..],84) && s[0].shot[0].frame==0 && s[0].shot[0].playing;
  canyon_step(s[..],0.1,false);canyon_step(s[..],0.1,false);#assert s[0].shot[0].frame==canyon_shot_last(s[..]) && !s[0].shot[0].playing;
  #assert canyon_key(s[..],80) && s[0].shot[0].frame==0 && s[0].shot[0].playing;
@@ -113,7 +114,7 @@ canyon_asset :: (s:[]ValleyCanyon,index:int,bytes:int) #export_c #effects(all) {
 CANYON_FACE_DISTANCE :: 1.58;
 CANYON_FACE_LENS :: 4.2;
 #test "Face views reuse the Slay hero lighting at Echo's position without the letterbox" #steps 1000000000 {
- s:[1]ValleyCanyon;names:[64]u8;shot_fixture(s[0].shot[0].data[0..<540],names[..]);s[0].shot[0].bytes=540;s[0].shot[0].ready=true;s[0].shot[0].frame=7;
+ s:[1]ValleyCanyon;names:[64]u8;shot_fixture(s[0].shot[0].data[0..<620],names[..]);s[0].shot[0].bytes=620;s[0].shot[0].ready=true;s[0].shot[0].frame=7;
  #assert canyon_key(s[..],72) && s[0].closeup;u:[128]f32;out:[CANYON_HUD*12]f32;_:=canyon_frame(s[..],out[..],u[..],1280,800,1);
  feet:=pc.walk_feet(s[0].you);#assert u[112]==1 && u[113]<0.001 && u[15]==CANYON_FACE_LENS && s[0].shot[0].frame==7;
  s[0].shot[0].frame=124;hero:=slay_shot_meta(s[0].shot[..],19);s[0].shot[0].frame=7;#assert abs(u[116]-feet.x-hero)<0.0001;
@@ -121,11 +122,35 @@ CANYON_FACE_LENS :: 4.2;
 }
 canyon_face_lighting :: (s:[]ValleyCanyon,u:[]f32,at:Point) {
  q:=s[0].shot[..];keep:=q[0].frame;q[0].frame=124;
- for k:0..<3 {u[97+k]=slay_shot_meta(q,14+k);u[24+k]=slay_shot_meta(q,24+k);u[120+k]=slay_shot_meta(q,27+k);u[28+k]=slay_shot_meta(q,39+k);}
+ // Turn the hero rig about the vertical so it sits where it did relative to the shot camera:
+ // the shot camera's heading maps onto the face camera's, which looks down -z.
+ turn:=canyon_face_turn(slay_shot_meta(q,9),slay_shot_meta(q,11));c:=turn.x;sn:=turn.y;
+ for k:0..<4 {base:=[4]int.[14,24,39,51][k];v:=canyon_yaw(v3(slay_shot_meta(q,base),slay_shot_meta(q,base+1),slay_shot_meta(q,base+2)),c,sn);slot:=[4]int.[97,24,28,0][k];
+  if k<3 {canyon_uniform_point(u,slot,v);} else {u[11]=slay_oct_x(v.x,v.y,v.z);u[127]=slay_oct_y(v.x,v.y,v.z);}}
+ for k:0..<3 {u[120+k]=slay_shot_meta(q,27+k);}
  u[116]=slay_shot_meta(q,19)+at.x;u[117]=slay_shot_meta(q,20)+at.y;u[118]=slay_shot_meta(q,21)+at.z;
- u[112]=1;u[113]=0.0001;u[115]=slay_shot_meta(q,18);u[114]=slay_shot_meta(q,23);u[119]=slay_shot_meta(q,22);u[123]=slay_shot_meta(q,42);u[31]=slay_shot_meta(q,43);
- u[124]=0.25015828;u[125]=0.61049557;u[126]=1;u[127]=1;q[0].frame=keep;
+ u[112]=1;u[113]=0.0001;u[115]=slay_shot_meta(q,18);u[114]=slay_shot_meta(q,23);u[119]=pc.atan2(sn,c);u[123]=slay_shot_meta(q,42);u[31]=slay_shot_meta(q,43);
+ u[124]=0.25015828;u[125]=0.61049557;u[126]=1;
+ // The orb Rect Light keeps its hero-frame offset from the head, turned with the rig.
+ rect:=canyon_yaw(v3(slay_shot_meta(q,44)-slay_shot_meta(q,36),slay_shot_meta(q,45)-slay_shot_meta(q,37),slay_shot_meta(q,46)-slay_shot_meta(q,38)),c,sn);
+ u[83]=at.x+rect.x;u[87]=at.y+CANYON_FACE_HEAD+rect.y;u[91]=at.z+rect.z;u[23]=slay_shot_meta(q,47);u[27]=slay_shot_meta(q,48);u[95]=slay_shot_meta(q,49);u[107]=slay_shot_meta(q,50);q[0].frame=keep;
  l:=unit_or(v3(u[24],u[25],u[26]),v3(0,1,0));r:=unit_or(cross(v3(0,1,0),l),v3(1,0,0));canyon_uniform_point(u,80,r);canyon_uniform_point(u,84,cross(l,r));canyon_uniform_point(u,88,l);canyon_uniform_point(u,92,v3(at.x,at.y+1.4,at.z));u[96]=0.6;
+}
+// The face camera's target height above the feet, where the head sits in the walk pose.
+CANYON_FACE_HEAD :: 1.6;
+canyon_yaw :: (v:Point,c:f32,s:f32)->Point {return v3(c*v.x+s*v.z,v.y,-s*v.x+c*v.z);}
+// Cosine and sine of the turn that takes a camera heading (x,z) onto the face camera's -z.
+canyon_face_turn :: (hx:f32,hz:f32)->Point {h:=sqrt(hx*hx+hz*hz);if h<0.000001 {return v3(1,0,0);}return v3(-hz/h,hx/h,0);}
+#test "The face view turns the hero rig so the shot camera's heading becomes the face camera's" {
+ for d:[4]Point.[v3(0.8,-0.3,0.6),v3(-1,0.2,0),v3(0,0,1),v3(0.3,0,-0.4)] {t:=canyon_face_turn(d.x,d.z);r:=canyon_yaw(d,t.x,t.y);h:=sqrt(d.x*d.x+d.z*d.z);#assert abs(r.x)<0.00001 && abs(r.z+h)<0.00001 && r.y==d.y;}
+ t:=canyon_face_turn(0,0);#assert t.x==1 && t.y==0;
+}
+// The orb Rect Light (shot meta 44..50) goes into the shader's free slots 83/87/91 (position),
+// 23/27/95 (colour x candelas), 107 (attenuation radius) and 11/127 (octahedral aim).
+canyon_rect_light :: (u:[]f32,q:[]SlayShot,at:Point) {
+ u[83]=slay_shot_meta(q,44)+at.x;u[87]=slay_shot_meta(q,45)+at.y;u[91]=slay_shot_meta(q,46)+at.z;
+ u[23]=slay_shot_meta(q,47);u[27]=slay_shot_meta(q,48);u[95]=slay_shot_meta(q,49);u[107]=slay_shot_meta(q,50);
+ x:=slay_shot_meta(q,51);y:=slay_shot_meta(q,52);z:=slay_shot_meta(q,53);u[11]=slay_oct_x(x,y,z);u[127]=slay_oct_y(x,y,z);
 }
 canyon_shot_last :: (s:[]ValleyCanyon)->f32 {if !s[0].shot[0].ready {return 0;}return cast(f32)(shot_info(s[0].shot[0].data[0..<s[0].shot[0].bytes]).frames-1);}
 canyon_shot_replay :: (s:[]ValleyCanyon) {if !s[0].shot[0].ready {return;}s[0].shot[0].frame=0;s[0].shot[0].playing=true;slay_shot_present(s[0].shot[..],s[0].echo[..]);}
@@ -167,7 +192,7 @@ canyon_uniform_point :: (u:[]f32,at:int,p:Point) {u[at]=p.x;u[at+1]=p.y;u[at+2]=
 canyon_frame :: (s:[]ValleyCanyon,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #export_c #effects(all) {
   if !(w>0 && h>0 && d>0) {return 0;}s[0].width=w;s[0].height=h;s[0].d=d;s[0].ready=true;canyon_start(s);bounds:=canyon_bounds();target:=times(add(bounds.low,bounds.high),0.5);
   eye:=add(target,v3(sin(s[0].orbit)*cos(s[0].tilt)*s[0].distance,sin(s[0].tilt)*s[0].distance,cos(s[0].orbit)*cos(s[0].tilt)*s[0].distance));
-  if s[0].walking {feet:=pc.walk_feet(s[0].you);shot:=pc.walk_shot(s[0].you);eye=v3(shot.eye.x,shot.eye.y,shot.eye.z);target=v3(shot.at.x,shot.at.y,shot.at.z);}if s[0].portrait {feet:=pc.walk_feet(s[0].you);eye=v3(feet.x,feet.y+1.2,feet.z+2.2);target=v3(feet.x,feet.y+1.1,feet.z);if s[0].closeup {eye=v3(feet.x,feet.y+1.65,feet.z+CANYON_FACE_DISTANCE);target=v3(feet.x,feet.y+1.6,feet.z);}}s[0].eye=eye;
+  if s[0].walking {feet:=pc.walk_feet(s[0].you);shot:=pc.walk_shot(s[0].you);eye=v3(shot.eye.x,shot.eye.y,shot.eye.z);target=v3(shot.at.x,shot.at.y,shot.at.z);}if s[0].portrait {feet:=pc.walk_feet(s[0].you);eye=v3(feet.x,feet.y+1.2,feet.z+2.2);target=v3(feet.x,feet.y+1.1,feet.z);if s[0].closeup {eye=v3(feet.x,feet.y+1.65,feet.z+CANYON_FACE_DISTANCE);target=v3(feet.x,feet.y+CANYON_FACE_HEAD,feet.z);}}s[0].eye=eye;
   forward:=unit_or(sub(target,eye),v3(0,0,-1));right:=unit_or(cross(forward,v3(0,1,0)),v3(1,0,0));up:=cross(right,forward);
   for k:0..<128 {u[k]=0;}u[0]=w;u[1]=h;u[2]=d;u[3]=1;u[4]=cast(f32)s[0].mode;u[6]=1.5;u[7]=ifx s[0].walking then 1.0f32 else 0.0f32;u[100]=canyon_ground();
   canyon_uniform_point(u,8,eye);canyon_uniform_point(u,12,right);u[15]=ifx w<h then 1.7f32 else 1.7f32*h/w;
@@ -180,8 +205,8 @@ canyon_frame :: (s:[]ValleyCanyon,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #exp
   if s[0].source_shot && s[0].shot[0].ready {
    q:=s[0].shot[..];for k:0..<12 {u[8+(k/3)*4+k%3]=slay_shot_meta(q,k);}s[0].eye=v3(u[8],u[9],u[10]);u[15]=slay_shot_meta(q,12);u[19]=u[15]*w/h;
    for k:0..<3 {u[104+k]=0;u[97+k]=slay_shot_meta(q,14+k);u[24+k]=slay_shot_meta(q,24+k);u[92+k]=slay_shot_meta(q,36+k);u[116+k]=slay_shot_meta(q,19+k);u[120+k]=slay_shot_meta(q,27+k);}u[108]=1;u[109]=0;u[5]=s[0].shot[0].frame/24;for k:0..<4 {u[100+k]=slay_shot_meta(q,30+k);}
-   u[112]=1;u[113]=2.4;u[115]=slay_shot_meta(q,18);u[114]=slay_shot_meta(q,23);u[119]=slay_shot_meta(q,22);u[123]=slay_shot_meta(q,42);u[31]=slay_shot_meta(q,43);for k:0..<3 {u[28+k]=slay_shot_meta(q,39+k);}
-   u[124]=0.25015828;u[125]=0.61049557;u[126]=1;u[127]=1;
+   u[112]=1;u[113]=2.4;u[115]=slay_shot_meta(q,18);u[114]=slay_shot_meta(q,23);u[119]=0;u[123]=slay_shot_meta(q,42);u[31]=slay_shot_meta(q,43);canyon_rect_light(u,q,v3(0,0,0));for k:0..<3 {u[28+k]=slay_shot_meta(q,39+k);}
+   u[124]=0.25015828;u[125]=0.61049557;u[126]=1;
    l:=unit_or(v3(u[24],u[25],u[26]),v3(0,1,0));r:=unit_or(cross(v3(0,1,0),l),v3(1,0,0));canyon_uniform_point(u,80,r);canyon_uniform_point(u,84,cross(l,r));canyon_uniform_point(u,88,l);
   }
   if s[0].portrait && s[0].closeup && !s[0].source_shot && s[0].shot[0].ready {canyon_face_lighting(s,u,v3(feet.x,feet.y,feet.z));}

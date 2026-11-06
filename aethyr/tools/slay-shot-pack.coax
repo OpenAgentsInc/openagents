@@ -58,7 +58,7 @@ tool_main :: ()->int #export_c #effects(all) {
  for k:0..<134 {id:=jv_int(g[0].d[0],ep_item(g[..],joints,k),-1);p:=node_parent[id];parent[k]=ifx p>=0 then node_bone[p] else -1;#assert parent[k]<k;}
  names[134]=sf_name("groom.prop_01");parent[134]= -1;
  out:[SLAY_SHOT_CAP]u8;frames:=200;data:=64+135*68;stride:=135*28+SLAY_SHOT_META*4;total:=data+frames*stride;
- header:=[13]u32.[0x31534853,2,cast(u32)total,200,135,f32_bits(24.0f32),64,cast(u32)data,cast(u32)stride,1001,16,1121,1159];for x,k:header {face_put(out[..],k*4,x);}
+ header:=[13]u32.[0x31534853,3,cast(u32)total,200,135,f32_bits(24.0f32),64,cast(u32)data,cast(u32)stride,1001,16,1121,1159];for x,k:header {face_put(out[..],k*4,x);}
  for k:0..<135 {sf_write_name(out[..],64+k*68,names[k]);face_put(out[..],64+k*68+64,cast(u32)(ifx k==134 then 135 else k));}
  sf_json(j[..],sdk,"TF0290_Echo.samples.json");#assert ep_int(j[..],0,"frames",0)==200;tracks:=ep_get(j[..],0,"bones");found:[135]bool;
  for k:0..<ep_len(j[..],tracks) {row:=ep_item(j[..],tracks,k);bone_name:=ep_text(j[..],row,"name");id:=sf_find(names[0..<134],bone_name);if bone_name=="prop_01" {id=134;}if id<0 {continue;}#assert !found[id];found[id]=true;values:=ep_get(j[..],row,"values");#assert ep_len(j[..],values)==2000;node:=j[0].nodes[values].first;
@@ -74,17 +74,23 @@ tool_main :: ()->int #export_c #effects(all) {
  for k:0..<9 {ss_channel(j[..],"Echo_Key","Transform",channels[k],key_actor[..],9,k);ss_light_channel(j[..],"Key","Echo_Key","Transform",channels[k],key_local[..],9,k);ss_channel(j[..],"Echo_Fill","Transform",channels[k],fill_actor[..],9,k);ss_channel(j[..],"EchoKeyWrap","Transform",channels[k],wrap_actor[..],9,k);}
  for k:0..<3 {ss_light_channel(j[..],"Key","Echo_Key","Light Color",[3]string.["Color.R","Color.G","Color.B"][k],key_rgb[..],3,k);}
  ss_light_channel(j[..],"Key","EchoKeyWrap","Intensity","None",wrap_power[..],1,0);
- ss_light_channel(j[..],"Key","Echo_Key","Intensity","None",key_power[..],1,0);ss_light_channel(j[..],"Key","Echo_Fill","Intensity","None",fill_power[..],1,0);
+ ss_light_channel(j[..],"Key","Echo_Key","Intensity","None",key_power[..],1,0);
+ rect_actor:[200*9]f32;rect_rgb:[200*3]f32;rect_power:[200]f32;rect_radius:[200]f32;
+ for k:0..<9 {ss_channel(j[..],"Rect Light","Transform",channels[k],rect_actor[..],9,k);}
+ for k:0..<3 {ss_light_channel(j[..],"LightComponent0","Rect Light","Light Color",[3]string.["Color.R","Color.G","Color.B"][k],rect_rgb[..],3,k);}
+ ss_light_channel(j[..],"LightComponent0","Rect Light","Intensity","None",rect_power[..],1,0);ss_light_channel(j[..],"LightComponent0","Rect Light","Attenuation Radius","None",rect_radius[..],1,0);ss_light_channel(j[..],"Key","Echo_Fill","Intensity","None",fill_power[..],1,0);
  hand:=sf_find(names[..],"hand_l");head:=sf_find(names[..],"head");#assert hand>=0 && head>=0;
  for frame:0..<frames {at:=data+frame*stride;gq:[135]Quat;gt:[135]Point;
   for k:0..<135 {p:=at+k*28;local:=SkinLocal.{t=scan_point(out[..],p),q=Quat.{x=face_float(out[..],p+12),y=face_float(out[..],p+16),z=face_float(out[..],p+20),w=face_float(out[..],p+24)}};pose_chain(gq[..],gt[..],parent[k],k,local);}
   eye:=v3(camera[frame*9]*0.01,camera[frame*9+2]*0.01,camera[frame*9+1]*0.01);axes:=ss_camera_axes(camera[frame*9+3],camera[frame*9+4],camera[frame*9+5]);orb:=add(gt[hand],quat_rotate(gq[hand],v3(offset[frame*3]*0.01,offset[frame*3+2]*0.01,offset[frame*3+1]*0.01)));
-  actor_axes:=ss_camera_axes(key_actor[frame*9+3],key_actor[frame*9+4],key_actor[frame*9+5]);local_axes:=ss_camera_axes(key_local[frame*9+3],key_local[frame*9+4],key_local[frame*9+5]);local_forward:=local_axes[0];key:=times(add(add(times(actor_axes[0],local_forward.x),times(actor_axes[1],local_forward.z)),times(actor_axes[2],local_forward.y)),-1);fill_axes:=ss_camera_axes(fill_actor[frame*9+3],fill_actor[frame*9+4],fill_actor[frame*9+5]);meta:[44]f32;
+  actor_axes:=ss_camera_axes(key_actor[frame*9+3],key_actor[frame*9+4],key_actor[frame*9+5]);local_axes:=ss_camera_axes(key_local[frame*9+3],key_local[frame*9+4],key_local[frame*9+5]);local_forward:=local_axes[0];key:=times(add(add(times(actor_axes[0],local_forward.x),times(actor_axes[1],local_forward.z)),times(actor_axes[2],local_forward.y)),-1);fill_axes:=ss_camera_axes(fill_actor[frame*9+3],fill_actor[frame*9+4],fill_actor[frame*9+5]);meta:[SLAY_SHOT_META]f32;
   wrap_axes:=ss_camera_axes(wrap_actor[frame*9+3],wrap_actor[frame*9+4],wrap_actor[frame*9+5]);meta[14]= -wrap_axes[0].x;meta[15]= -wrap_axes[0].y;meta[16]= -wrap_axes[0].z;meta[18]=wrap_power[frame];
   meta[39]= -fill_axes[0].x;meta[40]= -fill_axes[0].y;meta[41]= -fill_axes[0].z;meta[42]=key_power[frame];meta[43]=fill_power[frame];
+  // The orb Rect Light: candela intensity folded into its linear colour, and its unit aim (forward).
+  meta[44]=rect_actor[frame*9]*0.01;meta[45]=rect_actor[frame*9+2]*0.01;meta[46]=rect_actor[frame*9+1]*0.01;for k:0..<3 {meta[47+k]=rect_rgb[frame*3+k]*rect_power[frame];}meta[50]=rect_radius[frame]*0.01;rect_axes:=ss_camera_axes(rect_actor[frame*9+3],rect_actor[frame*9+4],rect_actor[frame*9+5]);meta[51]=rect_axes[0].x;meta[52]=rect_axes[0].y;meta[53]=rect_axes[0].z;
   for axis:0..<3 {vectors:=[7]Point.[eye,axes[1],axes[2],axes[0],orb,key,gt[head]];starts:=[7]int.[0,3,6,9,19,24,36];for v:0..<7 {meta[starts[v]+axis]=ifx axis==0 then vectors[v].x else ifx axis==1 then vectors[v].y else vectors[v].z;}}
   meta[12]=2*focal[frame]/24.889999f32;meta[13]=2.4;meta[17]=1;meta[22]=0.0375;meta[23]=30;meta[27]=key_rgb[frame*3];meta[28]=key_rgb[frame*3+1];meta[29]=key_rgb[frame*3+2];meta[30]=gq[hand].x;meta[31]=gq[hand].y;meta[32]=gq[hand].z;meta[33]=gq[hand].w;meta[34]=focus[frame]*0.01;meta[35]=4;
-  for k:0..<44 {face_put(out[..],at+135*28+k*4,f32_bits(meta[k]));}
+  for k:0..<SLAY_SHOT_META {face_put(out[..],at+135*28+k*4,f32_bits(meta[k]));}
  }
  face:[FACE_PACK_CAP]u8;path:[4096]u8;n:=fs_read(ep_path(dest,"echo.face",path[..]),face[..]);#assert n>0 && face_valid(face[0..<n]);f:=face_info(face[..]);#assert shot_valid(out[0..<total],face[f.rig_names..<f.rig_names+f.joints*64],f.joints,f.clips);
  #assert fs_write(ep_path(dest,"echo.shot",path[..]),cast(string)out[0..<total]);print("TF0290 shot frames=% bones=135 bytes=% source_start=1001 face_start=1121 face_clip=16\n",frames,total);return 0;

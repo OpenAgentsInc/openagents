@@ -85,7 +85,7 @@ for clip in range(nc):
 
 shot = (packed / 'echo.shot').read_bytes()
 _, v, size, frames, bones, rate, names, start, stride, first, clip, face_first, face_last = struct.unpack_from('<5If7I', shot)
-assert v == 2 and size == len(shot) and first == 1001 and clip == 16 and face_first == 1121 and face_last == 1159
+assert v == 3 and size == len(shot) and first == 1001 and clip == 16 and face_first == 1121 and face_last == 1159
 raw = json.loads((sdk / 'TF0290_Echo.samples.json').read_text())
 tracks = {b['name'].casefold(): b['values'] for b in raw['bones']}
 for bone in range(bones):
@@ -94,10 +94,36 @@ for bone in range(bones):
         at = start+frame*stride+bone*28
         assert struct.unpack_from('<7f', shot, at) == tuple(local(tracks[key][frame*10:(frame+1)*10]))
 
+# SHS1 v3 meta 44..53: the orb Rect Light from the source light samples, recomputed here.
+import math
+meta_count = (stride-bones*28)//4
+assert meta_count == 54
+lights = json.loads((sdk / 'tf0290-light-samples.json').read_text())
+def channel(binding, parent, track, name):
+    rows = [c['values'] for b in lights if b['name'] == binding and b['parent'] == parent
+            for t in b['tracks'] if t['name'] == track for sec in t['sections'] for c in sec['channels'] if c['name'] == name]
+    assert len(rows) == 1, (binding, track, name)
+    return rows[0]
+transform = {n: channel('Rect Light', '', 'Transform', n) for n in ('Location.X', 'Location.Y', 'Location.Z', 'Rotation.Y', 'Rotation.Z')}
+rgb = [channel('LightComponent0', 'Rect Light', 'Light Color', 'Color.'+c) for c in 'RGB']
+power = channel('LightComponent0', 'Rect Light', 'Intensity', 'None')
+radius = channel('LightComponent0', 'Rect Light', 'Attenuation Radius', 'None')
+rect_samples = 0
+for frame in range(frames):
+    m = struct.unpack_from('<54f', shot, start+frame*stride+bones*28)
+    pitch, yaw = math.radians(transform['Rotation.Y'][frame]), math.radians(transform['Rotation.Z'][frame])
+    expected = [transform['Location.X'][frame]*0.01, transform['Location.Z'][frame]*0.01, transform['Location.Y'][frame]*0.01,
+                *(rgb[k][frame]*power[frame] for k in range(3)), radius[frame]*0.01,
+                math.cos(pitch)*math.cos(yaw), math.sin(pitch), math.cos(pitch)*math.sin(yaw)]
+    for k, want in enumerate(expected):
+        assert abs(m[44+k]-want) <= 2e-6*max(1, abs(want)), (frame, 44+k, m[44+k], want)
+        rect_samples += 1
+
 print(json.dumps({'source_morph_deltas_bit_exact': nd, 'gpu_csr_records_bit_exact': nd,
                   'source_face_clips': nc, 'curve_samples_bit_exact': curve_samples,
                   'facial_local_samples_exact_values': bone_samples,
-                  'shot_body_local_samples_exact_values': frames*bones}))
+                  'shot_body_local_samples_exact_values': frames*bones,
+                  'shot_rect_light_values_checked': rect_samples}))
 
 # Optional actual Slay render extension: original UVs, sword and every source texture.
 if len(sys.argv) > 4:

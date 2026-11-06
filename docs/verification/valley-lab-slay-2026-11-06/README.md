@@ -212,3 +212,57 @@ mobile cost limitations are retained in that separate record.
   not a colour reference. The Temple post-process volume has no colour
   grading (exposure bias 1.8, AO, DOF only); the cool SkyLight cubemap
   `HDR_CaptureLighting` (tint 216/241/255) is not ported yet.
+
+## Orb Rect Light and candela balance
+
+Unreal renders TF0290 locally (`UnrealEditor -game` with the
+AutomatedLevelSequenceCapture, 1280 x 800, frames 1115-1126). Its frame 1125
+lines up with ours, so patch colours can be compared directly. Single-flag
+renders of the same frame located the cool light on her face:
+
+| Cheek nearest the orb (sRGB) | Full | No specular | No sky light | No rect lights |
+|---|---|---|---|---|
+| Unreal | 182/194/204 | 181/191/199 | 178/192/203 | 154/116/113 |
+
+The blue is diffuse light from a rect light. Lumen GI and the sky barely
+change it. The source is the orb's own `Rect Light` in `TF0290_Lighting`, a
+1 x 1 cm panel animated to 0-4.71 cd with a ~48 cm attenuation radius and
+52.3 degree barn doors, aimed back at her face from 16 cm beside the orb. Our
+pack did not carry it. The rig lights are all in candelas (the sequence sets
+their units), so with Unreal's inverse-square falloff and attenuation window
+the orb light reaches her face at roughly 30 times the key.
+
+- Shot format SHS1 v3 adds meta 44..53 per frame: the rect light's position,
+  linear colour times candelas, attenuation radius and aim.
+  `aethyr/tools/slay_asset_oracle.py` recomputes all 2,000 values from the
+  source samples.
+- The shader lights skin, cloth and hair with it, using Unreal's
+  `(1-(d/r)^4)^2/(d^2+1 cm^2)` falloff, the panel's cosine and a 52.3 degree
+  cone for the barn doors. Key, wrap, fill and kick use the same falloff at
+  their rig distances, scaled so the key keeps its calibrated power
+  (`verse/valley/slay-lights.coax`).
+- The face view (H) turns the hero rig about the vertical so it sits where it
+  did relative to the shot camera, rect light included.
+
+Seven face patches at frame 1125 (sRGB, Unreal / before / now):
+
+| Patch | Unreal | Before | Now |
+|---|---|---|---|
+| Cheek, key side | 216/143/106 | 227/139/80 | 218/123/66 |
+| Cheek, orb side | 182/194/204 | 191/117/82 | 187/213/220 |
+| Forehead | 207/205/209 | 219/151/106 | 207/218/222 |
+| Nose | 189/192/203 | 199/141/127 | 188/205/216 |
+| Chin | 202/132/105 | 226/136/78 | 218/128/79 |
+| Neck | 182/117/73 | 212/149/72 | 199/127/53 |
+| Scarf | 139/93/60 | 225/155/70 | 215/137/55 |
+
+The summed absolute error falls from 831 to 373. Still open:
+
+- The hand and the wrist bracer next to the orb clip to white. Unreal
+  ray-traces this light's shadows; ours casts none, so fingers and the bracer
+  facing the panel take its full ~200x-key light.
+- The orb side reads slightly green-cyan (G about 15 levels high).
+- Hair is near black where Unreal shows lit brown strands (strand multiple
+  scattering is not ported). The temple background and the cool sky cubemap
+  are not ported.
+- The shot pack is 1,023,642,576 bytes, sha256 `bcff9de8…cc3f`.

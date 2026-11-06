@@ -18,8 +18,42 @@ SLAY_KICK_X :: -0.57878977;
 SLAY_KICK_Y :: 0.63949306;
 SLAY_KICK_Z :: -0.50601486;
 SLAY_KICK_POWER :: 2.0;
+// The orb's radius, 3.75 cm, constant through the shot.
+SLAY_ORB_RADIUS :: 0.0375f32;
 SLAY_KICK_R :: 1.0;
 SLAY_KICK_G :: 0.9647;
 SLAY_KICK_B :: 0.956;
 // Echo_Fill and Echo_Kick: Specular Scale 0.5.
 SLAY_SOFT_SPECULAR :: 0.5;
+// The TF0290 rig is in candelas with inverse-square falloff and Unreal's
+// attenuation window, (1-(d/r)^4)^2 / (d^2 + 1 cm^2). Our key keeps its
+// calibrated power (the shot's intensity, 8), so SLAY_EXPOSURE converts candelas
+// at a distance into that scale: the key's d^2/window at 3.25827 m with its 5 m
+// radius. The others are their falloff times that exposure at the
+// BP_LightTarget_Solo distance, 3.45465 m: wrap and kick with 5 m radii and
+// the fill with 4 m.
+SLAY_EXPOSURE :: 15.801626;
+SLAY_WRAP_FALLOFF :: 0.7892976;
+SLAY_FILL_FALLOFF :: 0.2605536;
+SLAY_KICK_FALLOFF :: 0.7892976;
+slay_window :: (d2:f32,radius:f32)->f32 {if radius<=0 {return 0;}x:=d2/(radius*radius);w:=1-x*x;w=ifx w<0 then 0 else w;return w*w;}
+slay_candela_scale :: (d2:f32,radius:f32)->f32 {return SLAY_EXPOSURE*slay_window(d2,radius)/(d2+0.0001);}
+#test "TF0290 falloffs are the source candela window at each rig distance on the key's scale" {
+ key:f32=3.2582730;soft:f32=3.4546521;
+ #assert abs(slay_candela_scale(key*key,5)-1)<0.00001;
+ #assert abs(slay_candela_scale(soft*soft,5)-SLAY_WRAP_FALLOFF)<0.00001 && abs(slay_candela_scale(soft*soft,4)-SLAY_FILL_FALLOFF)<0.00001 && SLAY_KICK_FALLOFF==SLAY_WRAP_FALLOFF;
+ #assert slay_window(0.25,0.5)==0 && slay_window(1,0.5)==0 && slay_window(0,0.5)==1 && slay_window(0,0)==0;
+}
+// The orb Rect Light is 1 x 1 cm with 36.2 cm barn doors at 52.285717 degrees.
+// For a source that small the doors pass light within the door angle of its
+// normal; we treat that as a cone and weight emission by the panel's cosine.
+SLAY_RECT_BARN_COS :: 0.6117243;
+slay_rect_emission :: (cos_out:f32)->f32 {if cos_out<=SLAY_RECT_BARN_COS-0.02 {return 0;}edge:=(cos_out-(SLAY_RECT_BARN_COS-0.02))/0.04;edge=ifx edge>1 then 1 else edge;return cos_out*edge*edge*(3-2*edge);}
+// Octahedral encoding carries the unit aim in two uniform slots.
+slay_oct_sign :: (x:f32)->f32 {return ifx x<0 then -1 else 1;}
+slay_oct_x :: (x:f32,y:f32,z:f32)->f32 {a:=abs(x)+abs(y)+abs(z);ox:=x/a;oy:=y/a;if z<0 {return (1-abs(oy))*slay_oct_sign(ox);}return ox;}
+slay_oct_y :: (x:f32,y:f32,z:f32)->f32 {a:=abs(x)+abs(y)+abs(z);ox:=x/a;oy:=y/a;if z<0 {return (1-abs(ox))*slay_oct_sign(oy);}return oy;}
+#test "Rect emission follows the panel cosine inside the barn doors and stops outside them" {
+ #assert slay_rect_emission(1)==1 && slay_rect_emission(0.5)==0 && slay_rect_emission(-1)==0 && slay_rect_emission(0.7)==0.7;
+ #assert abs(cos(52.285717f32*3.14159265f32/180)-SLAY_RECT_BARN_COS)<0.000001;
+}

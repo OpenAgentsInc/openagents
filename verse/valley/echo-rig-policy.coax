@@ -9,8 +9,8 @@ echo_catalog_size_ok :: (n:int)->bool #effects(all) {return n>=16 && n<=ECHO_CAT
 echo_catalog_parts_ok :: (n:int,rig:int,face:int)->bool #effects(all) {return rig>=416 && rig<=ECHO_RIG_CAP && face>=80 && face<=FACE_PACK_CAP && rig+face==n-16;}
 echo_catalog_header :: (b:[]u8)->int #effects(all) {return ifx scan_u32(b,0)==0x33504345 then 20 else 16;}
 #test "ECP3 binds the source shot to the same rig and face before publication" #steps 1000000000 {
- b:[8192]u8;rig:=echo_rig_fixture(b[20..<b.count],1);face_fixture(b[20+rig..<20+rig+536]);at:=20+rig+536;names:[64]u8;shot_fixture(b[at..<at+540],names[..]);total:=at+540;
- scan_put(b[..],0,0x33504345);scan_put(b[..],4,cast(u32)rig);scan_put(b[..],8,536);scan_put(b[..],12,540);scan_put(b[..],16,cast(u32)total);
+ b:[8192]u8;rig:=echo_rig_fixture(b[20..<b.count],1);face_fixture(b[20+rig..<20+rig+536]);at:=20+rig+536;names:[64]u8;shot_fixture(b[at..<at+620],names[..]);total:=at+620;
+ scan_put(b[..],0,0x33504345);scan_put(b[..],4,cast(u32)rig);scan_put(b[..],8,536);scan_put(b[..],12,620);scan_put(b[..],16,cast(u32)total);
  #assert echo_catalog_header(b[..])==20 && echo_catalog_valid(b[0..<total]);original:=b;
  for offset:[8]int.[0,4,8,12,16,at,at+40,at+64] {b=original;scan_put(b[..],offset,0xffffffff);#assert !echo_catalog_valid(b[0..<total]);}
  b=original;#assert !echo_catalog_valid(b[0..<19]) && !echo_catalog_valid(b[0..<total-1]) && !echo_catalog_valid(b[0..<total+1]);

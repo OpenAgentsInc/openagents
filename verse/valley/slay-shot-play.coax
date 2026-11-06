@@ -1,8 +1,8 @@
 // Play admitted Slay body/camera samples; the source actor transform track is disabled.
 #load "echo.coax";
 #test "Shot playback clamps and interpolates source locals without changing other joints" #steps 1000000000 {
- s:[1]SlayShot;names:[64]u8;shot_fixture(s[0].data[0..<540],names[..]);s[0].bytes=540;s[0].ready=true;s[0].frame=0.5;
- face_put(s[0].data[..],132+204,f32_bits(2.0f32));e:[1]Echo;e[0].ready=true;e[0].joints=2;e[0].body[1].t.x=9;
+ s:[1]SlayShot;names:[64]u8;shot_fixture(s[0].data[0..<620],names[..]);s[0].bytes=620;s[0].ready=true;s[0].frame=0.5;
+ face_put(s[0].data[..],132+244,f32_bits(2.0f32));e:[1]Echo;e[0].ready=true;e[0].joints=2;e[0].body[1].t.x=9;
  slay_shot_present(s[..],e[..]);#assert e[0].body[0].t.x==1 && e[0].body[1].t.x==9;
  s[0].frame=99;#assert slay_shot_frame(s[..])==1;s[0].frame= -1;#assert slay_shot_frame(s[..])==0;
 }
