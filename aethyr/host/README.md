@@ -170,8 +170,31 @@ retain pixel travel. The existing old-protocol wheel fallback remains ten
 CSS pixels per axis unit. Captured drags retain motion/release outside the
 view. The SDK's real keymap/listener and ownership receipts are in
 [`wayland-input.md`](../../docs/verification/host-contract-2026-11-05/wayland-input.md).
-This scoped component leaves external input-method and clipboard services
-for the ordinary-window integration; it does not redefine those requirements.
+The text-input-v3 companion now handles compositor commits as atomic UTF-8
+transactions of at most 4,096 bytes. Preedit is held outside the producer;
+only committed text reaches inbox 1. It advertises neither surrounding text
+nor surrounding deletion, and refuses a transaction requesting unsupported
+deletion. A `done` for an older client state within the same field remains
+valid; a reply from before the current enable is discarded. Cursor rectangles
+use surface-local coordinates. Missing text-input support retains local XKB
+compose.
+
+Clipboard copy and Ctrl-V/Shift-Insert paste use the seat's data device.
+Pastes admit a complete UTF-8/no-NUL transaction at EOF, at most 2 MiB, with
+a five-second deadline. No partial prefix reaches the producer. A checked
+input epoch plus the host's engine identity owns each request; pointer-down,
+Tab/Enter/Escape, field/geometry changes, focus loss, hiding and engine
+replacement invalidate pending text and local compose. Paste also cancels
+older composition before starting its own transaction. Four retained sources
+(at most 8 MiB total) and four nonblocking send descriptors bound outgoing
+clipboard ownership. Cancelled sources retain their bytes through actual
+send completion; a closed reader cannot terminate the host with SIGPIPE.
+Unavailable/refused clipboard effects report the existing 604 error path.
+
+Actual protocol-object, descriptor and window-callback receipts are in
+[`wayland-text.md`](../../docs/verification/host-contract-2026-11-05/wayland-text.md).
+These component checks do not claim an interactive third-party IME session
+or replace the ordinary window/three-host/default gates.
 
 ## Inbox, actions and storage
 

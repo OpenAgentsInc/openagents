@@ -1,0 +1,1 @@
+{"argv":["wayland-scanner","private-code","//nix/store/gm0f9qnsqaydpk62704wqhpg7vczqmj3-wayland-protocols-1.48/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml","/tmp/aethyr-wayland-text-12869/frozen-normal/xdg-shell-protocol.c"],"started":0,"exit":0,"timed_out":false,"cut":false}

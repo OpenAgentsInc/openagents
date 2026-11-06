@@ -1,0 +1,21 @@
+coax jobs: waiting for 1 of 12 build workers held by 2 other coax processes; running 1 now (coax status shows them)
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/host/wayland-text.coax:42:76: mutant survived: 0 became 1
+  hwt_serial::(current:int,since:int,done:int)->bool #export_c {return since>0&&since<=done&&done<=current&&current<=2147483647;}
+                                                                             ^
+aethyr/host/wayland-text.coax:45:72: mutant survived: 2097152 became 2097153
+  hwt_chunk::(used:int,bytes:int)->bool #export_c {return used>=0&&used<=2097152&&bytes>=0&&bytes<=2097152-used;}
+                                                                         ^
+aethyr/host/wayland-text.coax:46:104: mutant survived: 8388608 became 8388609
+  hwt_lease::(cells:int,total:int,bytes:int)->bool #export_c {return cells>=0&&cells<4&&total>=0&&total<=8388608&&hwt_chunk(0,bytes)&&bytes<=8388608-total;}
+                                                                                                         ^
+aethyr/host/wayland-text.coax:50:81: mutant survived: '<=' became '<'
+  hwt_rectangle::(x:f64,y:f64,w:f64,h:f64)->bool #export_c {return x>= -1000000&&x<=1000000&&y>= -1000000&&y<=1000000&&w>=1&&w<=1000000&&h>=1&&h<=1000000;}
+                                                                                  ^
+aethyr/host/wayland-text.coax:50:93: mutant survived: '>=' became '>'
+  hwt_rectangle::(x:f64,y:f64,w:f64,h:f64)->bool #export_c {return x>= -1000000&&x<=1000000&&y>= -1000000&&y<=1000000&&w>=1&&w<=1000000&&h>=1&&h<=1000000;}
+                                                                                              ^
+aethyr/host/wayland-text.coax:50:143: mutant survived: '<=' became '<'
+  hwt_rectangle::(x:f64,y:f64,w:f64,h:f64)->bool #export_c {return x>= -1000000&&x<=1000000&&y>= -1000000&&y<=1000000&&w>=1&&w<=1000000&&h>=1&&h<=1000000;}
+                                                                                                                                                ^
+110 mutants, 104 killed, 6 survived

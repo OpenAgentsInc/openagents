@@ -1,0 +1,1 @@
+{"argv":["pkg-config","--variable=pkgdatadir","wayland-protocols"],"started":0,"exit":0,"timed_out":false,"cut":false}

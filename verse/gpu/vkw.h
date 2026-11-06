@@ -22,6 +22,12 @@
 #ifdef AETHYR_WAYLAND_INPUT_V1
 #include "wayland-input-sdk.h"
 #endif
+#ifdef AETHYR_WAYLAND_TEXT_V1
+#ifndef AETHYR_WAYLAND_INPUT_V1
+#error "Wayland text requires the shared keyboard adapter"
+#endif
+#include "wayland-text-sdk.h"
+#endif
 
 bool realm_key(void *state, int key);
 bool realm_key_up(void *state, int key);
@@ -38,6 +44,9 @@ typedef struct {
   uint32_t (*realm_key)(void *user,int key,int mods,int down);
   void (*text)(void *user,const char *bytes,size_t length);
   int (*wants_text)(void *user);
+  int (*text_rect)(void *user,float rect[4]);
+  uint64_t (*text_owner)(void *user);
+  void (*text_error)(void *user,const char *message);
 } VkwTo;
 
 typedef struct {
@@ -53,7 +62,7 @@ typedef struct {
   struct xdg_surface *xdg;
   struct xdg_toplevel *toplevel;
   VkSurfaceKHR vk_surface;
-  int configured, closed, fullscreen;
+  int configured, closed, fullscreen, keyboard_focused;
   int suspended;
   int32_t want_w, want_h;   // the last toplevel configure, 0 to choose
   int32_t refresh_mhz;
@@ -64,6 +73,10 @@ typedef struct {
   int shift, keys_down[KEY_MAX + 1];
   unsigned char forwarded_down[KEY_MAX + 1]; // physical keys delivered to the desk
   VkwTo to;
+#ifdef AETHYR_WAYLAND_TEXT_V1
+  HwtSdk text_sdk;
+  unsigned char pasted_down[KEY_MAX+1];
+#endif
 #ifdef AETHYR_WAYLAND_INPUT_V1
   HwiSdk input;
   double axis_value;
@@ -74,6 +87,33 @@ typedef struct {
 
 static Vkw *vkw_;   // the one window the listeners serve
 
+#ifdef AETHYR_WAYLAND_TEXT_V1
+static void vkw_compose_cancel(void*user){Vkw*w=user;if(w->input.compose)xkb_compose_state_reset(w->input.compose);}
+#endif
+static void vkw_text_sync(Vkw*w,int boundary){
+#ifdef AETHYR_WAYLAND_TEXT_V1
+ if(!w->to.realm_key)return;
+ if(boundary)hwt_boundary_sdk(&w->text_sdk);
+ hwt_sync(&w->text_sdk);
+#else
+ (void)w;(void)boundary;
+#endif
+}
+static void vkw_text_invalidate(Vkw*w){
+#ifdef AETHYR_WAYLAND_TEXT_V1
+ if(w->to.realm_key){hwt_boundary_sdk(&w->text_sdk);memset(w->pasted_down,0,sizeof w->pasted_down);if(w->input.compose)xkb_compose_state_reset(w->input.compose);}
+#else
+ (void)w;
+#endif
+}
+static int vkw_clipboard_set(Vkw*w,const char*bytes,size_t length){
+#ifdef AETHYR_WAYLAND_TEXT_V1
+ return w->to.realm_key&&hwt_copy(&w->text_sdk,bytes,length);
+#else
+ (void)w;(void)bytes;(void)length;return 0;
+#endif
+}
+
 static void vkw_ping(void *d, struct xdg_wm_base *wm, uint32_t serial) { (void)d; xdg_wm_base_pong(wm, serial); }
 static const struct xdg_wm_base_listener vkw_wm_listener = {.ping = vkw_ping};
 static void vkw_xdg_configure(void *d, struct xdg_surface *x, uint32_t serial) { (void)d; xdg_surface_ack_configure(x, serial); vkw_->configured = 1; }
@@ -82,7 +122,10 @@ static void vkw_top_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_
   (void)d;(void)t;vkw_->want_w=w;vkw_->want_h=h;
 #ifdef XDG_TOPLEVEL_STATE_SUSPENDED_SINCE_VERSION
   int suspended=0;uint32_t *state;wl_array_for_each(state,s)if(*state==XDG_TOPLEVEL_STATE_SUSPENDED)suspended=1;
-  if(suspended!=vkw_->suspended){vkw_->suspended=suspended;if(vkw_->to.shown)vkw_->to.shown(vkw_->to.user,!suspended);}
+  if(suspended!=vkw_->suspended){vkw_->suspended=suspended;if(suspended)vkw_text_invalidate(vkw_);if(vkw_->to.shown)vkw_->to.shown(vkw_->to.user,!suspended);}
+#ifdef AETHYR_WAYLAND_TEXT_V1
+  if(vkw_->to.realm_key)hwt_focus(&vkw_->text_sdk,vkw_->keyboard_focused&&!suspended);
+#endif
 #else
   (void)s;
 #endif
@@ -124,6 +167,10 @@ static void vkw_keymap(void *d, struct wl_keyboard *k, uint32_t f, int32_t fd, u
 static void vkw_kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *w, struct wl_array *keys) {
   (void)d; (void)k; (void)s; (void)w;
   if(vkw_->to.focus)vkw_->to.focus(vkw_->to.user,1);
+  vkw_->keyboard_focused=1;
+#ifdef AETHYR_WAYLAND_TEXT_V1
+  if(vkw_->to.realm_key){vkw_->text_sdk.serial=s;hwt_focus(&vkw_->text_sdk,!vkw_->suspended);}
+#endif
   unsigned char actual[KEY_MAX+1] = {0};
   const uint32_t *codes = keys->data;
   for (size_t i=0; i<keys->size/sizeof *codes; i++) if (codes[i]<=KEY_MAX) actual[codes[i]]=1;
@@ -142,6 +189,11 @@ static void vkw_kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_s
 static void vkw_kb_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *w) {
   (void)d; (void)k; (void)s; (void)w;
   int released=vkw_->to.focus?vkw_->to.focus(vkw_->to.user,0):0;
+  vkw_->keyboard_focused=0;
+  vkw_text_invalidate(vkw_);
+#ifdef AETHYR_WAYLAND_TEXT_V1
+  if(vkw_->to.realm_key)hwt_focus(&vkw_->text_sdk,0);
+#endif
   for (int c = 0; c <= KEY_MAX; c++) {
     if (vkw_->forwarded_down[c]) { if (vkw_->to.key) vkw_->to.key(c, 0); vkw_->forwarded_down[c] = 0; }
     if (vkw_->keys_down[c]) { if(!released)realm_key_up(NULL, vkw_->keys_down[c]);vkw_->keys_down[c] = 0; }
@@ -165,7 +217,14 @@ static void vkw_key(void *d, struct wl_keyboard *k, uint32_t serial, uint32_t ti
     vkw_->forwarded_down[code] = pressed; return;
   }
 #ifdef AETHYR_WAYLAND_INPUT_V1
-  if(vkw_->to.realm_key){hwi_sdk_key(&vkw_->input,vkw_->to.user,code,pressed,vkw_->to.wants_text?vkw_->to.wants_text(vkw_->to.user):0,vkw_->to.realm_key,vkw_->to.text);return;}
+  if(vkw_->to.realm_key){
+#ifdef AETHYR_WAYLAND_TEXT_V1
+   HwtSdk*t=&vkw_->text_sdk;t->serial=serial;vkw_text_sync(vkw_,pressed&&hwt_boundary(code));
+   if(!pressed&&vkw_->pasted_down[code]){vkw_->pasted_down[code]=0;return;}
+   if(pressed&&hwt_paste(code,hwi_sdk_mods(&vkw_->input),hwt_wants(t))){vkw_->pasted_down[code]=1;if(!hwt_paste_start(t))hwt_error(t,"Clipboard unavailable");return;}
+   if(pressed&&t->preedit&&vkw_->input.state){xkb_keysym_t sym=xkb_state_key_get_one_sym(vkw_->input.state,code+8);if(hwi_text(hwt_wants(t),hwi_sdk_mods(&vkw_->input),hwi_key(sym,xkb_keysym_to_utf32(sym)))){vkw_->input.text_down[code]=1;return;}}
+#endif
+   hwi_sdk_key(&vkw_->input,vkw_->to.user,code,pressed,vkw_->to.wants_text?vkw_->to.wants_text(vkw_->to.user):0,vkw_->to.realm_key,vkw_->to.text);vkw_text_sync(vkw_,0);return;}
 #endif
   int r = pressed ? realm_key_shifted((int)code, vkw_->shift > 0) : vkw_->keys_down[code];
   if (!r) return;
@@ -207,6 +266,9 @@ static void vkw_pt_motion(void *d, struct wl_pointer *p, uint32_t time, wl_fixed
 }
 static void vkw_pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
   (void)d; (void)p; (void)serial; (void)time;
+#ifdef AETHYR_WAYLAND_TEXT_V1
+  vkw_->text_sdk.serial=serial;if(state==WL_POINTER_BUTTON_STATE_PRESSED)vkw_text_sync(vkw_,1);
+#endif
   if (button != BTN_LEFT) {
     if(button!=BTN_RIGHT && button!=BTN_MIDDLE)return;
     int i=(int)button-BTN_RIGHT,pressed=state==WL_POINTER_BUTTON_STATE_PRESSED;
@@ -218,6 +280,7 @@ static void vkw_pt_button(void *d, struct wl_pointer *p, uint32_t serial, uint32
   }
   vkw_->down = state == WL_POINTER_BUTTON_STATE_PRESSED;
   if (vkw_->to.pointer) vkw_->to.pointer(vkw_->to.user, vkw_->x, vkw_->y, vkw_->down ? 0 : 2);
+  vkw_text_sync(vkw_,0);
 }
 static void vkw_pt_axis(void *d, struct wl_pointer *p, uint32_t time, uint32_t axis, wl_fixed_t value) {
  (void)d;(void)time;
@@ -279,6 +342,10 @@ static const struct wl_seat_listener vkw_seat_listener = {.capabilities = vkw_ca
 
 static void vkw_global(void *d, struct wl_registry *r, uint32_t name, const char *iface, uint32_t version) {
   (void)d;
+#ifdef AETHYR_WAYLAND_TEXT_V1
+  if(vkw_->to.realm_key&&!strcmp(iface,zwp_text_input_manager_v3_interface.name)){vkw_->text_sdk.manager=wl_registry_bind(r,name,&zwp_text_input_manager_v3_interface,1);return;}
+  if(vkw_->to.realm_key&&!strcmp(iface,wl_data_device_manager_interface.name)){vkw_->text_sdk.data_manager=wl_registry_bind(r,name,&wl_data_device_manager_interface,version<3?version:3);return;}
+#endif
   if (!strcmp(iface, wl_compositor_interface.name)) vkw_->compositor = wl_registry_bind(r, name, &wl_compositor_interface, 4);
   else if (!strcmp(iface, xdg_wm_base_interface.name)) {
 #ifdef XDG_TOPLEVEL_STATE_SUSPENDED_SINCE_VERSION
@@ -308,6 +375,9 @@ static void vkw_open(Vkc *v, Vkw *w, const char *title, uint32_t width, uint32_t
   memset(w, 0, sizeof *w);
   vkw_ = w;
   w->to = to;
+#ifdef AETHYR_WAYLAND_TEXT_V1
+  w->text_sdk.paste_fd=-1;
+#endif
 #ifndef AETHYR_WAYLAND_INPUT_V1
   if(to.realm_key){fprintf(stderr,"vk-realm: required keyboard adapter unavailable\n");exit(1);}
 #endif
@@ -320,6 +390,9 @@ static void vkw_open(Vkc *v, Vkw *w, const char *title, uint32_t width, uint32_t
   wl_display_roundtrip(w->display);
   if (!w->compositor || !w->wm) { fprintf(stderr, "vk-realm: the compositor has no xdg-shell\n"); exit(1); }
   w->surface = wl_compositor_create_surface(w->compositor);
+#ifdef AETHYR_WAYLAND_TEXT_V1
+  if(to.realm_key)hwt_open_sdk(&w->text_sdk,(HwtTo){.user=to.user,.text=to.text,.wants=to.wants_text,.rect=to.text_rect,.owner=to.text_owner,.error=to.text_error,.cancel_compose=vkw_compose_cancel,.cancel_user=w},w->surface,w->seat);
+#endif
   w->xdg = xdg_wm_base_get_xdg_surface(w->wm, w->surface);
   xdg_surface_add_listener(w->xdg, &vkw_xdg_listener, NULL);
   w->toplevel = xdg_surface_get_toplevel(w->xdg);
@@ -350,15 +423,22 @@ static void vkw_open(Vkc *v, Vkw *w, const char *title, uint32_t width, uint32_t
 
 // What the compositor has sent, without waiting for more.
 static void vkw_pump(Vkw *w) {
+  vkw_text_sync(w,0);
   while (wl_display_prepare_read(w->display) != 0) wl_display_dispatch_pending(w->display);
   wl_display_flush(w->display);
   struct pollfd p = {.fd = wl_display_get_fd(w->display), .events = POLLIN};
   if (poll(&p, 1, 0) > 0) wl_display_read_events(w->display);
   else wl_display_cancel_read(w->display);
   wl_display_dispatch_pending(w->display);
+#ifdef AETHYR_WAYLAND_TEXT_V1
+  if(w->to.realm_key)hwt_poll(&w->text_sdk);
+#endif
 }
 
 static void vkw_close(Vkc *v, Vkw *w) {
+#ifdef AETHYR_WAYLAND_TEXT_V1
+  if(w->to.realm_key)hwt_close_sdk(&w->text_sdk);
+#endif
 #ifdef AETHYR_WAYLAND_INPUT_V1
   hwi_sdk_close(&w->input);
 #endif

@@ -136,9 +136,10 @@ for realm in "${realms[@]}"; do
     printf '.\n' > "$ship/drawdir"
   else printf 'spec\n' > "$ship/drawdir"; fi
   cp "$here"/vk-realm.c "$here"/vk-spec.c "$here"/vk-spec.h "$here"/vks.c "$here"/vks.h "$here"/vkc.c "$here"/vkc.h \
-     "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$here"/vkw.h "$here"/wayland-input-sdk.h "$here"/vkdesk.h "$ship/"
+     "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$here"/vkw.h "$here"/wayland-input-sdk.h "$here"/wayland-text-sdk.h "$here"/vkdesk.h "$ship/"
   # XKB remains an SDK effect; the stable key/modifier/scroll ABI is Coax.
   (cd "$root" && "${COAX:-$root/coax/bin/coax}" c aethyr/host/wayland-input.coax --library --header "$ship/wayland-input.h") > "$ship/wayland-input.c"
+  (cd "$root" && "${COAX:-$root/coax/bin/coax}" c aethyr/host/wayland-text.coax --library --header "$ship/wayland-text.h") > "$ship/wayland-text.c"
   # the desk panel's policy (os/verse-panel.coax), linked into vk-realm
   (cd "$root" && "${COAX:-$root/coax/bin/coax}" c os/verse-panel.coax --library --header "$ship/verse-panel.h") > "$ship/verse-panel.c"
   # your hand as the pointer (os/verse-hands.coax), linked into vk-realm too
@@ -194,7 +195,7 @@ nix-shell -p gcc pkg-config libdrm libglvnd libgbm vulkan-headers vulkan-loader 
   set -e
   # the window (vkw.h): xdg-shell and server-side decorations, generated for the wayland here
   wp=\$(pkg-config --variable=pkgdatadir wayland-protocols); mkdir -p wl
-  for x in stable/xdg-shell/xdg-shell unstable/xdg-decoration/xdg-decoration-unstable-v1; do
+  for x in stable/xdg-shell/xdg-shell unstable/xdg-decoration/xdg-decoration-unstable-v1 unstable/text-input/text-input-unstable-v3; do
     n=\$(basename \$x)
     wayland-scanner client-header \$wp/\$x.xml wl/\$n-client-protocol.h
     wayland-scanner private-code \$wp/\$x.xml wl/\$n-protocol.c
@@ -223,10 +224,11 @@ nix-shell -p gcc pkg-config libdrm libglvnd libgbm vulkan-headers vulkan-loader 
        flags=\"\$flags -ffunction-sections -fdata-sections\"; link_flags=(-Wl,--gc-sections)
      fi
      pids=()
-     for s in \"\${sources[@]}\" \"\${renderer_units[@]}\" realm-host.c verse-panel.c verse-hands.c wayland-input.c; do gcc \$flags -c \$s -o \${s%.c}.o & pids+=(\$!); done
+     for s in \"\${sources[@]}\" \"\${renderer_units[@]}\" realm-host.c verse-panel.c verse-hands.c wayland-input.c wayland-text.c; do gcc \$flags -c \$s -o \${s%.c}.o & pids+=(\$!); done
      for pid in \"\${pids[@]}\"; do wait \$pid; done
      gcc \$flags -c ../wl/xdg-shell-protocol.c -o wl-xdg-shell.o && gcc \$flags -c ../wl/xdg-decoration-unstable-v1-protocol.c -o wl-xdg-decoration.o
-     gcc \$flags \"\${link_flags[@]}\" -DAETHYR_WAYLAND_INPUT_V1 -Ikms -I../wl \$(pkg-config --cflags libdrm wayland-client xkbcommon) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$math \$(pkg-config --libs libdrm wayland-client openssl xkbcommon) -lpthread -lvulkan -lm -o vk-realm
+     gcc \$flags -c ../wl/text-input-unstable-v3-protocol.c -o wl-text-input.o
+     gcc \$flags \"\${link_flags[@]}\" -DAETHYR_WAYLAND_INPUT_V1 -DAETHYR_WAYLAND_TEXT_V1 -Ikms -I../wl \$(pkg-config --cflags libdrm wayland-client xkbcommon) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$math \$(pkg-config --libs libdrm wayland-client openssl xkbcommon) -lpthread -lvulkan -lm -o vk-realm
      cp ../net .) & realm_pids+=(\$!)
   done
   for pid in \"\${realm_pids[@]}\"; do wait \$pid; done

@@ -275,6 +275,20 @@ This SDK component does not qualify external IME, clipboard, the complete
 ordinary window or three-host/default composition. Exact scope and inputs
 are in `docs/verification/host-contract-2026-11-05/wayland-input.md`.
 
+The Wayland text companion admits complete bounded UTF-8 commits, never
+preedit key events or a clipboard prefix. A text-input done serial remains
+eligible within its current enable even when the compositor has older client
+state; earlier-field replies cannot publish. Clipboard input is at most 2 MiB
+with one five-second transfer; four retained sources at most 8 MiB total and
+four nonblocking sends bound outgoing ownership. The checked input epoch and
+engine identity invalidate delayed completion across focus/field/geometry,
+pointer or navigation boundaries, hiding and replacement. Local compose
+cancels on those same boundaries. A cancelled outgoing source remains owned
+until its actual send ends; closed pipe readers do not terminate the host.
+The production SDK/descriptor/window-callback component record is
+`docs/verification/host-contract-2026-11-05/wayland-text.md`; it does not claim
+an interactive third-party input-method session or complete window parity.
+
 The shared WebGPU renderer has one physical mutable frame-buffer set. Its
 availability is checked before producer advancement, and its busy state
 waits for both validation and actual queue completion. Completion counts

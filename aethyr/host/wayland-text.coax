@@ -1,0 +1,50 @@
+// Bounds and ownership for asynchronous Wayland text-input and clipboard effects.
+#load "../../coax/lib/net/ws.coax";
+#authority;
+#test "text transactions admit whole UTF8 and never a truncated prefix or NUL" {
+ #assert hwt_text("",false)&&hwt_text("café 🙂\n",false)&&hwt_text("paste",true);
+ bad:=[2]u8.[195,40];nul:=[3]u8.[97,0,98];#assert !hwt_text(cast(string)bad[..],false)&&!hwt_text(cast(string)nul[..],true);
+ bytes:[4097]u8;for i:0..<bytes.count{bytes[i]=97;}
+ #assert hwt_text(cast(string)bytes[0..<4096],false)&&!hwt_text(cast(string)bytes[0..<4097],false);
+ #assert hwt_count(2097152,true)&&!hwt_count(2097153,true)&&!hwt_count(-1,true);
+ #assert hwt_count(4096,false)&&!hwt_count(4097,false)&&hwt_count(0,false);
+}
+#test "done accepts older compositor state within the same field, never a former field" {
+ #assert hwt_serial(1,1,1)&&hwt_serial(8,4,4)&&hwt_serial(8,4,7)&&hwt_serial(8,4,8);
+ #assert !hwt_serial(8,4,3)&&!hwt_serial(8,4,9)&&!hwt_serial(8,0,4)&&!hwt_serial(2147483648,4,8);
+ #assert hwt_serial(2147483647,2147483647,2147483647)&&!hwt_serial(-1,1,1);
+}
+#test "delayed publication requires the original active owner" {
+ #assert hwt_owner(1,1,true,true)&&hwt_owner(9223372036854775807,9223372036854775807,true,true);
+ #assert !hwt_owner(0,0,true,true)&&!hwt_owner(1,2,true,true)&&!hwt_owner(1,1,false,true)&&!hwt_owner(1,1,true,false);
+ #assert hwt_epoch(0)==0&&hwt_epoch(1)==2&&hwt_epoch(9)==10&&hwt_epoch(9223372036854775807)==0;
+}
+#test "clipboard transfer bounds hold before allocation and every physical chunk" {
+ #assert hwt_chunk(0,0)&&hwt_chunk(0,2097152)&&hwt_chunk(2097152,0)&&hwt_chunk(2097151,1);
+ #assert !hwt_chunk(-1,1)&&!hwt_chunk(0,-1)&&!hwt_chunk(2097152,1)&&!hwt_chunk(2097153,0)&&!hwt_chunk(0,9223372036854775807);
+ #assert hwt_lease(0,0,0)&&hwt_lease(3,6291456,2097152)&&hwt_lease(3,8388608,0);
+ #assert !hwt_lease(4,0,1)&&!hwt_lease(-1,0,1)&&!hwt_lease(0,-1,1)&&!hwt_lease(0,8388608,1)&&!hwt_lease(0,0,-1)&&!hwt_lease(0,0,2097153);
+ #assert !hwt_lease(0,8388609,0);
+}
+#test "paste deadlines and shortcuts cannot become stale text or game keys" {
+ #assert hwt_time(0,0)&&hwt_time(10,5009)&&!hwt_time(10,5010)&&!hwt_time(10,9)&&!hwt_time(-1,1);
+ #assert hwt_paste(47,2,true)&&hwt_paste(47,3,true)&&hwt_paste(110,1,true);
+ #assert !hwt_paste(47,0,true)&&!hwt_paste(47,6,true)&&!hwt_paste(47,2,false)&&!hwt_paste(110,3,true)&&!hwt_paste(46,2,true);
+ #assert hwt_boundary(1)&&hwt_boundary(15)&&hwt_boundary(28)&&!hwt_boundary(30);
+ #assert hwt_rectangle(0,0,1,1)&&hwt_rectangle(-1000000,1000000,1000000,1)&&hwt_rectangle(1000000,-1000000,1,1000000);
+ #assert !hwt_rectangle(-1000001,0,1,1)&&!hwt_rectangle(0,1000001,1,1)&&!hwt_rectangle(0,0,0,1)&&!hwt_rectangle(0,0,1,0)&&!hwt_rectangle(0,0,1000001,1)&&!hwt_rectangle(0,0,1,1000001);
+}
+hwt_text::(bytes:string,clipboard:bool)->bool #export_c {
+ if !hwt_count(bytes.count,clipboard)||!ws_utf8(bytes){return false;}
+ for byte:bytes{if byte==0{return false;}}return true;
+}
+hwt_count::(bytes:int,clipboard:bool)->bool #export_c {return bytes>=0&&bytes<=(ifx clipboard then 2097152 else 4096);}
+hwt_serial::(current:int,since:int,done:int)->bool #export_c {return since>0&&since<=done&&done<=current&&current<=2147483647;}
+hwt_owner::(saved:u64,current:u64,focused:bool,wants:bool)->bool #export_c {return saved!=0&&saved==current&&focused&&wants;}
+hwt_epoch::(current:u64)->u64 #export_c {if current==0||current>=9223372036854775807{return 0;}return current+1;}
+hwt_chunk::(used:int,bytes:int)->bool #export_c {return used>=0&&bytes>=0&&bytes<=2097152-used;}
+hwt_lease::(cells:int,total:int,bytes:int)->bool #export_c {return cells>=0&&cells<4&&total>=0&&hwt_chunk(0,bytes)&&bytes<=8388608-total;}
+hwt_time::(start:int,now:int)->bool #export_c {return start>=0&&now>=start&&now-start<5000;}
+hwt_paste::(code:int,mods:int,wants:bool)->bool #export_c {return wants&&((code==47&&(mods==2||mods==3))||(code==110&&mods==1));}
+hwt_boundary::(code:int)->bool #export_c {return code==1||code==15||code==28;}
+hwt_rectangle::(x:f64,y:f64,w:f64,h:f64)->bool #export_c {return x>= -1000000&&x<=1000000&&y>= -1000000&&y<=1000000&&w>=1&&w<=1000000&&h>=1&&h<=1000000;}

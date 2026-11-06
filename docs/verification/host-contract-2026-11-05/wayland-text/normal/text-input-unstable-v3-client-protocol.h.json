@@ -1,0 +1,1 @@
+{"argv":["wayland-scanner","client-header","//nix/store/gm0f9qnsqaydpk62704wqhpg7vczqmj3-wayland-protocols-1.48/share/wayland-protocols/unstable/text-input/text-input-unstable-v3.xml","/tmp/aethyr-wayland-text-12869/frozen-normal/text-input-unstable-v3-client-protocol.h"],"started":0,"exit":0,"timed_out":false,"cut":false}
