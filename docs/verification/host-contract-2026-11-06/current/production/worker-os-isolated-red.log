@@ -1,0 +1,135 @@
+everglade-drift: room 127.0.0.1:9340, page 127.0.0.1:9341, results in /tmp/oa-12869-worker-isolated-drift
+profile 100: round trip 100 ms, jitter 30 ms, 2% lost
+  native room ready after 5 ms
+  step start
+  step crate
+  step strafe
+  step walk
+  step jump
+  step rg
+  gravity placement: you -6300,-56700 mm, Bram -150,-7050 cm, Tilda 185,-5293 cm
+  gravity placement: you -6300,-56700 mm, Bram -150,-7050 cm, Tilda 186,-5295 cm
+  step wos
+  step ww
+  step held
+  step folk
+  step end
+  transmitted inputs: origins 139/134, end steps 2078/2078, identical true
+  (offline room host: 0 stalls, 0 ms of its beat dropped)
+  (worker workload: 2234 ticks in completed cost batches, p50 625 us, p95 1280 us, p99 2441 us)
+  worker mean tick parts (us): move=51 abilities=103 town=56 spells=12 people=9 rules=22 write=60 send=0 core=679 flush=45 begin=0 prepare=0 owners=0 casts=0 town_setup=0 town_results=0 orbit=0
+  (worker room tick: p95 1280 us, p99 2441 us, budget 11000 us at p95: within)
+ok    100 background players stayed at least 32 m away
+ok    100 gravity safely reaches and drops a townsperson
+DRIFT 100 worker tick p95: at 0 ms (step tick budget): tick p95 1280 us against qualification limit 600 us
+ok    100 movement inputs took effect (mm)
+ok    100 jump inputs took effect (cm)
+ok    100 position (in your heading, since the step)
+ok    100 camera heading
+ok    100 lift height
+ok    100 Reverse Gravity shown
+ok    100 Reverse Gravity particles
+ok    100 Wind Wall shown
+ok    100 Wind Wall particles
+ok    100 Wall of Stone shown
+ok    100 Wall of Stone panels
+ok    100 spell and condition particles
+ok    100 hotbar slots
+ok    100 condition on you
+ok    100 condition on others
+ok    100 conditions on the town's people
+ok    100 your engine conditions
+ok    100 stables down
+ok    100 plate text
+ok    100 status lines
+ok    100 camera jump, offline
+ok    100 camera jump, room
+ok    100 camera turn with no look, offline
+ok    100 camera turn with no look, room
+ok    100 corrections
+ok    100 a townsperson held
+ok    100 NPC speed against clip
+profile 250: round trip 250 ms, jitter 30 ms, 2% lost
+  native room ready after 3 ms
+  step start
+  step crate
+  step strafe
+  step walk
+  step jump
+  step rg
+  gravity placement: you -6300,-56700 mm, Bram -193,-6325 cm, Tilda 180,-5077 cm
+  gravity placement: you -6300,-56700 mm, Bram -192,-6325 cm, Tilda 180,-5079 cm
+  step wos
+  step ww
+  step held
+  step folk
+  step end
+  transmitted inputs: origins 140/131, end steps 1967/1967, identical true
+  (offline room host: 0 stalls, 0 ms of its beat dropped)
+  (worker workload: 2082 ticks in completed cost batches, p50 606 us, p95 1271 us, p99 2786 us)
+  worker mean tick parts (us): move=49 abilities=89 town=48 spells=14 people=11 rules=22 write=61 send=0 core=667 flush=58 begin=0 prepare=0 owners=0 casts=0 town_setup=0 town_results=0 orbit=0
+  (worker room tick: p95 1271 us, p99 2786 us, budget 11000 us at p95: within)
+ok    250 background players stayed at least 32 m away
+ok    250 gravity safely reaches and drops a townsperson
+DRIFT 250 worker tick p95: at 0 ms (step tick budget): tick p95 1271 us against qualification limit 600 us
+ok    250 movement inputs took effect (mm)
+ok    250 jump inputs took effect (cm)
+ok    250 position (in your heading, since the step)
+ok    250 camera heading
+ok    250 lift height
+ok    250 Reverse Gravity shown
+ok    250 Reverse Gravity particles
+ok    250 Wind Wall shown
+ok    250 Wind Wall particles
+ok    250 Wall of Stone shown
+ok    250 Wall of Stone panels
+ok    250 spell and condition particles
+ok    250 hotbar slots
+ok    250 condition on you
+ok    250 condition on others
+ok    250 conditions on the town's people
+ok    250 your engine conditions
+ok    250 stables down
+ok    250 plate text
+ok    250 status lines
+ok    250 camera jump, offline
+ok    250 camera jump, room
+ok    250 camera turn with no look, offline
+ok    250 camera turn with no look, room
+ok    250 corrections
+ok    250 a townsperson held
+ok    250 NPC speed against clip
+
+| probe | 100 | 250 |
+|---|---|---|
+| background players stayed at least 32 m away | ok | ok |
+| gravity safely reaches and drops a townsperson | ok | ok |
+| worker tick p95 | DRIFT | DRIFT |
+| movement inputs took effect (mm) | ok | ok |
+| jump inputs took effect (cm) | ok | ok |
+| position (in your heading, since the step) | ok | ok |
+| camera heading | ok | ok |
+| lift height | ok | ok |
+| Reverse Gravity shown | ok | ok |
+| Reverse Gravity particles | ok | ok |
+| Wind Wall shown | ok | ok |
+| Wind Wall particles | ok | ok |
+| Wall of Stone shown | ok | ok |
+| Wall of Stone panels | ok | ok |
+| spell and condition particles | ok | ok |
+| hotbar slots | ok | ok |
+| condition on you | ok | ok |
+| condition on others | ok | ok |
+| conditions on the town's people | ok | ok |
+| your engine conditions | ok | ok |
+| stables down | ok | ok |
+| plate text | ok | ok |
+| status lines | ok | ok |
+| camera jump, offline | ok | ok |
+| camera jump, room | ok | ok |
+| camera turn with no look, offline | ok | ok |
+| camera turn with no look, room | ok | ok |
+| corrections | ok | ok |
+| a townsperson held | ok | ok |
+| NPC speed against clip | ok | ok |
+fails

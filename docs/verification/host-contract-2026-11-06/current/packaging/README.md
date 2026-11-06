@@ -26,3 +26,18 @@ coax/web/tool.sh everglade-drift --profiles local --bots 2 --port 9340 \
 The host's observed rolling tick p95 is 405 microseconds (p99 470). This first
 record covers the local profile without the raid; full-sample tick qualification
 and the final production web artifact are recorded separately.
+
+## Final worker
+
+The `-Os` candidate is rejected after full-sample timing failures. The final
+ordinary builder uses Binaryen `-O3` and measures 1,042,322 bytes, within the
+same 1,060,000-byte budget. It preserves all Coax integer checks, the existing
+river-specific C optimization and strict floating-point flags.
+
+The final Linux replay passes every gameplay drift probe at local, 100 ms
+and 250 ms with zero stalls or dropped beat. Measured worker p95 is
+810/910/956 microseconds, within the host contract's 11,000-microsecond budget.
+The additional `--tick-us 600` qualification fails; the command exits 1.
+The contended Mac also has a 250 ms NPC-condition mismatch. Raw logs and tick
+samples are in [production](../production/). These additional performance and
+contention observations remain open in #12981; they are not green results.

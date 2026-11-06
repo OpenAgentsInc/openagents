@@ -1,0 +1,76 @@
+apps/aethyrforge-desktop/Sources/MetalAudio.swift:244:64: warning: capture of 'input' with non-Sendable type 'AVAudioPCMBuffer' in a '@Sendable' closure [#SendableClosureCaptures]
+242 |         let status = converter.convert(to:output,error:&error) { _, state in
+243 |             if supplied { state.pointee = .endOfStream; return nil }
+244 |             supplied = true; state.pointee = .haveData; return input
+    |                                                                `- warning: capture of 'input' with non-Sendable type 'AVAudioPCMBuffer' in a '@Sendable' closure [#SendableClosureCaptures]
+245 |         }
+246 |         guard status != .error, error == nil, output.frameLength > 0,
+
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/AVFAudio.framework/Headers/AVAudioBuffer.h:67:12: note: class 'AVAudioPCMBuffer' does not conform to the 'Sendable' protocol
+ 65 | */
+ 66 | API_AVAILABLE(macos(10.10), ios(8.0), watchos(2.0), tvos(9.0))
+ 67 | @interface AVAudioPCMBuffer : AVAudioBuffer
+    |            `- note: class 'AVAudioPCMBuffer' does not conform to the 'Sendable' protocol
+ 68 | 
+ 69 | /*!	@method initWithPCMFormat:frameCapacity:
+
+apps/aethyrforge-desktop/Sources/MetalAudio.swift:2:1: warning: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'AVFAudio'
+  1 | // Firm reason: 6 (AVAudioFile/AVAudioConverter and CoreAudio source-node effects).
+  2 | import AVFoundation
+    | `- warning: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'AVFAudio'
+  3 | import Foundation
+  4 | 
+
+[#SendableClosureCaptures]: <https://docs.swift.org/compiler/documentation/diagnostics/sendable-closure-captures>
+apps/shared/zeron/MetalUI.swift:152:9: warning: variable 'header' was never mutated; consider changing to 'let' constant
+150 |                     space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.alphaOnly.rawValue)!
+151 |   for (f, s) in slots.enumerated() {
+152 |     var header: [Float] = [Float(CTFontGetAscent(s.font)), Float(CTFontGetDescent(s.font)), Float(s.cell), Float(s.penX), Float(s.penY), Float(s.y0), Float(s.cols)]
+    |         `- warning: variable 'header' was never mutated; consider changing to 'let' constant
+153 |     var codes = (0..<glyphs).map { UniChar(truncatingIfNeeded: api.glyph_code(Int32($0))) }
+154 |     var ids = [CGGlyph](repeating: 0, count: glyphs)
+apps/aethyrforge-desktop/Sources/main.swift:865:36: warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+ 863 |             // The first rendered frame can precede the initial world GET.
+ 864 |             try await Task.sleep(for: .seconds(2))
+ 865 |             print("Before input: \(try await web.evaluateJavaScript("coaxial.probe()"))")
+     |                                    |   |- note: use a default value parameter to avoid this warning
+     |                                    |   |- note: provide a default value to avoid this warning
+     |                                    |   `- note: use 'String(describing:)' to silence this warning
+     |                                    `- warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+ 866 |             // The seed already has a crate directly ahead at the gate. Walk
+ 867 |             // back along the road so the placement obeys the collision rules.
+
+apps/aethyrforge-desktop/Sources/main.swift:871:37: warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+ 869 |             try await Task.sleep(for: .milliseconds(1200))
+ 870 |             _ = try await web.evaluateJavaScript("dispatchEvent(new KeyboardEvent('keyup',{key:'s',code:'KeyS',bubbles:true})); true")
+ 871 |             print("After walking: \(try await web.evaluateJavaScript("coaxial.probe()"))")
+     |                                     |   |- note: use a default value parameter to avoid this warning
+     |                                     |   |- note: provide a default value to avoid this warning
+     |                                     |   `- note: use 'String(describing:)' to silence this warning
+     |                                     `- warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+ 872 |             _ = try await web.evaluateJavaScript("dispatchEvent(new KeyboardEvent('keydown',{key:'b',code:'KeyB',bubbles:true})); dispatchEvent(new KeyboardEvent('keyup',{key:'b',code:'KeyB',bubbles:true})); true")
+ 873 |             // The real editor's '1' command places a thing only while EDIT is on.
+
+apps/aethyrforge-desktop/Sources/main.swift:875:46: warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+ 873 |             // The real editor's '1' command places a thing only while EDIT is on.
+ 874 |             let used = try await web.evaluateJavaScript("(()=>{const e=new KeyboardEvent('keydown',{key:'1',code:'Digit1',bubbles:true,cancelable:true});dispatchEvent(e);dispatchEvent(new KeyboardEvent('keyup',{key:'1',code:'Digit1',bubbles:true}));return e.defaultPrevented;})()")
+ 875 |             print("Placement key consumed: \(used)")
+     |                                              |- warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+     |                                              |- note: use a default value parameter to avoid this warning
+     |                                              |- note: provide a default value to avoid this warning
+     |                                              `- note: use 'String(describing:)' to silence this warning
+ 876 |             // DONE flushes the existing editor's pending save immediately.
+ 877 |             _ = try await web.evaluateJavaScript("dispatchEvent(new KeyboardEvent('keydown',{key:'b',code:'KeyB',bubbles:true})); dispatchEvent(new KeyboardEvent('keyup',{key:'b',code:'KeyB',bubbles:true})); true")
+
+apps/aethyrforge-desktop/Sources/main.swift:891:42: warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+ 889 |             if !saved {
+ 890 |                 try await captureCanvas(report)
+ 891 |                 print("World requests: \(try await web.evaluateJavaScript("JSON.stringify(__forgeRequests)"))")
+     |                                          |   |- note: use a default value parameter to avoid this warning
+     |                                          |   |- note: provide a default value to avoid this warning
+     |                                          |   `- note: use 'String(describing:)' to silence this warning
+     |                                          `- warning: string interpolation produces a debug description for an optional value; did you mean to make this explicit?
+ 892 |                 throw ShellError.failed("The editor's placed thing was not saved through the local room.")
+ 893 |             }
+00000001000f2b38 T _forge_world_backend
+00000001000f5f9c T _forge_world_backend_bytes

@@ -1,0 +1,1 @@
+Terminated: 15             ( cd "$repo" && "$coax_driver" c "$source" --library --header "$work/$2.h" ${parts[@]+"${parts[@]}"} ${run_steps[@]+"${run_steps[@]}"} --timings "$work/$2.coax.json" ) > "$work/$2.c"

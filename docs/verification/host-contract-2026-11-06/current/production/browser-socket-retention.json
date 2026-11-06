@@ -1,0 +1,1 @@
+{"active":{"input":[0,0,128,512,1],"output":[0,0,8388608,33554432,1],"events":0,"commands":0,"delivering":0,"terminals":0,"overflow":0,"allocations":2,"retired":false,"buffered":[]},"retired":{"input":[0,0,128,512,2],"output":[0,0,8388608,33554432,2],"events":0,"commands":0,"delivering":0,"terminals":0,"overflow":0,"allocations":22,"retired":true,"buffered":[]}}

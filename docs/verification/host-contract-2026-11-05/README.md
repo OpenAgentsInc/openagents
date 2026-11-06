@@ -1,5 +1,9 @@
 # Host contract qualification (#12869)
 
+The [November 6 current qualification](../host-contract-2026-11-06/current/README.md)
+supersedes this record's current-primary and default-migration exits. The
+historical failures and component scopes below remain unchanged.
+
 The earlier shared-frame GPU records retain iteration observations only:
 their reconstructed compiler source digest is not a trusted receipt. See
 the provenance correction in `shared-frame.md`. Admitted host preparation

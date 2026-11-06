@@ -871,11 +871,8 @@ EXPORT("coaxial_wheel") void coaxial_wheel(cx_face_addr state, float dy) { everg
 
 EXPORT("coaxial_inbox") cx_face_addr coaxial_inbox(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)inbox; }
 EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inbox; }
-#if defined(COAXIAL_NATIVE_ADDRESS) || defined(COAXIAL_HOST_CONTRACT_V1)
-// Native is an explicit experimental v1 carrier. The web carrier migrates
-// only when its complete service receipts qualify the production opt-in.
+// All three qualified hosts use the same v1 lifecycle and service boundary.
 EXPORT("coaxial_host_contract_version") uint32_t coaxial_host_contract_version(void) { return 1; }
-#endif
 EXPORT("coaxial_message") void coaxial_message(cx_face_addr state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);

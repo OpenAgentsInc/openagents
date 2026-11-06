@@ -582,9 +582,9 @@ The standalone `render_host_presentation` selector and its small shared
 display/extent returns an enabled but refused typed plan, never a legacy
 fallback. Unsupported profiles and pre-contract faces retain their existing
 path. The ordinary browser adapter projects that scalar through the services
-reactor. Its explicit v1 realm fixture selects the complete path without
-overrides and passes actual mode, held-completion and device-recovery
-observations. The public web face's opt-in remains separate. See
+reactor. The public Everglade face declares v1 on every host and selects the
+complete path without overrides. Actual mode, held-completion and
+device-recovery observations pass. See
 `docs/verification/host-contract-2026-11-05/presentation-v1.md`; the admitted
 graphics/current-realm observations and remaining integration exits are in
 `docs/verification/host-contract-2026-11-05/graphics-admitted.md`.
@@ -630,19 +630,14 @@ Three invocations of the pure Coax fixture checks do not constitute three
 host passes. Offscreen shader qualification does not establish interactive
 input/room/audio/lifecycle parity.
 
-The current implementation record and commands are in
-[`docs/verification/host-contract-2026-11-05/`](../../docs/verification/host-contract-2026-11-05/README.md).
-Its browser core, real loopback transport and engine replacement sections
-are qualified. Native adapter, lifecycle, production GPU and rendered-audio
-sections remain separate required exits; this first record is incomplete.
+The [current qualification and commands](../../docs/verification/host-contract-2026-11-06/current/README.md)
+combine actual web, Vulkan and Metal section receipts, current admitted
+compiler/source joins, physical GPU comparisons, audio and native-window
+integration. The earlier November 5 records retain their failures and
+component scopes.
 
-At the start of #12869, the browser is the implementation reference, the
-legacy Vulkan realm adapter explicitly refuses live sockets and has no
-audio execution, and the interactive Metal host is #12868. These gaps must
-be closed and measured before the desktop default changes. Until then,
-WKWebView remains the default. When all three complete conformance and the
-interactive Metal parity gates pass, Aethyrforge opens the native world and
-offers one click, **Check as players see it**, to open the same world/build
-in the web host. That preview uses the same saved document and room rules;
+Aethyrforge opens the native Metal world by default and offers one click,
+**Check as Players See It**, to open the same world/build in the web host.
+`--world web` also selects that host. The preview uses the same saved document and room rules;
 no native-only game control, HUD or gameplay is permitted. Setup remains
 complete, and neither Coder nor the editor opens by default.

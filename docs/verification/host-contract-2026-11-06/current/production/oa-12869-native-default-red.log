@@ -1,0 +1,6 @@
+FAIL #test the desktop defaults to native Metal and keeps explicit web preview (0 ms)
+apps/aethyrforge-desktop/world-host.coax:4:2: error[E0406]: assertion failed
+   #assert forge_world_backend("")==1 && forge_world_backend("web")==0 && forge_world_backend("metal")==1;
+   ^
+  note: in #test the desktop defaults to native Metal and keeps explicit web preview
+1 check, 0 passed, 1 failed

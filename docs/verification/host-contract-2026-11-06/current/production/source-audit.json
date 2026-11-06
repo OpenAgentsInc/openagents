@@ -1,0 +1,7 @@
+{
+  "schema": "aethyr.host.current-source-audit.v1",
+  "native_loaded_sources": 197,
+  "render_package_sources": 48,
+  "all_hashes_match": true,
+  "scope": "Original recorded SHA-256 values checked against each actual file after rebase. This is a product-source observation, not a compiler provenance receipt."
+}

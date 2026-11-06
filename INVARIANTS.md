@@ -413,6 +413,15 @@ room seat and releasing old/final GPU, decoded-image and audio owners. This
 does not select native by default or opt in the public web face. See
 `docs/verification/metal-host-2026-11-05/web-preview.md`.
 
+The subsequent current Coax 0.52 qualification completes #12869's three-host
+boundary. Everglade's public face declares v1 on web, Vulkan and Metal;
+Aethyrforge's empty selector chooses native Metal. Explicit web selection
+and the same menu preview remain available. Current source/provenance joins,
+GPU handoff, normal and fully instrumented Linux window integration, and
+the unchanged preview/audio/transport component receipts are recorded in
+`docs/verification/host-contract-2026-11-06/current/README.md`. Host selection
+never selects different HUD, game rules or saved-document semantics.
+
 The new admitted 3f8 compiler regenerates shader products byte-identical to
 the frozen graphics corpus. Actual current17a browser, Vulkan and Metal
 adapters admit the new package identity; complete displayed and direct

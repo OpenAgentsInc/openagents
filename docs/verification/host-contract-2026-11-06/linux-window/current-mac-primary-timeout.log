@@ -1,0 +1,10 @@
+coax: note[E0400]: compile-time steps: 19343034 of 20000000 used (96%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    15744112 steps  /Users/christopherdavid/work/openagents-12869-12910/aethyr/render/package.coax:178:1  in 'render_package_spirv_bytes' (30 times)
+    573375 steps  /Users/christopherdavid/work/openagents-12869-12910/coax/lib/json/json.coax:258:1  in 'jv_raw_eq' (9525 times)
+    477240 steps  /Users/christopherdavid/work/openagents-12869-12910/coax/lib/json/json.coax:165:1  in 'jv_string_end' (1650 times)
+    360975 steps  /Users/christopherdavid/work/openagents-12869-12910/coax/lib/json/json.coax:77:1  in 'jv_parse' (15 times)
+    291750 steps  /Users/christopherdavid/work/openagents-12869-12910/coax/lib/crypto/sha256-kernel.coax:63:1  in 'S_compress' (30 times)
+  fix: do less work in 'render_package_spirv_bytes', split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+
+Metal build failed: started=0 status=137 timeout=true cut=false stdout=0 stderr=0

@@ -1,0 +1,5 @@
+/nix/store/63wdfxcylc7rzym8iwhv84yppg8gj3vv-binutils-2.46/bin/ld.bfd: /tmp/nix-shell-3688118-1169578033/ccsfT6K6.o: in function `sha1_hash':
+wayland-text.c:(.text.sha1_hash+0x0): multiple definition of `sha1_hash'; /tmp/nix-shell-3688118-1169578033/ccirMEW4.o:HostNetwork.c:(.text.sha1_hash+0x0): first defined here
+/nix/store/63wdfxcylc7rzym8iwhv84yppg8gj3vv-binutils-2.46/bin/ld.bfd: /tmp/nix-shell-3688118-1169578033/ccsfT6K6.o: in function `ws_response':
+wayland-text.c:(.text.ws_response+0x0): multiple definition of `ws_response'; /tmp/nix-shell-3688118-1169578033/ccirMEW4.o:HostNetwork.c:(.text.ws_response+0x0): first defined here
+collect2: error: ld returned 1 exit status

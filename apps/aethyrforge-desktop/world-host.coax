@@ -1,11 +1,11 @@
-// Explicit host selection; changing the default waits for the conformance gate.
+// The qualified native world opens by default; web remains an explicit preview.
 #authority;
-#test "the desktop keeps web default and admits the explicit Metal switch" {
- #assert forge_world_backend("")==0 && forge_world_backend("web")==0 && forge_world_backend("metal")==1;
+#test "the desktop defaults to native Metal and keeps explicit web preview" {
+ #assert forge_world_backend("")==1 && forge_world_backend("web")==0 && forge_world_backend("metal")==1;
  #assert forge_world_backend("Metal")== -1 && forge_world_backend("vulkan")== -1 && forge_world_backend("metal ")== -1;
 }
 forge_world_backend :: (name:string)->int #export_c #effects(all) {
- if name=="" || name=="web" {return 0;}
- if name=="metal" {return 1;}
+ if name=="web" {return 0;}
+ if name=="" || name=="metal" {return 1;}
  return -1;
 }

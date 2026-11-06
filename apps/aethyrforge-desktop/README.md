@@ -64,16 +64,17 @@ process launch/stop decisions and Coder event interpretation stay in Coax.
 
 ## Mac: AppKit and Metal
 
-An AppKit shell around the website's Everglade 5e WebGPU engine in WKWebView,
-with its own local room, page server and local Parakeet voice service. Requires an Apple Silicon Mac running
+An AppKit shell around the shared Everglade 5e Coax engine, with a native Metal
+world, web preview, local room, page server and local Parakeet voice service. Requires an Apple Silicon Mac running
 macOS 26 or later, Xcode and the existing Coax web build toolchain.
 
-`--world metal` selects the native AppKit/CAMetalLayer realm host with the
+The default (or `--world metal`) selects the native AppKit/CAMetalLayer realm host with the
 same Coax Everglade producer and renderer. It uses the shared canonical assets,
 Coax audio mixer and native room. Its [Mac qualification](../../docs/verification/metal-host-2026-11-05/current-85c-final.md)
 records actual 120 Hz gameplay, frame parity, input, session reload and GPU
-recovery. WebKit remains default while #12869 completes the common migration.
-In an explicit native session, **View → Check as Players See It** opens the
+recovery. The [current three-host qualification](../../docs/verification/host-contract-2026-11-06/current/README.md)
+records the common v1 migration and current admitted compiler/source inputs.
+`--world web` selects WebKit. **View → Check as Players See It** opens the
 same local world in the web view; **View → Return to Native World** returns.
 Each action closes the previous realm before loading the replacement. The
 [actual menu round-trip record](../../docs/verification/metal-host-2026-11-05/web-preview.md)
