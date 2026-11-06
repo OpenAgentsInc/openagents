@@ -192,7 +192,7 @@ dr_folk_match :: (b: [] DrPage, i: int, t: int, window: int, want: int) -> DrFol
   out: DrFolkMatch;
   for f: 0..<b[0].facts_n {
     at := b[0].facts[f];
-    until := ifx f + 1 < b[0].facts_n then b[0].facts[f + 1].t else 1 << 60;
+    until := ifx f + 1 < b[0].facts_n then b[0].facts[f + 1].t else ifx b[0].n > 0 then dr_at(b, b[0].n - 1, C_T) + 1 else at.t;
     if at.t > t + window || until <= t - window || !dr_folk_present(at, i) { continue; }
     out.seen = true; out.other = at.cond[i];
     if at.cond[i] == want { out.ok = true; return out; }
@@ -241,6 +241,11 @@ dr_folk_way :: (a: [] DrPage, b: [] DrPage, window: int, t0: int, t1: int, v: []
   for r: 0..<8 { a[0].rows[r * DR_COLS + C_FCOND] = 2; b[0].rows[r * DR_COLS + C_FCOND] = 2; }
   v[0] = DrVerdict.{}; dr_folk_way(a[..], b[..], 50, 1000, 1300, v[..]);
   #assert v[0].drifted;
+  #assert !dr_folk_match(b[..], 0, 1232, 0, 256).seen;
+  a[0].facts[0].cond[0] = 0; a[0].facts[0].cond[1] = 0;
+  b[0].facts[0].cond[0] = 0; b[0].facts[0].cond[1] = 0;
+  v[0] = DrVerdict.{}; dr_folk_way(a[..], b[..], 50, 1000, 1300, v[..]);
+  #assert v[0].drifted && v[0].step == "no shared conditioned person";
 }
 
 // The session's script: each step's name, then its keys. Both pages get each at once.
