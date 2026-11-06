@@ -7,6 +7,9 @@ approach to take, what the guarantee would cover, and what stays trusted.
 
 The mechanisms borrowed from Epic's Verse language are specified in
 [from-epic-verse.md](from-epic-verse.md), along with the issue roadmap.
+The host-buffer choice is decided below (2026-11-05): host-declared regions
+tied to explicit leases, with acquisition at the unsafe boundary. Enforcement
+remains proposed.
 
 ## Why
 
@@ -56,7 +59,8 @@ foreign boundary and future concurrency are the gaps.
 
 ## The guarantee we should aim for
 
-Proposed wording for spec §3, to adopt when the first enforcement lands:
+Proposed wording for spec §3, to adopt with the default safe profile after
+the required enforcement lands (recommendation 8):
 
 > **Safe Coax is memory-safe.** A unit compiled under the safe profile, with
 > no `#unsafe` block and no foreign call, cannot read or write memory outside
@@ -64,6 +68,10 @@ Proposed wording for spec §3, to adopt when the first enforcement lands:
 > cannot race with another job. Where the compiler can't prove an access
 > safe, it inserts a check that fails (`none`, `err`) or traps. Unsafe code is
 > explicit, inventoried and reviewed.
+
+For a view supplied by a boundary, this guarantee depends on that boundary
+honoring its declared extent, lifetime and access contract. A region annotation
+does not verify the C host or the device; those remain outside the claim.
 
 What that covers:
 
@@ -94,7 +102,8 @@ What it doesn't cover, stated in the spec next to the claim:
 
 - **Views are borrows tied to a region.** Every view carries the region of
   its backing storage: a procedure's frame, a named arena, a container's
-  current storage, static data, or host-owned storage the host declares.
+  current storage, static data, or a lease on host-owned storage as decided
+  below.
 - **A view can't outlive its region.** Returning it, storing it in a longer
   region or keeping it across the event that ends its region (arena reset,
   container growth, frame return) is a compile error. E0383 is the first
@@ -115,7 +124,8 @@ Pros:
   system.
 - It matches engine code: ECS slots, structure-of-arrays columns, per-frame
   and per-level arenas.
-- No garbage collector, no runtime besides the generation compare.
+- No garbage collector or per-access region bookkeeping; handles and dynamic
+  host leases account for ownership at lookup/acquire/release.
 
 Cons:
 
@@ -123,6 +133,74 @@ Cons:
 - Graph-shaped data has to go through handles.
 - Some APIs get clumsier (a function can't hand back a view into a
   temporary).
+
+#### Host-owned buffers: decision (2026-11-05)
+
+**Use host-declared, lease-scoped regions.** Importing a Vulkan mapping,
+dmabuf CPU mapping or camera frame stays in a reviewed `#boundary` module
+with `foreign`/`unsafe` effects as applicable. Once acquired, its bounded
+view follows the ordinary region rules; indexing and passing it to a safe
+consumer don't each need `#unsafe`. A bare pointer/count or a declaration
+such as `region(host)` is insufficient: the region must identify one
+concrete owner and acquisition generation, never a process-wide lifetime.
+
+This follows the ownership already needed in our hosts:
+
+- [The camera host](platform/camera-native.c) dequeues a V4L2 buffer, copies
+  into caller storage and requeues before returning. That copy remains valid.
+  A future zero-copy view must end before requeue, even though the mapping
+  itself is still live. The current API returns no borrowed camera storage.
+- [The Vulkan helper](../verse/gpu/vkc.c) keeps buffers mapped, records a
+  host-read barrier and waits for a submission fence before copying readback.
+  A mapping's lifetime alone therefore isn't the CPU access interval.
+- [Psionic's tensor placement](../psionic/lib/tensor-placement.coax) already
+  tracks pending work and reader claims, refusing release while they remain.
+  Regions must preserve these obligations, not replace them with a label.
+  [Read-only views](readonly-views.md) likewise restrict the reader without
+  freezing another alias.
+
+The boundary contract must provide:
+
+1. **A concrete owner and checked span.** Retain the allocation/import and
+   declare the typed extent, alignment, initialized readable bytes and access
+   mode. Coax owns lease accounting and admission; C observes addresses and
+   performs SDK effects. Only the boundary can introduce the host-backed
+   region. Copying its descriptor cannot extend it or create a new owner.
+2. **A bounded CPU access scope.** The region begins after successful acquire
+   and required synchronization. Views, slices and records containing them
+   cannot escape its lease. Release, requeue, unmap, resize and reuse must be
+   refused while a borrow remains live. Begin with scoped consumers; a
+   longer-lived API needs compiler-enforced lease ownership/transfer, not a
+   freely copyable ticket or an assertion by the caller.
+3. **An alias and device-access contract.** Readers exclude external writers;
+   a writer excludes other readers and writers over the same bytes. Aliased
+   imports share the same backing owner/range accounting. Vulkan fences and
+   required flush/invalidate operations, camera dequeue/requeue, and dmabuf
+   producer/consumer synchronization stay explicit. Coherent or read-only
+   memory alone establishes none of this. A CPU borrow must end before a
+   conflicting device submission; asynchronous work retains its own owner
+   until actual completion.
+4. **Retirement that cannot revive old views.** Cancellation, device loss and
+   host replacement stop new acquisitions. Outstanding CPU borrows and SDK
+   work drain before backing storage is released or reused; cancellation is
+   not completion. Retire generations rather than wrap. If the platform can
+   revoke access without allowing that contract to hold, it cannot expose a
+   safe borrowed view.
+
+If extent, retention or synchronization cannot be established, copy within a
+valid host access interval into Coax-owned storage, or require explicit
+`#unsafe` access carrying the unresolved obligations. Keep the existing camera
+copy path until a lease implementation qualifies. Foreign acquisition and
+release effects still propagate through wrappers under A3; the annotation
+doesn't make a foreign-calling unit safe. A consumer receiving only the
+bounded view can be safe without reaching those calls.
+
+S3's gate must include valid mapped-buffer and camera borrows; rejected view
+and record escapes, early release/requeue, conflicting CPU/device access and
+aliased imports; and native sanitizer traces for delayed completion,
+cancellation, replacement and reacquisition. An old generation must never
+authorize a new acquisition. These checks qualify the adapters separately
+from the compiler's region checker; host sanitizers don't qualify GPU code.
 
 ### 2. A Rust-style borrow checker
 
@@ -183,8 +261,8 @@ Do all of these, in this order:
    `foreign` as effects a caller must declare. Safe units can then be
    identified by the compiler, not by convention.
 3. **Regions for views (option 1).** Finish R3's view lifetimes as regions,
-   including records that hold views and host-declared regions for foreign
-   buffers.
+   including records that hold views and the lease-scoped host regions
+   decided above. Foreign acquisition stays at the unsafe boundary.
 4. **`Handle(T)` with failable lookup.** Move `aethyr/entity.coax` from
    packed `int` handles to the nominal type.
 5. **Structured jobs before any parallelism.** R15's jobs bind scratch and
@@ -216,10 +294,8 @@ Do all of these, in this order:
 
 ## Open questions
 
-1. Should host-owned buffers (Vulkan mapped memory, dmabuf, camera frames)
-   get regions declared by the host, or always pass through `#unsafe`?
-2. What does a stale handle cost on the realm frame at the 99th percentile,
+1. What does a stale handle cost on the realm frame at the 99th percentile,
    and is a trap-on-stale variant needed for hot loops?
-3. Which hardened C toolchain works on both macOS and the NixOS hosts?
-4. Does `--arithmetic wrapping` stay allowed in safe units, given that
+2. Which hardened C toolchain works on both macOS and the NixOS hosts?
+3. Does `--arithmetic wrapping` stay allowed in safe units, given that
    wrapping is defined but often wrong?

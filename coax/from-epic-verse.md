@@ -14,6 +14,9 @@ Facts about Epic's Verse are as described there on 2026-11-03.
 
 The memory-safety plan this serves, and the options it chose between, are in
 [memory-safety.md](memory-safety.md).
+Its [host-buffer decision](memory-safety.md#host-owned-buffers-decision-2026-11-05)
+chooses host-declared regions tied to explicit leases. Acquisition stays at
+the unsafe boundary; ordinary consumers use region-checked views.
 
 ## Summary
 
@@ -64,13 +67,13 @@ native function but can't write one.
   compiler reports which units are safe (`coax status --json`, `coax deps
   --effects`).
 - **`#unsafe` blocks.** Raw pointers (`*T`, when they ship), unchecked casts,
-  and calls to `#foreign` procedures are allowed only inside them. A block
-  names its reason:
+  and calls to `#foreign` procedures require an explicit unsafe boundary
+  (`#unsafe` or boundary-module code). A block names its reason:
 
   ```jai
-  frame_pixels :: (img: Image) -> []u8 #effects(unsafe) {
-    #unsafe "the host keeps the mapped buffer until present" {
-      return host_map(img.id, img.bytes);
+  frame_pixels :: (lease: HostLease) -> []u8 #effects(unsafe, foreign, reads, writes, region(lease)) {
+    #unsafe "the acquired lease pins this CPU mapping and excludes conflicting device access" {
+      return host_map(lease);
     }
   }
   ```
@@ -82,8 +85,25 @@ native function but can't write one.
 
   ```jai
   #boundary;
-  host_map :: (id: u32, bytes: int) -> []u8 #foreign #effects(foreign, reads, region(host));
+  host_map :: (lease: HostLease) -> []u8 #foreign #effects(foreign, reads, writes, region(lease));
   ```
+
+  `HostLease` and `region(lease)` sketch the proposed ownership/lifetime
+  contract, not implemented syntax or an ordinary copyable record. The lease
+  identifies one retained owner and acquisition generation, with a checked
+  span and access mode. The returned view cannot outlive its CPU access
+  scope. Early release, requeue, unmap, reuse and conflicting CPU/device
+  access are refused while borrowed; asynchronous users retain ownership
+  through actual completion. A read-only acquisition returns `[] const u8`.
+  `region(host)` or `region(frame)` alone cannot identify this contract.
+
+  The [decision](memory-safety.md#host-owned-buffers-decision-2026-11-05)
+  specifies alias accounting, cancellation/retirement and the copy/unsafe
+  fallback when the host cannot guarantee retention and synchronization.
+  Safe consumers can receive the scoped view without calling foreign code;
+  the acquiring wrapper still carries its transitive `foreign`/`unsafe`
+  effects. Neither a region annotation nor `#boundary` hides those effects
+  or verifies that the host honors the declaration.
 
 - **Inventory.** Every `#unsafe` block and every boundary declaration shows
   in `coax deps --effects` output with its reason, so unsafe code can't
@@ -91,7 +111,9 @@ native function but can't write one.
 
 **Migration.** The current ~1,100 `#foreign` declarations in 184 files move
 into boundary modules, grouped by host (Vulkan, DRM, evdev, Metal, platform,
-crypto). Callers don't change except to declare effects where A3 requires it.
+crypto). Callers declare effects where A3 requires it. Buffer APIs also adopt
+S3's lease scopes or keep a copy/explicit unsafe contract; moving a declaration
+alone does not establish its lifetime.
 
 ## A2. Lookups that fail
 
@@ -180,6 +202,11 @@ computes may-effects for every procedure. A3 makes a declared set a contract.
   procedure can't have `allocates`, `io` or `foreign`.
 - **`unknown` stays explicit.** The inventory's bit 4 (unknown effects)
   counts as every effect until a reviewed summary narrows it.
+- **Region contracts accompany effects.** `region(lease)` relates a returned
+  borrow to an owner and access scope; it isn't an effect bit or permission
+  to drop `foreign`/`unsafe`. Calls check its outlives and invalidation
+  obligations as well as the effect subset. Unknown host retention remains
+  unsafe until the boundary contract is established.
 
 ## A4. Structured lifetimes
 
@@ -351,7 +378,7 @@ below is the suggested filing and work order.
 | V7 | Move Aethyr entities to `Handle(Entity)` | Port `aethyr/entity.coax` and its callers | The entity oracle agrees between old and new over its sequences; the realm frame's 99th percentile is within 2% of before | R3 |
 | S1 | Regions for views | Every view carries a region; refuse returning or storing a view in a longer region, or keeping it across reset, growth or frame return | The existing E0383 cases pass under the new rule; new cases for arena reset and growth refuse | R3 |
 | S2 | Regions for records that hold views | A record takes the shortest region of its views; refuse its escape | `EntityStore`-style records compile; a test that stores one in static storage refuses | R3 |
-| S3 | Host-declared regions for foreign buffers | Boundary declarations name the region of a returned view (`region(host)`, `region(frame)`) | Vulkan mapped memory and camera frames go through declared regions; misuse refuses | R3, R9 |
+| S3 | Lease-scoped host regions for foreign buffers | Boundary imports identify a concrete owner/acquisition generation, checked span, CPU access mode, alias accounting and acquire/release synchronization; compiler tracks scope and invalidation; copy or explicit unsafe fallback | Valid Vulkan/camera borrows pass; view/record escapes, early release/requeue and conflicting aliased CPU/device access refuse; native sanitizer traces cover delayed completion, cancellation, replacement and stale reacquisition, as specified in the host-buffer decision | R3, R9, R11 |
 
 ### Stage 4: undefined behavior and hardening
 
@@ -385,4 +412,9 @@ below is the suggested filing and work order.
 - V3 comes before V8 and V10, which restrict effects inside their blocks.
 - V6 comes before V7 and V12.
 - S1 comes before S2, S3, V8 and V10, which all rely on regions.
+- S3 also needs S2 and V1–V4: record escapes, boundary declarations and
+  enforced effects must agree on each lease. Its initial API uses scoped
+  consumers; escaping owners wait for R3's checked ownership/transfer rules.
+  V8/V9 must preserve host lease and range obligations before jobs borrow
+  host buffers; thread safety alone is insufficient.
 - S7 and S8 come last and land together.
