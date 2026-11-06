@@ -424,6 +424,14 @@ requirement is assumed. Keep skinned characters on a separately qualified
 path initially. Start with opaque static geometry; alpha and deformation
 need explicit later profiles.
 
+The [2026-11-06 source-world cluster receipt](../verification/valley-lab-clusters-2026-11-06/README.md)
+implements bounded source-order leaves over all 130 mesh types, an exact-range
+binary hierarchy and conservative CPU camera/shadow cuts. Complete four-view
+images match the unculled source reference. The measured independent-pass cut
+is the default; deeper cluster traversal remains diagnostic. This does not
+complete parent simplification, higher-detail input, paged residency, occlusion
+or GPU selection below.
+
 1. **Full-detail baseline.** Generate a small faceted rock in Coax, then a
    larger original mesh. Draw indexed full detail with fixed cameras and
    retain depth, normal and shaded reference images plus frame costs.

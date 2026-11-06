@@ -1,0 +1,51 @@
+// VWH1 is a separate, versioned suffix; VWD1 and all original geometry bytes retain their identity.
+#load "world-catalog.coax";
+#authority;
+WH_HEADER :: 32;
+WH_MODEL :: 24;
+WH_NODE :: 48;
+WH_INSTANCE :: 52;
+WH_CAP :: 33554432;
+wh_room :: (n:int)->bool #effects(all) {return n>=32 && n<=WH_CAP;}
+wh_counts :: (models:int,nodes:int,instances:int)->bool #effects(all) {return models>=1 && models<=512 && nodes>=1 && nodes<=262144 && instances>=1 && instances<=VW_DRAWS;}
+wh_shape :: (first:int,count:int,words:int,start:int,nodes:int,root:int,leaves:int,expected:int,total:int)->bool #effects(all) {return vw_span(first,count,words) && count%3==0 && start==expected && leaves>=1 && nodes==leaves*2-1 && nodes<=total-start && root==start+nodes-1;}
+wh_leaf :: (f:int,n:int,cursor:int,left:int,right:int,height:int,vertices:int)->bool #effects(all) {return f==cursor && n<=372 && left==4294967295 && right==4294967295 && height==0 && vertices>=1 && vertices<=64;}
+wh_children :: (left:int,right:int,start:int,parent:int,vertices:int)->bool #effects(all) {return left>=start && right>=start && left<parent && right<parent && vertices==0;}
+wh_range :: (f:int,n:int,first:int,count:int)->bool #effects(all) {return vw_span(f,n,first+count) && f>=first && n%3==0;}
+wh_partition :: (first:int,count:int,af:int,an:int,bf:int,bn:int)->bool #effects(all) {return af==first && bf==first+an && an+bn==count;}
+wh_encloses :: (low:Point,high:Point,a:Point,b:Point)->bool #effects(all) {return low.x<=a.x && low.y<=a.y && low.z<=a.z && high.x>=b.x && high.y>=b.y && high.z>=b.z;}
+wh_height :: (a:int,b:int)->int #effects(all) {return 1+cast(int)hi(cast(f32)a,cast(f32)b);}
+wh_complete :: (cursor:int,end:int,root_first:int,first:int,root_count:int,count:int)->bool #effects(all) {return cursor==end && root_first==first && root_count==count;}
+// b has passed wh_valid; the measured VWD1 records must name the same exact model ranges.
+wh_bindings :: (b:[]u8,source:[]u32)->bool #effects(all) {
+ if source.count%4!=0 || source.count/4!=cast(int)scan_u32(b,16) {return false;}io:=cast(int)scan_u32(b,28);
+ for k:0..<source.count/4 {model:=32+cast(int)scan_u32(b,io+k*52)*24;if scan_u32(b,model)!=source[k*4] || scan_u32(b,model+4)!=source[k*4+1] {return false;}}return true;
+}
+wh_valid :: (b:[]u8,instances:int,words:int)->bool #effects(all) {
+ if !wh_room(b.count) || scan_u32(b,0)!=0x31485756 || scan_u32(b,4)!=1 {return false;}
+ nm:=cast(int)scan_u32(b,8);nn:=cast(int)scan_u32(b,12);ni:=cast(int)scan_u32(b,16);
+ if !wh_counts(nm,nn,ni) || ni!=instances {return false;}
+ no:=WH_HEADER+nm*WH_MODEL;io:=no+nn*WH_NODE;
+ if scan_u32(b,20)!=32 || cast(int)scan_u32(b,24)!=no || cast(int)scan_u32(b,28)!=io || b.count!=io+ni*WH_INSTANCE {return false;}
+ expected:=0;
+ for m:0..<nm {at:=WH_HEADER+m*WH_MODEL;first:=cast(int)scan_u32(b,at);count:=cast(int)scan_u32(b,at+4);start:=cast(int)scan_u32(b,at+8);nodes:=cast(int)scan_u32(b,at+12);root:=cast(int)scan_u32(b,at+16);leaves:=cast(int)scan_u32(b,at+20);
+  if !wh_shape(first,count,words,start,nodes,root,leaves,expected,nn) {return false;}
+  cursor:=first;
+  for k:start..<start+nodes {p:=no+k*WH_NODE;f:=cast(int)scan_u32(b,p);n:=cast(int)scan_u32(b,p+4);left:=cast(int)scan_u32(b,p+8);right:=cast(int)scan_u32(b,p+12);height:=cast(int)scan_u32(b,p+40);verts:=cast(int)scan_u32(b,p+44);
+   if !wh_range(f,n,first,count) || !vw_numbers(b[p+16..<p+40],-100000,100000) {return false;}
+   low:=scan_point(b,p+16);high:=scan_point(b,p+28);if !wh_encloses(low,high,low,low) {return false;}
+   if k<start+leaves {if !wh_leaf(f,n,cursor,left,right,height,verts) {return false;}cursor+=n;}
+   else {if !wh_children(left,right,start,k,verts) {return false;}a:=no+left*WH_NODE;c:=no+right*WH_NODE;
+    if !wh_partition(f,n,cast(int)scan_u32(b,a),cast(int)scan_u32(b,a+4),cast(int)scan_u32(b,c),cast(int)scan_u32(b,c+4)) {return false;}
+    if height!=wh_height(cast(int)scan_u32(b,a+40),cast(int)scan_u32(b,c+40)) {return false;}
+    if !wh_encloses(low,high,scan_point(b,a+16),scan_point(b,a+28)) || !wh_encloses(low,high,scan_point(b,c+16),scan_point(b,c+28)) {return false;}
+   }
+  }
+  rp:=no+root*WH_NODE;if !wh_complete(cursor,first+count,cast(int)scan_u32(b,rp),first,cast(int)scan_u32(b,rp+4),count) {return false;}expected+=nodes;
+ }
+ if expected!=nn {return false;}
+ for k:0..<ni {p:=io+k*WH_INSTANCE;row:=b[p..<p+WH_INSTANCE];if cast(int)scan_u32(row,0)>=nm || !vw_numbers(row[4..<row.count],-10000,10000) {return false;}}
+ return true;
+}
+
+#load "../../aethyr/tests/valley-world-hierarchy.coax";

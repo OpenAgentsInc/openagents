@@ -1,0 +1,31 @@
+ok   #test World budget covers the oracle's entire source scene in both passes (1 case, 485 steps, 0 ms)
+ok   #test World movement holds while private ground is missing (1 case, 16330216 steps, 606 ms)
+ok   #test World defaults to the measured pass cut and exposes reference and cluster diagnostics (1 case, 16330723 steps, 504 ms)
+ok   #test World traversal refuses source coverage holes and the bounded outer edge (1 case, 17519757 steps, 551 ms)
+ok   #test World reset releases input and places Echo on the sampled source surface (1 case, 28865777 steps, 647 ms)
+ok   #test World's source visibility is conservative behind and around the eye (1 case, 1777 steps, 0 ms)
+ok   #test World separates offscreen casters and falls back completely when hierarchy bytes are absent (1 case, 16337209 steps, 545 ms)
+ok   #test World draw capacity reserves the two Echo records after every unbatchable source placement (1 case, 37893157 steps, 868 ms)
+ok   #test World frames batch adjacent source instances and fit desktop phone and high DPR budgets (1 case, 34015833 steps, 660 ms)
+ok   #test World spawn requires a gentle patch across both terrain triangles before moving or jumping (1 case, 22735765 steps, 568 ms)
+ok   #test World retains offscreen source casters within the sun projection (1 case, 645 steps, 0 ms)
+ok   #test World trailer requires a complete bounded grid and draw table (1 case, 5410832 steps, 44 ms)
+ok   #forall World catalogue ranges have exact inclusive endpoints (8 cases, 974 steps, 0 ms)
+ok   #forall World float guards preserve finite low bits and reject nonfinite exponents (6 cases, 920 steps, 0 ms)
+ok   #test World number spans visit every word and reject partial bytes (1 case, 1594 steps, 0 ms)
+ok   #test World draw range helpers check zero exact end and negative inputs (1 case, 112 steps, 0 ms)
+ok   #test World catalogue visits distinct consecutive draws (1 case, 9507308 steps, 78 ms)
+ok   #test World draw bounds include their exact endpoints (1 case, 3710 steps, 0 ms)
+ok   #forall World trailer refuses every changed structural word (8 cases, 10513898 steps, 83 ms)
+ok   #forall World trailer refuses nonfinite grid descriptor or collision heights (4 cases, 5258068 steps, 45 ms)
+ok   #test World draw ranges cannot escape the index buffer or instance matrix table (1 case, 29985274 steps, 337 ms)
+ok   #test World source pack requires every digest byte and exact length (1 case, 6593 steps, 0 ms)
+ok   #test World recovery gives its complete source residency a bounded minute (1 case, 8 steps, 0 ms)
+23 of 500 checks (--only 'World'), 23 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time steps: 17519757 of 20000000 used (87%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    17519094 steps  apps/openagents-web/valleyworld.coax:31:1  #test 'World traversal refuses source coverage holes and the bounded outer edge' itself
+    663 steps  apps/openagents-web/valleyworld.coax:68:1  in 'world_safe' (4 times)
+  fix: do less work #test 'World traversal refuses source coverage holes and the bounded outer edge' itself, split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+coax: note[E0400]: compile-time value slots: 32694031 of 33554432 used (97%), above three quarters of the limit; more than 33554432 fails with E0400

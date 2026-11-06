@@ -1,0 +1,47 @@
+// Borrowed-output source-order clusters for large indexed meshes. Geometry is never simplified.
+#load "scan.coax";
+SourceCluster :: struct {first:int;count:int;left:int= -1;right:int= -1;height:int;vertices:int;low:Point;high:Point;}
+#test "large source clusters retain repeated corners and exact source ownership" {
+ v:[36*66]u8;i:[69*4]u8;for k:0..<66 {scan_write_point(v[..],k*36,v3(cast(f32)k,-cast(f32)k,2));}
+ for k:0..<63 {scan_put(i[..],k*4,cast(u32)(2000000+k));}for value,k:[6]u32.[62,63,0,63,64,65] {scan_put(i[..],(63+k)*4,2000000+value);}
+ n:[8]SourceCluster;a:[8]int;count:=source_clusters(n[..],a[..],v[..],i[..],0,0,69);
+ #assert count==3 && n[0].vertices==64 && n[0].count==66 && n[1].first==66 && n[1].count==3;
+ #assert n[2].left==0 && n[2].right==1 && n[2].first==0 && n[2].count==69 && n[2].height==1;
+ #assert n[2].low.y== -65 && n[2].high.x==65 && n[0].high.z==2;
+}
+#test "large source triangle ceiling splits 125 repeated triangles and promotes an odd leaf" {
+ v:[36]u8;i:[249*3*4]u8;for k:0..<249*3 {scan_put(i[..],k*4,2000000);}
+ n:[8]SourceCluster;a:[8]int;#assert source_clusters(n[..],a[..],v[..],i[..],0,0,249*3)==5;
+ #assert n[0].count==372 && n[1].count==372 && n[2].count==3 && n[4].left==3 && n[4].right==2 && n[4].height==2;
+ #assert source_clusters(n[..],a[..],v[..],i[..],0,0,124*3)==1 && n[0].vertices==1;
+ #assert source_clusters(n[0..<2],a[..],v[..],i[..],0,0,125*3)== -1;
+ #assert source_clusters(n[..],a[0..<0],v[..],i[..],0,0,3)== -1;
+ scan_put(i[..],0,1999999);#assert source_clusters(n[..],a[..],v[..],i[..],0,0,3)== -1;
+ scan_put(i[..],0,2000001);#assert source_clusters(n[..],a[..],v[..],i[..],0,0,3)== -1;
+ scan_put(i[..],0,2000000);scan_put(v[..],0,0x7fc00000);#assert source_clusters(n[..],a[..],v[..],i[..],0,0,3)== -1;
+ #assert source_clusters(n[..],a[..],v[..],i[..],0,-1,3)== -1 && source_clusters(n[..],a[..],v[..],i[..],0,0,4)== -1;
+}
+source_clusters :: (out:[]SourceCluster,active:[]int,v:[]u8,i:[]u8,vertex_word:int,first:int,count:int)->int #effects(all) {
+ if first<0 || count<3 || count%3!=0 || first>i.count/4 || count>i.count/4-first || vertex_word<0 || vertex_word>v.count/4 || out.count<1 || active.count<1 {return -1;}
+ leaves:=0;node:=SourceCluster.{first=first};ids:[64]u32;used:=0;t:=0;
+ while t<count/3 {
+  missing:[3]u32;added:=0;
+  for corner:0..<3 {id:=scan_u32(i,(first+t*3+corner)*4);if id<2000000 || cast(int)(id-2000000)>=(v.count-vertex_word*4)/36 {return -1;}
+   found:=false;for k:0..<used {if ids[k]==id {found=true;}}for k:0..<added {if missing[k]==id {found=true;}}if !found {missing[added]=id;added+=1;}
+  }
+  if used+added>64 || node.count==372 {
+   if leaves>=out.count || leaves>=active.count {return -1;}node.vertices=used;out[leaves]=node;active[leaves]=leaves;leaves+=1;node=SourceCluster.{first=first+t*3};used=0;
+  }else {
+   for k:0..<added {ids[used+k]=missing[k];}used+=added;
+   for corner:0..<3 {id:=scan_u32(i,(first+t*3+corner)*4);at:=vertex_word*4+cast(int)(id-2000000)*36;for lane:0..<3 {if (scan_u32(v,at+lane*4)&0x7f800000)==0x7f800000 {return -1;}}p:=scan_point(v,at);if !finite3(p) {return -1;}
+    if node.count==0 && corner==0 {node.low=p;node.high=p;}else {node.low=v3(lo(node.low.x,p.x),lo(node.low.y,p.y),lo(node.low.z,p.z));node.high=v3(hi(node.high.x,p.x),hi(node.high.y,p.y),hi(node.high.z,p.z));}
+   }node.count+=3;t+=1;
+  }
+ }
+ if leaves>=out.count || leaves>=active.count {return -1;}node.vertices=used;out[leaves]=node;active[leaves]=leaves;leaves+=1;
+ if leaves>out.count/2+out.count%2 {return -1;}total:=leaves;n:=leaves;
+ while n>1 {next:=0;for k:0..<(n+1)/2 {left:=active[k*2];if k*2+1==n {active[next]=left;}else {
+   right:=active[k*2+1];a:=out[left];b:=out[right];out[total]=SourceCluster.{first=a.first,count=a.count+b.count,left=left,right=right,height=1+(ifx a.height>b.height then a.height else b.height),low=v3(lo(a.low.x,b.low.x),lo(a.low.y,b.low.y),lo(a.low.z,b.low.z)),high=v3(hi(a.high.x,b.high.x),hi(a.high.y,b.high.y),hi(a.high.z,b.high.z))};active[next]=total;total+=1;
+  }next+=1;}n=next;
+ }return total;
+}

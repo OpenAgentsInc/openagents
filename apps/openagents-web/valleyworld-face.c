@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdbool.h>
 #define EXPORT(name) __attribute__((export_name(name)))
+static uint8_t catalog[33554432];
+static uint32_t catalog_used;
 static coax_t_ValleyWorld *state(uint32_t p){return (coax_t_ValleyWorld *)(uintptr_t)p;}
 static coax_v_t_ValleyWorld view(uint32_t p){return (coax_v_t_ValleyWorld){state(p),1};}
 static coax_v_t_ValleyCanyon canyon(uint32_t p){return (coax_v_t_ValleyCanyon){state(p)->canyon.e,1};}
@@ -17,18 +19,20 @@ EXPORT("coaxial_gpu_recover_ms_v1") uint32_t recover_ms(void){return (uint32_t)w
 EXPORT("coaxial_frame_admit") int32_t frame_admit(int32_t pending){return afp_submit(pending)?1:0;}
 EXPORT("coaxial_sampling_v1") uint32_t sampling(uint32_t p){return (uint32_t)canyon_sampling(canyon(p));}
 EXPORT("coaxial_pixel_budget") uint32_t pixel_budget(void){return (uint32_t)canyon_pixel_budget();}
-EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t v,uint32_t u,float w,float h,float d,float dt,uint32_t still){world_step(view(p),dt,still!=0);return (uint32_t)world_frame(view(p),(coax_v_f32){(float *)(uintptr_t)v,32768*12},(coax_v_f32){(float *)(uintptr_t)u,128},w,h,d);}
+EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t v,uint32_t u,float w,float h,float d,float dt,uint32_t still){world_step(view(p),dt,still!=0);return (uint32_t)world_frame_data(view(p),(coax_v_f32){(float *)(uintptr_t)v,32768*12},(coax_v_f32){(float *)(uintptr_t)u,128},w,h,d,(coax_v_u8){catalog,catalog_used});}
 EXPORT("coaxial_key") uint32_t key(uint32_t p,int32_t k,int32_t mods){(void)mods;return world_hold(view(p),k,true);}
 EXPORT("coaxial_key_up") uint32_t key_up(uint32_t p,int32_t k,int32_t mods){(void)mods;return world_hold(view(p),k,false);}
 EXPORT("coaxial_pointer") uint32_t pointer(uint32_t p,float x,float y,int32_t phase,int32_t kind,int32_t id){return world_pointer(view(p),x,y,phase,kind,id);}
 EXPORT("coaxial_wheel") void wheel(uint32_t p,float dy){canyon_wheel(canyon(p),dy);}
 EXPORT("coaxial_blur") void blur(uint32_t p){canyon_blur(canyon(p));}
 EXPORT("coaxial_scene_ready") uint32_t ready(uint32_t p){return state(p)->loaded;}
-EXPORT("coaxial_asset") uint32_t asset(uint32_t p,int32_t i,uint32_t n){return i==0&&n<=sizeof(state(p)->canyon.e[0].echo.e[0].data.e)?(uint32_t)(uintptr_t)state(p)->canyon.e[0].echo.e[0].data.e:0;}
-EXPORT("coaxial_asset_capacity") uint32_t capacity(uint32_t p,int32_t i){(void)p;return i==0?sizeof(state(0)->canyon.e[0].echo.e[0].data.e):0;}
-EXPORT("coaxial_asset_ready") void loaded(uint32_t p,int32_t i,uint32_t n){world_asset(view(p),i,n);}
+EXPORT("coaxial_asset") uint32_t asset(uint32_t p,int32_t i,uint32_t n){(void)p;return i==0&&n<=sizeof(catalog)&&n<=(uint32_t)world_catalog_capacity()?(uint32_t)(uintptr_t)catalog:0;}
+EXPORT("coaxial_asset_capacity") uint32_t capacity(uint32_t p,int32_t i){(void)p;return i==0?sizeof(catalog):0;}
+EXPORT("coaxial_asset_ready") void loaded(uint32_t p,int32_t i,uint32_t n){if(i==0){catalog_used=n;world_catalog(view(p),(coax_v_u8){catalog,n});}else world_asset(view(p),i,n);}
 EXPORT("coaxial_draws") uint32_t draws(uint32_t p){return (uint32_t)(uintptr_t)state(p)->draws.e;}
 EXPORT("coaxial_draw_count") uint32_t draw_count(uint32_t p){return state(p)->loaded?(uint32_t)state(p)->draw_count:0u;}
+EXPORT("coaxial_shadow_draws_v1") uint32_t shadow_draws(uint32_t p){return (uint32_t)(uintptr_t)state(p)->shadow_draws.e;}
+EXPORT("coaxial_shadow_draw_count_v1") uint32_t shadow_count(uint32_t p){return state(p)->loaded?(uint32_t)state(p)->shadow_count:0u;}
 EXPORT("coaxial_stores") uint32_t stores(void){return 1;}
 EXPORT("coaxial_store") uint32_t store(uint32_t p,uint32_t i){return i==0?(uint32_t)(uintptr_t)state(p)->canyon.e[0].echo.e[0].palette.e:0;}
 EXPORT("coaxial_store_bytes") uint32_t store_bytes(uint32_t p,uint32_t i){(void)p;return i==0?334*12*4:0;}

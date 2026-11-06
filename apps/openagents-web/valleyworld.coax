@@ -3,6 +3,7 @@
 #load "../../verse/valley/world-catalog.coax";
 #load "../../verse/valley/world-pack-policy.coax";
 #load "../../verse/valley/world-host-policy.coax";
+#load "../../verse/valley/world-select.coax";
 #load "../../aethyr/frame-pacing.coax";
 #load "../../aethyr/ground.coax" as ground;
 #load "../../aethyr/query.coax" as query;
@@ -13,12 +14,19 @@ ValleyWorld :: struct {
  canyon:[1]ValleyCanyon;loaded:bool;started:bool;catalog_bytes:int;
  heights:[VW_POINTS]f32;source:[VW_DRAWS*4]u32;bounds:[VW_DRAWS*4]f32;
  draws:[(VW_DRAWS+2)*4]u32;draw_count:int;source_count:int;visible:int;triangles:int;
+ shadow_draws:[(VW_DRAWS+2)*4]u32;shadow_count:int;shadow_triangles:int;
+ selection:[2]WhSelection;geometry_mode:int=1;geometry_stats:bool;hierarchy_at:int;hierarchy_bytes:int;hierarchy_leaves:int;hierarchy_nodes:int;fallbacks:int;
  vertices:int;indices:int;layers:int;matrix_word:int;material_word:int;vertex_word:int;
  assets:[4]int;digest:[32]u8;verified:bool;failed:bool;checks:int;station:int;
  meter:[1]BudgetMeter;
 }
 #test "World movement holds while private ground is missing" {
  s:[1]ValleyWorld;world_step(s[..],0.1,false);#assert !s[0].started && !s[0].loaded;
+}
+#test "World defaults to the measured pass cut and exposes reference and cluster diagnostics" {
+ s:[1]ValleyWorld;#assert s[0].geometry_mode==1;#assert world_hold(s[..],71,true) && s[0].geometry_mode==2;#assert world_hold(s[..],103,true) && s[0].geometry_mode==0;#assert world_hold(s[..],71,true) && s[0].geometry_mode==1;
+ #assert world_hold(s[..],76,true) && s[0].geometry_stats;#assert world_hold(s[..],108,true) && !s[0].geometry_stats;
+ b:[32]u8;n:=world_digits(b[..],0,407418897);#assert cast(string)b[0..<n]=="407418897";#assert world_digits(b[..],0,0)==1 && b[0]=='0';
 }
 #test "World traversal refuses source coverage holes and the bounded outer edge" {s:[1]ValleyWorld;#assert !world_safe(s[..],-114,0);for k:0..<VW_POINTS {s[0].heights[k]= -128;}#assert !world_safe(s[..],0,0);for k:0..<VW_POINTS {s[0].heights[k]= -5;}#assert world_safe(s[..],0,0);s[0].heights[113*257+113]= -128;#assert !world_safe(s[..],0,0);}
 #test "World reset releases input and places Echo on the sampled source surface" #steps 1000000000 {
@@ -32,6 +40,21 @@ ValleyWorld :: struct {
  u:[128]f32;u[15]=1;u[19]=1;u[12]=1;u[17]=1;u[22]=1;
  #assert world_visible(u[..],v3(0,0,5),1);#assert !world_visible(u[..],v3(0,0,-5),1);
  #assert world_visible(u[..],v3(0,0,-0.5),1);#assert world_visible(u[..],v3(8,0,5),3);
+ #assert world_inside(u[..],v3(0,0,5),1,false) && !world_inside(u[..],v3(4,0,5),1,false) && !world_inside(u[..],v3(0,0,0.5),1,false);
+ u[80]=1;u[85]=1;u[90]=1;u[96]=45;#assert world_inside(u[..],v3(44,0,0),1,true) && !world_inside(u[..],v3(45,0,0),1,true);
+}
+#test "World separates offscreen casters and falls back completely when hierarchy bytes are absent" {
+ s:[1]ValleyWorld;s[0].source_count=1;s[0].source[0]=12;s[0].source[1]=6;s[0].source[2]=3;s[0].source[3]=1;s[0].bounds[2]= -10;s[0].bounds[3]=1;
+ u:[128]f32;u[12]=1;u[17]=1;u[22]=1;u[15]=1;u[19]=1;u[80]=1;u[85]=1;u[90]=1;u[96]=45;b:[1]u8;
+ world_select(s[..],u[..],b[..],false);world_select(s[..],u[..],b[..],true);#assert s[0].selection[0].indices==0 && s[0].selection[1].indices==6;
+ s[0].geometry_mode=0;world_select(s[..],u[..],b[..],false);#assert s[0].selection[0].indices==6;
+ s[0].geometry_mode=2;s[0].hierarchy_bytes=252;world_select(s[..],u[..],b[..],true);#assert s[0].selection[1].indices==6 && s[0].selection[1].nodes==0 && s[0].fallbacks==0;
+}
+#test "World draw capacity reserves the two Echo records after every unbatchable source placement" #steps 1000000000 {
+ s:[1]ValleyWorld;s[0].geometry_mode=0;s[0].source_count=VW_DRAWS;
+ for k:0..<VW_DRAWS {s[0].source[k*4]=cast(u32)(k*3);s[0].source[k*4+1]=3;s[0].source[k*4+2]=cast(u32)(k+3);s[0].source[k*4+3]=1;s[0].bounds[k*4+2]=5;}
+ u:[128]f32;u[12]=1;u[17]=1;u[22]=1;u[15]=1;u[19]=1;b:[1]u8;world_select(s[..],u[..],b[..],false);
+ #assert s[0].selection[0].draws==VW_DRAWS+2 && !s[0].selection[0].overflow && s[0].draws[(VW_DRAWS-1)*4]==cast(u32)((VW_DRAWS-1)*3) && s[0].draws[VW_DRAWS*4]==0 && s[0].draws[(VW_DRAWS+1)*4]==0;
 }
 #test "World frames batch adjacent source instances and fit desktop phone and high DPR budgets" #steps 1000000000 {
  s:[1]ValleyWorld;s[0].loaded=true;s[0].source_count=2;s[0].vertices=116686256;s[0].indices=50173080;s[0].layers=240;for k:0..<VW_POINTS {s[0].heights[k]= -5;}
@@ -53,6 +76,8 @@ world_start :: (s:[]ValleyWorld) {
  c[0].you=pc.walk_place(p.x,world_height(s,p.x,p.z),p.z,0);c[0].you.on_ground=true;c[0].you.phi=1.3;c[0].you.dist=4;c[0].you.prev_dist=4;c[0].you.max_dist=6;
 }
 world_hold :: (s:[]ValleyWorld,key:int,down:bool)->bool #export_c #effects(all) {
+ if down && (key==71 || key==103) {s[0].geometry_mode=(s[0].geometry_mode+1)%3;return true;}
+ if down && (key==76 || key==108) {s[0].geometry_stats=!s[0].geometry_stats;return true;}
  if down && (key==86 || key==118) {s[0].canyon[0].mode=(s[0].canyon[0].mode+1)%4;return true;}
  if down && key>=50 && key<=53 {s[0].station=key-50;s[0].started=false;canyon_blur(s[0].canyon[..]);world_echo_reset(s);world_start(s);return true;}
  if down && (key==82 || key==114) {s[0].started=false;s[0].canyon[0].portrait=false;s[0].canyon[0].closeup=false;canyon_blur(s[0].canyon[..]);world_echo_reset(s);world_start(s);return true;}
@@ -90,6 +115,19 @@ world_asset :: (s:[]ValleyWorld,index:int,bytes:int) #export_c #effects(all) {
  }
  s[0].loaded=s[0].verified && !s[0].failed && s[0].catalog_bytes>0 && s[0].assets[1]==s[0].vertices && s[0].assets[2]==s[0].indices && s[0].assets[3]==s[0].layers;
 }
+// The host owns a bounded byte carrier. Coax decides its shape and copies only Echo's original rig.
+world_catalog_capacity :: ()->int #export_c #effects(all) {return WH_CAP;}
+world_catalog :: (s:[]ValleyWorld,b:[]u8) #export_c #effects(all) {
+ if b.count<VW_RIG_BYTES+VW_HEADER || b.count>WH_CAP {world_asset(s,0,0);return;}
+ n:=cast(int)scan_u32(b,VW_RIG_BYTES+8);if n<1 || n>VW_DRAWS {world_asset(s,0,0);return;}
+ core:=VW_RIG_BYTES+VW_HEADER+VW_POINTS*4+n*32;if core>b.count || !vw_catalog_valid(b[VW_RIG_BYTES..<core]) {world_asset(s,0,0);return;}
+ // Legacy VWD1 is still read unchanged; the larger VWH1 carrier never enlarges Echo's arena.
+ for k:0..<core {s[0].canyon[0].echo[0].data[k]=b[k];}world_asset(s,0,core);s[0].assets[0]=b.count;
+ s[0].hierarchy_at=0;s[0].hierarchy_bytes=0;s[0].hierarchy_leaves=0;s[0].hierarchy_nodes=0;
+ if b.count>core && wh_valid(b[core..<b.count],n,s[0].indices/4) {
+  h:=b[core..<b.count];if wh_bindings(h,s[0].source[0..<n*4]) {s[0].hierarchy_at=core;s[0].hierarchy_bytes=b.count-core;s[0].hierarchy_nodes=cast(int)scan_u32(h,12);for m:0..<cast(int)scan_u32(h,8) {s[0].hierarchy_leaves+=cast(int)scan_u32(h,32+m*24+20);}}
+ }
+}
 world_visible :: (u:[]f32,p:Point,r:f32)->bool {
  q:=sub(p,v3(u[8],u[9],u[10]));z:=dot(q,v3(u[20],u[21],u[22]));
  if z+r<0.05 || z-r>300 {return false;}
@@ -99,29 +137,45 @@ world_visible :: (u:[]f32,p:Point,r:f32)->bool {
 world_sun :: ()->Point {return v3(0.7742571472,0.6158125107,0.1459480103);}
 #test "World retains offscreen source casters within the sun projection" {u:[128]f32;u[80]=1;u[85]=1;u[90]=1;u[96]=45;#assert world_shadowed(u[..],v3(0,0,-10),1) && world_shadowed(u[..],v3(46,0,0),1);#assert !world_shadowed(u[..],v3(100,0,0),1);}
 world_shadowed :: (u:[]f32,p:Point,r:f32)->bool {q:=sub(p,v3(u[92],u[93],u[94]));return abs(dot(q,v3(u[80],u[81],u[82])))<=u[96]+r && abs(dot(q,v3(u[84],u[85],u[86])))<=u[96]+r && abs(dot(q,v3(u[88],u[89],u[90])))<=u[96]+r;}
-world_frame :: (s:[]ValleyWorld,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #export_c #effects(all) {
+// Wholly admitted source spheres need no node decode or local plane transform.
+world_inside :: (u:[]f32,p:Point,r:f32,shadow:bool)->bool {
+ if shadow {q:=sub(p,v3(u[92],u[93],u[94]));return abs(dot(q,v3(u[80],u[81],u[82])))+r<=u[96] && abs(dot(q,v3(u[84],u[85],u[86])))+r<=u[96] && abs(dot(q,v3(u[88],u[89],u[90])))+r<=u[96];}
+ q:=sub(p,v3(u[8],u[9],u[10]));z:=dot(q,v3(u[20],u[21],u[22]));return z-r>=0.05 && z+r<=300 && abs(dot(q,v3(u[12],u[13],u[14])))*u[15]+r*sqrt(1+u[15]*u[15])<=z && abs(dot(q,v3(u[16],u[17],u[18])))*u[19]+r*sqrt(1+u[19]*u[19])<=z;
+}
+world_frame :: (s:[]ValleyWorld,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #export_c #effects(all) {empty:[1]u8;return world_frame_data(s,out,u,w,h,d,empty[0..<0]);}
+world_digits :: (out:[]u8,at:int,value:int)->int {n:=at;if value>=10 {n=world_digits(out,n,value/10);}out[n]=cast(u8)('0'+value%10);return n+1;}
+world_number :: (out:[]f32,n:int,label:string,value:int,y:f32,pen:HdPen)->int {text:[96]u8;at:=0;for c:label {text[at]=c;at+=1;}at=world_digits(text[..],at,value);return hd_text(out,n,cast(string)text[0..<at],20,y,10,pen,0);}
+world_select :: (s:[]ValleyWorld,u:[]f32,b:[]u8,shadow:bool) {
+ pass:=ifx shadow then 1 else 0;target:=ifx shadow then s[0].shadow_draws[..] else s[0].draws[..];scene:=target[0..<VW_DRAWS*4];stats:=s[0].selection[pass..<pass+1];stats[0]=WhSelection.{};planes:[6]WhPlane;wh_planes(u,planes[..],shadow);
+ use_hierarchy:=s[0].geometry_mode==2 && s[0].hierarchy_bytes>0 && s[0].hierarchy_at<=b.count && s[0].hierarchy_bytes<=b.count-s[0].hierarchy_at;
+ if !s[0].canyon[0].portrait {for k:0..<s[0].source_count {at:=k*4;p:=v3(s[0].bounds[at],s[0].bounds[at+1],s[0].bounds[at+2]);r:=s[0].bounds[at+3];camera:=world_visible(u,p,r);caster:=world_shadowed(u,p,r);
+  visible:=s[0].geometry_mode==0 || (ifx shadow then caster else camera);
+  if visible {if use_hierarchy && !world_inside(u,p,r,shadow) {wh_select(scene,stats,b[s[0].hierarchy_at..<s[0].hierarchy_at+s[0].hierarchy_bytes],k,planes[..],3);}else {wh_emit(scene,stats,cast(int)s[0].source[at],cast(int)s[0].source[at+1],k+3);stats[0].instances+=1;if use_hierarchy {stats[0].fast+=1;}}}
+ }}
+ if stats[0].overflow {s[0].fallbacks+=1;stats[0]=WhSelection.{};for k:0..<s[0].source_count {at:=k*4;wh_emit(scene,stats,cast(int)s[0].source[at],cast(int)s[0].source[at+1],k+3);stats[0].instances+=1;}}
+ for k:1..<3 {for j:0..<4 {target[stats[0].draws*4+j]=s[0].canyon[0].draws[k*4+j];}stats[0].draws+=1;}
+}
+world_frame_data :: (s:[]ValleyWorld,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,b:[]u8)->int #export_c #effects(all) {
  world_start(s);c:=s[0].canyon[..];_:=canyon_frame(c,out,u,w,h,d);s[0].visible=0;s[0].triangles=0;s[0].draw_count=0;
  // This profile uses the original Valley body rig. Slay's morph/shot flags stay clear.
  u[7]=0;u[111]=0;u[112]=0;u[113]=0;u[114]= -1;u[116]=cast(f32)s[0].vertex_word;u[120]=cast(f32)s[0].matrix_word;u[124]=cast(f32)s[0].material_word;
  sun:=world_sun();right:=unit_or(cross(v3(0,1,0),sun),v3(1,0,0));canyon_uniform_point(u,24,sun);canyon_uniform_point(u,80,right);canyon_uniform_point(u,84,cross(sun,right));canyon_uniform_point(u,88,sun);
  feet:=pc.walk_feet(c[0].you);canyon_uniform_point(u,92,v3(feet.x,feet.y,feet.z));if !c[0].portrait {u[96]=45;}
- if s[0].loaded {for k:0..<s[0].source_count {at:=k*4;if !c[0].portrait && (world_visible(u,v3(s[0].bounds[at],s[0].bounds[at+1],s[0].bounds[at+2]),s[0].bounds[at+3]) || world_shadowed(u,v3(s[0].bounds[at],s[0].bounds[at+1],s[0].bounds[at+2]),s[0].bounds[at+3])) {
-  last:=(s[0].draw_count-1)*4;if last>=0 && s[0].draws[last]==s[0].source[at] && s[0].draws[last+1]==s[0].source[at+1] && s[0].draws[last+2]+s[0].draws[last+3]==s[0].source[at+2] {s[0].draws[last+3]+=1;}else {for j:0..<4 {s[0].draws[s[0].draw_count*4+j]=s[0].source[at+j];}s[0].draw_count+=1;}
-  s[0].visible+=1;s[0].triangles+=cast(int)s[0].source[at+1]/3;}}
-  for k:1..<3 {for j:0..<4 {s[0].draws[s[0].draw_count*4+j]=c[0].draws[k*4+j];}s[0].draw_count+=1;}
- }
+ if s[0].loaded {world_select(s,u,b,false);world_select(s,u,b,true);s[0].draw_count=s[0].selection[0].draws;s[0].shadow_count=s[0].selection[1].draws;s[0].visible=s[0].selection[0].instances;s[0].triangles=s[0].selection[0].indices/3;s[0].shadow_triangles=s[0].selection[1].indices/3;}
  pen:=HdPen.{d=d,top=0,bottom=h/d};n:=hd_text(out,0,"VALLEY LAB / ANCIENT WORLD",110,32,ifx w/d<700 then 10.0f32 else 18.0f32,pen,0);
  n=hd_text_fit(out,n,ifx s[0].loaded then (ifx s[0].source_count==27501 then "ORIGINAL WORLD / ECHO / 250 METRE BASIN" else "PARTIAL SOURCE EXPORT / ECHO / WORK IN PROGRESS") else ifx s[0].failed then "PRIVATE WORLD PACK MISSING OR REFUSED" else "LOADING PRIVATE SOURCE WORLD",20,56,10,w/d-40,pen,1);
  for k:0..<4 {box:=HudBox.{x=16+cast(f32)k*(w/d-32)/4,y=72,width=(w/d-32)/4-4,height=36};n=hd_panel(out,n,box,pen,s[0].station==k);n=hd_text_fit(out,n,[4]string.["2 BASIN","3 WEST","4 EAST","5 NORTH"][k],box.x+6,box.y+23,10,box.width-12,pen,0);}
+ if s[0].geometry_stats {n=hd_text(out,n,[3]string.["G / SOURCE REFERENCE","G / CAMERA + SHADOW CUT","G / CLUSTER CUT / DEPTH 3"][s[0].geometry_mode],20,132,10,pen,0);n=world_number(out,n,"COLOR TRIANGLES ",s[0].triangles,152,pen);n=world_number(out,n,"SHADOW TRIANGLES ",s[0].shadow_triangles,172,pen);n=world_number(out,n,"TREE NODES VISITED ",s[0].selection[0].nodes+s[0].selection[1].nodes,192,pen);n=world_number(out,n,"RESIDENT LEAF CLUSTERS ",s[0].hierarchy_leaves,212,pen);n=world_number(out,n,"CONSERVATIVE FALLBACKS ",s[0].fallbacks,232,pen);}
  n=hd_text(out,n,"1 BACK",20,32,10,pen,1);n=hd_text(out,n,"RESET",w/d-70,32,10,pen,1);
  n=hd_text(out,n,"JUMP",w/d-70,h/d-106,11,pen,1);
  for k:0..<2 {box:=HudBox.{x=16+cast(f32)k*w/d*0.5,y=h/d-82,width=w/d*0.5-32,height=44};n=hd_panel(out,n,box,pen,false);n=hd_text_fit(out,n,ifx k==0 then [4]string.["V / LIT","V / ALBEDO","V / NORMALS","V / ROUGHNESS"][c[0].mode] else "NEXT PART",box.x+8,box.y+28,10,box.width-16,pen,0);}
- n=hd_text_fit(out,n,"WASD MOVE / DRAG LOOK / SPACE JUMP / R RESET / 2-5 VIEWS / C ECHO",20,h/d-20,10,w/d-40,pen,0);
- s[0].meter[0]=budget_meter(WORLD_BUDGET);budget_measure(s[0].meter[..],n+s[0].triangles*6+(ifx s[0].loaded then (522009+2957442)*2 else 0),s[0].draw_count*2+2,budget_arena_bytes(size_of(ValleyWorld),CANYON_HUD,12,128)+WORLD_PACK_BYTES+s[0].vertices+s[0].indices+s[0].layers*22369620+cast(int)w*cast(int)h*8);#assert budget_ok(s[0].meter[0]);return n;
+ n=hd_text_fit(out,n,"WASD MOVE / DRAG LOOK / SPACE JUMP / R RESET / 2-5 VIEWS / C ECHO / G GEOMETRY / L STATS",20,h/d-20,10,w/d-40,pen,0);
+ s[0].meter[0]=budget_meter(WORLD_BUDGET);budget_measure(s[0].meter[..],n+(s[0].triangles+s[0].shadow_triangles)*3+(ifx s[0].loaded then (522009+2957442)*2 else 0),s[0].draw_count+s[0].shadow_count+2,budget_arena_bytes(size_of(ValleyWorld),CANYON_HUD,12,128)+WH_CAP+WORLD_PACK_BYTES+s[0].vertices+s[0].indices+s[0].layers*22369620+cast(int)w*cast(int)h*8);#assert budget_ok(s[0].meter[0]);return n;
 }
 world_probe :: (s:[]ValleyWorld,f:int)->int #export_c #effects(all) {
  if f==0 {return ifx s[0].loaded then 1 else 0;}if f==1 {return s[0].triangles;}if f==2 {return s[0].visible;}if f==3 {return s[0].source_count;}if f==6 {return s[0].checks;}if f==7 {return ifx s[0].failed then 1 else 0;}
  if f==4 {return s[0].meter[0].used[BUDGET_BYTES]/1024;}if f==5 {return s[0].meter[0].used[BUDGET_VERTICES];}if f==8 {return s[0].draw_count;}
+ if f==9 {return s[0].shadow_triangles;}if f==10 {return s[0].shadow_count;}if f==11 {return s[0].hierarchy_leaves;}if f==12 {return s[0].selection[0].nodes+s[0].selection[1].nodes;}if f==13 {return s[0].selection[0].rejected+s[0].selection[1].rejected;}if f==14 {return s[0].geometry_mode;}if f==15 {return s[0].fallbacks;}if f==16 {return s[0].hierarchy_bytes;}if f==17 {return s[0].hierarchy_nodes;}if f==18 {return s[0].selection[0].fast+s[0].selection[1].fast;}
  return canyon_probe(s[0].canyon[..],f);
 }
 world_pack_gate :: (s:[]ValleyWorld,bytes:int)->bool #export_c #effects(all) {

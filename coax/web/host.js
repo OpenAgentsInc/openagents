@@ -2557,7 +2557,10 @@ function draw(now) {
   frameUpload(x);
   if (n) device.queue.writeBuffer(gpu.vertexBuffer, 0, new Float32Array(memory.buffer, arena.vertices, n * arena.floats));
   const draws = gpu.scene && gpu.sceneGroup ? x.coaxial_draw_count(arena.state) : 0;
-  if (draws) gpu.stores.forEach((buffer, k) => {
+  // Optional shadow-list v1: Coax selects each pass; older producers retain their shared list.
+  const separateShadow = !!(x.coaxial_shadow_draws_v1 && x.coaxial_shadow_draw_count_v1);
+  const shadowDraws = gpu.scene && gpu.sceneGroup && separateShadow ? x.coaxial_shadow_draw_count_v1(arena.state) : draws;
+  if (draws || shadowDraws) gpu.stores.forEach((buffer, k) => {
     const version = x.coaxial_store_version?.(arena.state, k);
     if (version !== undefined && gpu.storeVersions[k] === version) return;
     const bytes = Math.min(x.coaxial_store_bytes(arena.state, k), buffer.size) & ~3;
@@ -2574,32 +2577,33 @@ function draw(now) {
   const post = gpu.post && gpu.postGroup;
   const encoder = device.createCommandEncoder();
   const list = draws ? new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), draws * 4) : null;
+  const shadowList = separateShadow && shadowDraws ? new Uint32Array(memory.buffer, x.coaxial_shadow_draws_v1(arena.state), shadowDraws * 4) : list;
   const wet = draws && gpu.waterTransmit && x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(arena.state), draws) : 0;
   // a draw whose base instance has its top bit set draws its vertices in order, with no index buffer
-  const drawOne = (pass, i) => {
-    const [first, count, base, instances] = [list[i * 4], list[i * 4 + 1], list[i * 4 + 2], list[i * 4 + 3]];
+  const drawOne = (pass, i, source = list) => {
+    const [first, count, base, instances] = [source[i * 4], source[i * 4 + 1], source[i * 4 + 2], source[i * 4 + 3]];
     if (!count || !instances) return;
     if (base & 0x80000000) pass.draw(count, instances, first, base & 0x7fffffff);
     else pass.drawIndexed(count, instances, first, 0, base);
   };
-  const drawScene = (pass, colours = false) => {
+  const drawScene = (pass, colours = false, source = list, count = draws - wet) => {
     pass.setBindGroup(1, gpu.sceneGroup); if (gpu.index) pass.setIndexBuffer(gpu.index, "uint32");   // none: in-order draws only
-    for (let i = 0; i < draws - wet; i++) {
+    for (let i = 0; i < count; i++) {
       if (colours && x.coaxial_draw_blend_v1) {
         const profile = x.coaxial_draw_blend_v1(arena.state, i);
         if (profile !== 0 && profile !== 1 && profile !== 2) throw Error(`invalid Coax scene blend v1: ${profile}`);
         pass.setPipeline(profile === 1 ? gpu.sceneAdditive : profile === 2 ? gpu.sceneAlpha : gpu.scene);
       }
-      drawOne(pass, i);
+      drawOne(pass, i, source);
     }
   };
   const cast = gpu.caster && x.coaxial_caster_instances ? [x.coaxial_caster_vertices(arena.state), x.coaxial_caster_instances(arena.state)] : [0, 0];
-  if ((draws && gpu.shadow) || gpu.caster) {
+  if (((draws || shadowDraws) && gpu.shadow) || gpu.caster) {
     // cleared every frame even with nothing to cast, so a traced scene never reads a stale map
     const shade = encoder.beginRenderPass({ colorAttachments: [],
       depthStencilAttachment: { view: gpu.shadowMap.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: "store" } });
     shade.setBindGroup(0, gpu.bindGroup);
-    if (draws && gpu.shadow) { shade.setPipeline(gpu.shadow); drawScene(shade); }
+    if (shadowDraws && gpu.shadow) { shade.setPipeline(gpu.shadow); drawScene(shade, false, shadowList, separateShadow ? shadowDraws : draws - wet); }
     if (cast[0] && cast[1]) { shade.setPipeline(gpu.caster); shade.draw(cast[0], cast[1]); }
     shade.end();
   }

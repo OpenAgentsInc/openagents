@@ -1,0 +1,8 @@
+ok   #test hierarchy admission helper boundaries are exact and independent (1 case, 1594 steps, 0 ms)
+ok   #test hierarchy admits a second independent model and visits every transform lane (1 case, 433728 steps, 4 ms)
+ok   #test hierarchy validates unequal nested bounds and every internal source partition (1 case, 191304 steps, 2 ms)
+ok   #test hierarchy rejects orphan nodes and incomplete root coverage without other malformed fields (1 case, 25797 steps, 0 ms)
+ok   #test world hierarchy suffix admits exact source ranges and rejects truncation and foreign versions (1 case, 20140 steps, 0 ms)
+ok   #test world hierarchy rejects cyclic missing overlapping and unbounded nodes or transforms (1 case, 85896 steps, 0 ms)
+6 of 60 checks (--only 'hierarchy'), 6 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

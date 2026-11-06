@@ -1,0 +1,72 @@
+// CPU reference traversal. A cut contains exact source ranges, never approximate parent meshes.
+#load "world-hierarchy.coax";
+WhPlane :: struct {x:f64;y:f64;z:f64;w:f64;ax:f64;ay:f64;az:f64;aw:f64;}
+WhSelection :: struct {draws:int;indices:int;instances:int;nodes:int;rejected:int;fast:int;overflow:bool;}
+#test "cluster selection preserves order merges adjacent ranges and never overruns draw capacity" {
+ o:[8]u32;s:[1]WhSelection;wh_emit(o[..],s[..],12,3,3);wh_emit(o[..],s[..],15,6,3);#assert s[0].draws==1 && o[0]==12 && o[1]==9 && s[0].indices==9;
+ wh_emit(o[..],s[..],12,9,4);#assert s[0].draws==1 && o[3]==2 && s[0].indices==18;
+ wh_emit(o[..],s[..],30,3,5);wh_emit(o[..],s[..],40,3,6);#assert s[0].overflow && s[0].draws==2 && o[4]==30 && s[0].indices==21;
+}
+#test "cluster planes retain boundaries and transform negative nonuniform scales conservatively" {
+ b:[252]u8;wh_fixture(b[..]);p:=[1]WhPlane.[WhPlane.{x=1,w=1}];#assert wh_box(p[..],v3(-1,0,0),v3(-1,0,0))!= -1;
+ #assert wh_box(p[..],v3(-3,0,0),v3(-2,0,0))== -1 && wh_box(p[..],v3(0,0,0),v3(1,0,0))==1;
+ scan_put(b[..],204,f32_bits(-2));scan_put(b[..],216,f32_bits(3));a:=wh_local(WhPlane.{x=1,w= -1},b[..],204);
+ p[0]=a;#assert a.x== -2 && a.w==2 && wh_box(p[..],v3(2,0,0),v3(3,0,0))== -1;
+}
+#test "cluster padding retains the magnitude of cancelling transform and projection terms" {
+ b:[252]u8;wh_fixture(b[..]);scan_put(b[..],204,f32_bits(1000));scan_put(b[..],220,f32_bits(-1000));
+ p:=wh_local(WhPlane.{x=1,y=1},b[..],204);#assert p.x==0 && p.ax==2000;
+ q:=wh_side(v3(1,1,0),v3(-1,1,0),v3(1000,1000,0));#assert q.x==0 && q.ax==2 && q.ay==2 && q.aw==4000;
+ planes:=[1]WhPlane.[WhPlane.{x=1,w= -0.01,ax=2000}];#assert wh_box(planes[..],v3(0.5,0,0),v3(0.5,0,0))==1;
+}
+#test "camera and shadow planes include clipped bounds and refuse every exterior plane" {
+ u:[128]f32;u[12]=1;u[17]=1;u[22]=1;u[15]=1;u[19]=1;p:[6]WhPlane;wh_planes(u[..],p[..],false);
+ #assert wh_box(p[..],v3(-1,-1,-1),v3(1,1,1))==0 && wh_box(p[..],v3(0,0,2),v3(0,0,2))==1;
+ for point:[6]Point.[v3(0,0,-1),v3(0,0,301),v3(-3,0,1),v3(3,0,1),v3(0,-3,1),v3(0,3,1)] {#assert wh_box(p[..],point,point)== -1;}
+ u[80]=1;u[85]=1;u[90]=1;u[96]=45;wh_planes(u[..],p[..],true);#assert wh_box(p[..],v3(-45,-45,-45),v3(45,45,45))==0;
+ for point:[6]Point.[v3(-46,0,0),v3(46,0,0),v3(0,-46,0),v3(0,46,0),v3(0,0,-46),v3(0,0,46)] {#assert wh_box(p[..],point,point)== -1;}
+}
+#test "cluster traversal rejects one child and keeps a complete unsplit reference when capped" {
+ b:[252]u8;wh_fixture(b[..]);scan_write_point(b[..],72,v3(-3,-2,-3));scan_write_point(b[..],84,v3(-2,2,3));scan_write_point(b[..],120,v3(2,-2,-3));scan_write_point(b[..],132,v3(3,2,3));scan_write_point(b[..],168,v3(-3,-2,-3));scan_write_point(b[..],180,v3(3,2,3));
+ p:[6]WhPlane;p[0].x=1;for k:1..<6 {p[k].w=100;}
+ o:[16]u32;s:[1]WhSelection;wh_select(o[..],s[..],b[..],0,p[..],8);#assert s[0].draws==1 && o[0]==15 && o[1]==3 && o[2]==3 && s[0].nodes==3 && s[0].rejected==1;
+ s[0]=WhSelection.{};wh_select(o[..],s[..],b[..],0,p[..],0);#assert s[0].draws==1 && o[0]==12 && o[1]==6 && s[0].nodes==1;
+ p[0].w=10;s[0]=WhSelection.{};wh_select(o[..],s[..],b[..],0,p[..],8);#assert s[0].nodes==1 && o[1]==6;
+}
+wh_emit :: (out:[]u32,s:[]WhSelection,first:int,count:int,instance:int) #effects(all) {
+ if s[0].overflow {return;}last:=(s[0].draws-1)*4;
+ if last>=0 && out[last+2]==cast(u32)instance && out[last+3]==1 && out[last]+out[last+1]==cast(u32)first {out[last+1]+=cast(u32)count;}
+ else if last>=0 && out[last]==cast(u32)first && out[last+1]==cast(u32)count && out[last+2]+out[last+3]==cast(u32)instance {out[last+3]+=1;}
+ else {if s[0].draws>=out.count/4 {s[0].overflow=true;return;}at:=s[0].draws*4;out[at]=cast(u32)first;out[at+1]=cast(u32)count;out[at+2]=cast(u32)instance;out[at+3]=1;s[0].draws+=1;}
+ s[0].indices+=count;
+}
+wh_magnitude :: (a:f64,b:f64)->f64 #effects(all) {return ifx a>abs(b) then a else abs(b);}
+wh_local :: (p:WhPlane,b:[]u8,m:int)->WhPlane #effects(all) {
+ out:=WhPlane.{x=p.x*cast(f64)scan_float(b,m)+p.y*cast(f64)scan_float(b,m+16)+p.z*cast(f64)scan_float(b,m+32),y=p.x*cast(f64)scan_float(b,m+4)+p.y*cast(f64)scan_float(b,m+20)+p.z*cast(f64)scan_float(b,m+36),z=p.x*cast(f64)scan_float(b,m+8)+p.y*cast(f64)scan_float(b,m+24)+p.z*cast(f64)scan_float(b,m+40),w=p.w+p.x*cast(f64)scan_float(b,m+12)+p.y*cast(f64)scan_float(b,m+28)+p.z*cast(f64)scan_float(b,m+44)};
+ a:=wh_magnitude(p.ax,p.x);c:=wh_magnitude(p.ay,p.y);d:=wh_magnitude(p.az,p.z);
+ out.ax=a*abs(cast(f64)scan_float(b,m))+c*abs(cast(f64)scan_float(b,m+16))+d*abs(cast(f64)scan_float(b,m+32));out.ay=a*abs(cast(f64)scan_float(b,m+4))+c*abs(cast(f64)scan_float(b,m+20))+d*abs(cast(f64)scan_float(b,m+36));out.az=a*abs(cast(f64)scan_float(b,m+8))+c*abs(cast(f64)scan_float(b,m+24))+d*abs(cast(f64)scan_float(b,m+40));out.aw=wh_magnitude(p.aw,p.w)+a*abs(cast(f64)scan_float(b,m+12))+c*abs(cast(f64)scan_float(b,m+28))+d*abs(cast(f64)scan_float(b,m+44));return out;
+}
+// f64 intervals plus outward padding for the original F32 vertex transform/projection.
+wh_box :: (planes:[]WhPlane,low:Point,high:Point)->int #effects(all) {
+ inside:=true;for p:planes {a:=p.w+p.x*cast(f64)(ifx p.x>=0 then low.x else high.x)+p.y*cast(f64)(ifx p.y>=0 then low.y else high.y)+p.z*cast(f64)(ifx p.z>=0 then low.z else high.z);z:=p.w+p.x*cast(f64)(ifx p.x>=0 then high.x else low.x)+p.y*cast(f64)(ifx p.y>=0 then high.y else low.y)+p.z*cast(f64)(ifx p.z>=0 then high.z else low.z);
+  pad:=0.001+0.00001*(wh_magnitude(p.aw,p.w)+wh_magnitude(p.ax,p.x)*(abs(cast(f64)low.x)+abs(cast(f64)high.x))+wh_magnitude(p.ay,p.y)*(abs(cast(f64)low.y)+abs(cast(f64)high.y))+wh_magnitude(p.az,p.z)*(abs(cast(f64)low.z)+abs(cast(f64)high.z)));
+  if z< -pad {return -1;}if a<pad {inside=false;}
+ }return ifx inside then 1 else 0;
+}
+wh_select :: (out:[]u32,s:[]WhSelection,b:[]u8,instance:int,planes:[]WhPlane,depth:int) #effects(all) {
+ io:=cast(int)scan_u32(b,28)+instance*52;model:=32+cast(int)scan_u32(b,io)*24;no:=cast(int)scan_u32(b,24);root:=cast(int)scan_u32(b,model+16);
+ local:[6]WhPlane;for k:0..<6 {local[k]=wh_local(planes[k],b,io+4);}
+ stack:[64]int;levels:[64]int;stack[0]=root;pending:=1;before:=s[0].indices;
+ while pending>0 {pending-=1;id:=stack[pending];level:=levels[pending];at:=no+id*48;s[0].nodes+=1;status:=wh_box(local[..],scan_point(b,at+16),scan_point(b,at+28));
+  if status<0 {s[0].rejected+=1;continue;}
+  if status==1 || scan_u32(b,at+40)==0 || level>=depth {wh_emit(out,s,cast(int)scan_u32(b,at),cast(int)scan_u32(b,at+4),instance+3);}
+  else {if pending+2>64 {s[0].overflow=true;return;}stack[pending]=cast(int)scan_u32(b,at+12);levels[pending]=level+1;stack[pending+1]=cast(int)scan_u32(b,at+8);levels[pending+1]=level+1;pending+=2;}
+ }if s[0].indices>before {s[0].instances+=1;}
+}
+wh_plane :: (axis:Point,origin:Point,offset:f32)->WhPlane #effects(all) {return WhPlane.{x=cast(f64)axis.x,y=cast(f64)axis.y,z=cast(f64)axis.z,w=cast(f64)offset-cast(f64)axis.x*cast(f64)origin.x-cast(f64)axis.y*cast(f64)origin.y-cast(f64)axis.z*cast(f64)origin.z,ax=abs(cast(f64)axis.x),ay=abs(cast(f64)axis.y),az=abs(cast(f64)axis.z),aw=abs(cast(f64)offset)+abs(cast(f64)axis.x*cast(f64)origin.x)+abs(cast(f64)axis.y*cast(f64)origin.y)+abs(cast(f64)axis.z*cast(f64)origin.z)};}
+wh_side :: (a:Point,b:Point,origin:Point)->WhPlane #effects(all) {out:=wh_plane(add(a,b),origin,0);out.ax=abs(cast(f64)a.x)+abs(cast(f64)b.x);out.ay=abs(cast(f64)a.y)+abs(cast(f64)b.y);out.az=abs(cast(f64)a.z)+abs(cast(f64)b.z);out.aw=out.ax*abs(cast(f64)origin.x)+out.ay*abs(cast(f64)origin.y)+out.az*abs(cast(f64)origin.z);return out;}
+wh_planes :: (u:[]f32,out:[]WhPlane,shadow:bool) #effects(all) {
+ if shadow {origin:=v3(u[92],u[93],u[94]);for k:0..<3 {axis:=scan_axis(u,80+k*4);out[k*2]=wh_plane(axis,origin,u[96]);out[k*2+1]=wh_plane(times(axis,-1),origin,u[96]);}}
+ else {origin:=v3(u[8],u[9],u[10]);forward:=scan_axis(u,20);right:=times(scan_axis(u,12),u[15]);up:=times(scan_axis(u,16),u[19]);out[0]=wh_plane(forward,origin,-0.05);out[1]=wh_plane(times(forward,-1),origin,300);out[2]=wh_side(forward,right,origin);out[3]=wh_side(forward,times(right,-1),origin);out[4]=wh_side(forward,up,origin);out[5]=wh_side(forward,times(up,-1),origin);}
+}
+scan_axis :: (u:[]f32,k:int)->Point #effects(all) {return v3(u[k],u[k+1],u[k+2]);}

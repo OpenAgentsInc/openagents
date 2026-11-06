@@ -2,6 +2,8 @@
 
 ## Valley Lab source world (2026-11-06)
 
+- The requested local preview is open at [Valley World](http://127.0.0.1:8895/worlds/valley-world?pack=valley-world). Its retained local runtime lives under `~/.openagents/verse/private-build/valley-preview/`, so closing the implementation worktree does not remove the preview.
+- **G** cycles the measured camera/shadow cut (default), the source-preserving cluster hierarchy, and the unculled full source reference. **L** shows live geometry counts. The hierarchy has 24,921 leaves; full Nanite detail/LOD/page streaming is still unfinished. See [the cluster receipt](docs/verification/valley-lab-clusters-2026-11-06/README.md).
 - Optional local visual review: open `/worlds/valley-lab` in the local website build and choose **N WORLD**, or open `/worlds/valley-world?pack=valley-world`. The pinned private pack is already staged under `~/.openagents/verse/private-build/web/valley-world.pack` on this Mac.
 - WASD/left thumb moves Echo, Shift walks, Space/JUMP jumps, drag/right thumb looks, R/RESET restores her source-ground spawn, and 2–5/the tabs visit four parts of the basin. V changes material diagnostics; 1 BACK returns to the lab.
 - This is a large original-layout slice. Exact Unreal lighting, full Nanite source and exact triangle collision remain unfinished. Automated checks are muted/headless; no owner approval is required for the completed code and data checks.
