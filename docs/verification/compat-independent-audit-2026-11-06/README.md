@@ -1,5 +1,10 @@
 # Independent compatibility integration audit
 
+The prepared transitions and production-reference fix were integrated on main
+through `b2e866b1c3`. Issues #12952–#12955 are closed. Their authoritative
+combined qualification is the [final delivery record](../coax-checked-state-2026-11-06/README.md).
+The sections below retain the audit's original chronology and limits.
+
 On November 6, 2026, approximately 05:08–05:10 Chicago time, an isolated
 temporary worktree combined main `d6e35a4430` with the concurrent compiler
 delivery at `b969dccdef`. The merge was used only for this audit. Its staged
