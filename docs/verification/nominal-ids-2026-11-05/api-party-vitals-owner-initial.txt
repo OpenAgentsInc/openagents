@@ -58,7 +58,7 @@
   ok    room-vitals: a line from an older owner is refused (f) and changes nothing; the newest owner's is kept
   ok    room-vitals: a line without a generation (a room from before) applies as before; generation 0 doesn't read
   fault check: heard XP {}, API XP {}, proxy {'mode': 'pass', 'failed': 0, 'passed': 0, 'held': 0, 'after': 0}
-  FAIL  vitals fault: the raid ran with every seat, and each earned XP  
+  FAIL  vitals fault: the raid ran with every seat, and each earned XP
   FAIL  vitals fault: the API refused and then held posts mid-raid  {'mode': 'pass', 'failed': 0, 'passed': 0, 'held': 0, 'after': 0}
   ok    vitals fault: the API's XP is exactly what each seat earned
   FAIL  vitals fault: posts kept while their answers were lost came again and were not applied twice  0 0

@@ -67,3 +67,5 @@ New bugs: #12956 (entity admission), #12957 (raid fixture), #12958
 (portability oracle) are fixed here. #12951, the separate warm-cache
 near-limit diagnostic parity bug found during #12947, remains open.
 No deployment or owner sign-off runs.
+
+Text receipts trim trailing spaces; their reported verdicts are unchanged.
