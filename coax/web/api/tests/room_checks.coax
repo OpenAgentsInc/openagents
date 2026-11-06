@@ -23,6 +23,7 @@
 //     coax/web/tool.sh coax/web/api/tests/room_checks.coax [admission|chat|events|invites|parties|items|stats|vitals|owner|travel|builds ...]
 // (from the repository root; no names runs them all, in that order).
 #load "api_harness.coax";
+#load "../../room/raid-identity.coax";
 
 cxproc_wall_us :: () -> int #foreign;
 rc_wall_ms :: () -> int { return cxproc_wall_us() / 1000; }
@@ -1231,8 +1232,10 @@ rc_fault_seeded :: (t: [] Ap, room_bin_in: string, seed:int) {
   binb: [1] Sb;
   if room_bin_in.count > 0 && room_bin_in[0] != '/' { sb(binb[..], root); sb(binb[..], "/"); }
   sb(binb[..], room_bin_in);
+  prefix_b:[32]u8;zero:=raid_identity(seed,SeatId.{value=0},prefix_b[..]);prefix:=zero[0..<zero.count-1];
   for i: 0..<FC_N {
-    sb_clear(q[..]); sb(q[..], "insert into verse.players (id, key_sha256, created_ms) values ('p-raidcheck-"); sb_int(q[..], i); sb(q[..], "', 'rv-fault-"); sb_int(q[..], i); sb(q[..], "', 1) on conflict (id) do nothing");
+    id_b:[32]u8;identity:=raid_identity(seed,SeatId.{value=i},id_b[..]);
+    sb_clear(q[..]); sb(q[..], "insert into verse.players (id, key_sha256, created_ms) values ('"); sb(q[..], identity); sb(q[..], "', 'rv-fault-"); sb(q[..], identity); sb(q[..], "', 1) on conflict (id) do nothing");
     ap_do(t, sb_text(q[..]));
   }
   wb: [4096] u8; work := fs_temp("room-checks", wb[..]);
@@ -1312,14 +1315,15 @@ rc_fault_seeded :: (t: [] Ap, room_bin_in: string, seed:int) {
   hv: [4096] u8;
   while proc_now_ms() < deadline {
     fc_drain(room, rl[..]);
-    rows := ap_sql(t, "select who || ' ' || coalesce(xp, 0) from verse.room_vitals where who like 'p-raidcheck-%'", hv[..]);
+    sb_clear(q[..]);sb(q[..],"select who || ' ' || coalesce(xp, 0) from verse.room_vitals where who like '");sb(q[..],prefix);sb(q[..],"%'");
+    rows := ap_sql(t, sb_text(q[..]), hv[..]);
     for i: 0..<FC_N { have[i] = -1; }
     at = 0;
     for i: 0..<rows.count + 1 {
       if i < rows.count && rows[i] != '\n' { continue; }
       row := rows[at..<i]; at = i + 1;
       sp := 0; while sp < row.count && row[sp] != ' ' { sp += 1; }
-      pre := "p-raidcheck-";
+      pre := prefix;
       if sp >= row.count || !ap_starts(row, pre) { continue; }
       k := ap_whole(row[pre.count..<sp]);
       if k >= 0 && k < FC_N { have[k] = ap_whole(row[sp + 1..<row.count]); }
@@ -1343,9 +1347,9 @@ rc_fault_seeded :: (t: [] Ap, room_bin_in: string, seed:int) {
   if proxy >= 0 { x := proc_wait(proxy, 5000); if x == PROC_RUNNING { k := proc_kill(proxy, PROC_SIGTERM); x = proc_wait(proxy, 2000); } r := proc_release(proxy); }
   fst := fp_state(work);
   pairs: [1] Sb; sb(pairs[..], "{");
-  for i: 0..<seats { if i > 0 { sb(pairs[..], ", "); } sb(pairs[..], "'p-raidcheck-"); sb_int(pairs[..], i); sb(pairs[..], "': "); sb_int(pairs[..], want[i]); }
+  for i: 0..<seats { if i > 0 { sb(pairs[..], ", "); } sb(pairs[..], "'"); sb(pairs[..],prefix); sb_int(pairs[..], i); sb(pairs[..], "': "); sb_int(pairs[..], want[i]); }
   sb(pairs[..], "}, API XP {");
-  for i: 0..<FC_N { if have[i] < 0 { continue; } if pairs[0].b[pairs[0].n - 1] != '{' { sb(pairs[..], ", "); } sb(pairs[..], "'p-raidcheck-"); sb_int(pairs[..], i); sb(pairs[..], "': '"); sb_int(pairs[..], have[i]); sb(pairs[..], "'"); }
+  for i: 0..<FC_N { if have[i] < 0 { continue; } if pairs[0].b[pairs[0].n - 1] != '{' { sb(pairs[..], ", "); } sb(pairs[..], "'"); sb(pairs[..],prefix); sb_int(pairs[..], i); sb(pairs[..], "': '"); sb_int(pairs[..], have[i]); sb(pairs[..], "'"); }
   sb(pairs[..], "}, proxy "); fp_text(fst, pairs[..]);
   print("  fault check: heard XP %\n", sb_text(pairs[..]));
   every := seats == FC_N; for i: 0..<seats { if want[i] <= 0 { every = false; } }
@@ -1354,7 +1358,8 @@ rc_fault_seeded :: (t: [] Ap, room_bin_in: string, seed:int) {
   ap_check(t, "vitals fault: the API refused and then held posts mid-raid", fst.failed > 0 && fst.held > 0, sb_text(st[..]));
   exact := true; for i: 0..<seats { if have[i] != want[i] { exact = false; } }
   ap_check(t, "vitals fault: the API's XP is exactly what each seat earned", exact, sb_text(pairs[..]));
-  dups := ap_sql(t, "select coalesce(sum(dups), 0) || ' ' || coalesce(max(applied), 0) from verse.room_vital_ops where pid like 'p-raidcheck-%'", hv[..]);
+  sb_clear(q[..]);sb(q[..],"select coalesce(sum(dups), 0) || ' ' || coalesce(max(applied), 0) from verse.room_vital_ops where pid like '");sb(q[..],prefix);sb(q[..],"%'");
+  dups := ap_sql(t, sb_text(q[..]), hv[..]);
   sp := 0; while sp < dups.count && dups[sp] != ' ' { sp += 1; }
   ap_check(t, "vitals fault: posts kept while their answers were lost came again and were not applied twice", ap_whole(dups[0..<sp]) > 0, dups);
   logs := cast(string) rl[0].b[0..<rl[0].n];

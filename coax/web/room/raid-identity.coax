@@ -1,0 +1,22 @@
+// Seeded fleet characters: the API fixture and the socket client use one codec.
+#module "coax.room.raid.identity";
+#authority;
+#load "../../../aethyr/ids.coax";
+#load "../../lib/json/json.coax";
+
+#test "raid identities include their town and exact seat domain" {
+ a:[64]u8;b:[64]u8;c:[64]u8;
+ #assert raid_identity(319,SeatId.{value=3},a[..])=="p-raidcheck-319-3";
+ #assert raid_identity(319,SeatId.{value=3},a[..])!=raid_identity(320,SeatId.{value=3},b[..]);
+ #assert raid_identity(319,SeatId.{value=3},a[..])!=raid_identity(319,SeatId.{value=4},c[..]);
+ #assert raid_identity(-9223372036854775808,SeatId.{value=9223372036854775807},a[..])=="p-raidcheck--9223372036854775808-9223372036854775807";
+}
+#forall "raid identity buffers refuse before publishing a partial identity" capacity:0..<33 {
+ b:[33]u8;want:="p-raidcheck-319-3";
+ got:=raid_identity(319,SeatId.{value=3},b[0..<capacity]);
+ #assert got==(ifx capacity>=want.count then want else "");
+}
+raid_identity :: (room:int,seat:SeatId,out:[]u8)->string {
+ o:[1]Jo;jo_start(o[..],out);jo_put(o[..],"p-raidcheck-");jo_int(o[..],room);jo_put(o[..],"-");jo_int(o[..],seat.value);
+ return ifx o[0].bad then "" else jo_text(o[..]);
+}

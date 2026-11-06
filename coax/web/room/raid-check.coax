@@ -29,6 +29,7 @@
 // Prints one JSON line (each seat's XP, and the part of it after the outcome: the raid's end
 // award), then "raids" and exits 0, or "fails" and 1.
 #load "room-socket.coax";
+#load "raid-identity.coax";
 #load "../../lib/sys/fs.coax";
 #load "capacity-client.coax";
 
@@ -50,13 +51,11 @@ rc_early_end::(full:bool,capture:bool,ended:int,tick:int)->bool{return !full&&!c
 rc_proxy_port::(base:int,seat:int)->int{if seat<0||seat>=RC_MAX||base<0||base>65533{return -1;}return ifx base==0 then 0 else base+seat/6;}
 #test "fleet characters are distinct across towns and seats" {
   a:[32]u8;b:[32]u8;c:[32]u8;
-  #assert rc_identity(1284301,0,a[..])=="p-raidcheck-1284301-0";
-  #assert rc_identity(1284301,0,a[..])!=rc_identity(1284302,0,b[..]);
-  #assert rc_identity(1284301,0,a[..])!=rc_identity(1284301,1,c[..]);
+  #assert raid_identity(1284301,SeatId.{value=0},a[..])=="p-raidcheck-1284301-0";
+  #assert raid_identity(1284301,SeatId.{value=0},a[..])!=raid_identity(1284302,SeatId.{value=0},b[..]);
+  #assert raid_identity(1284301,SeatId.{value=0},a[..])!=raid_identity(1284301,SeatId.{value=1},c[..]);
 }
-rc_identity::(room:int,seat:int,out:[]u8)->string{
-  n:=rs_int(out,rs_put(out,0,"p-raidcheck-"),room);n=rs_put(out,n,"-");n=rs_int(out,n,seat);return ifx n<0 then "" else cast(string)out[0..<n];
-}
+
 rc_max :: (a: int, b: int) -> int { return ifx a > b then a else b; }
 rc_min :: (a: int, b: int) -> int { return ifx a < b then a else b; }
 RC_SEEN :: 128;
@@ -216,7 +215,7 @@ rc_drain :: (c: [] RelayConn, h: [] RcHeard, n: int,capture:string,started:int,w
       if row.count==0 {tool_errln("raid-check: capture frame exceeds fixture limit");return;}
       if written[0]>0 {comma:=fs_append(capture,",");}saved:=fs_append(capture,row);written[0]+=1;
     }
-    rc_hear(h[i..<i + 1], i,text);
+    rc_hear(h[i..<i + 1], i, text);
   } }
 }
 
@@ -245,7 +244,7 @@ tool_main :: () -> int #export_c {
     ub: [1024] u8; pid: [32] u8; nm: [32] u8;
     proxy_url:[1024]u8;dial:=url;
     if proxy_base>0{pb:[64]u8;pn2:=rs_int(pb[..],rs_put(pb[..],0,"ws://127.0.0.1:"),rc_proxy_port(proxy_base,i));dial=rs_url(proxy_url[..],cast(string)pb[0..<pn2],"/api/room/relay/everglade/","pair-raid-",room);}
-    identity:=rc_identity(room,i,pid[..]);pn:=identity.count;
+    identity:=raid_identity(room,SeatId.{value=i},pid[..]);pn:=identity.count;
     mn := rs_int(nm[..], rs_put(nm[..], 0, "Raid "), i);
     ui := rs_ticketed(ub[..], dial, cast(string) pid[0..<pn], cast(string) nm[0..<mn]);
     if ui.count == 0 || !relay_conn_open(c[i..<i + 1], ui) { tool_err("raid-check: can't open "); tool_errln(url); print("fails\n"); return 1; }
