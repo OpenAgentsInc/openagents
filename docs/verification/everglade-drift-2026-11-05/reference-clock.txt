@@ -1,0 +1,3 @@
+685:    n[0].ping_rtt[q] = rtt; n[0].ping_off[q] = clock + rtt / 2 - n[0].mono;
+689:    n[0].offset = n[0].ping_off[best]; n[0].synced = 2;
+695:    n[0].w_tick = w.tick; n[0].w_t = net_now(n); n[0].hz = clamp_i(w.hz, 1, 120); n[0].budget = w.budget;

@@ -1,0 +1,7 @@
+FAIL #test net: a delayed world header dates its tick at the server, including either side of midnight (150 ms)
+apps/openagents-web/everglade-net.coax:3064:7: error[E0406]: assertion failed
+        #assert net_tick_t(n[..], 17) == at && net_tick_t(n[..], 18) == at + 33;
+        ^
+  note: in #test net: a delayed world header dates its tick at the server, including either side of midnight
+1 of 772 checks (--only 'a delayed world header'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

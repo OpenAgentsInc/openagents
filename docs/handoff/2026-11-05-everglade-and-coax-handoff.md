@@ -129,8 +129,8 @@ Books: #12610 stays open and paused. The only books work approved is #12947.
 | #12944 | Closed by `6414ba56c4`. The room server fails to link on main, with 21 duplicate `cb_*` symbols, since `010c25bbed` (Codex lane). This blocks room builds, the API room checks, the drift check and the #12936 release. The #12936 agent knows. |
 | #12945 | Closed by `c8319bb8ac`. The cache oracle uses the current staging signature, split C includes integer helpers, and reviewed evidence bindings are current. All 1,358 cache-policy checks, 209 room-rules checks, 211 Aethyr listings and the default split page build pass. No traversal budget was raised. |
 | #12946 | Closed by `e00925f958`. The smoke counted doors and boats as gravity cylinders, rejected a valid landing on the 4.5 m palisade, and counted the invited visitor as the blocked player. It now observes each spell's kind and caster, grounded landings, and the blocked seat. Verification is below. |
-| #12941 | No agent. The drift check held at 250 ms during the release, so this may have been load. Close it if three runs in a row hold. The drift check's 250 ms profile failed twice after the fire fixes, on Hold Person timing, conditions and townspeople walking in place. It may be real or caused by load, and it gates release.sh. Check it first if #12936's release is stuck. |
-| #12940 | No agent. Tree fires never burn or spread on the room server; only pages step them. |
+| #12941 | Closed by `8ba4376dc1`. A delayed world header dated server ticks at receipt, leaving buffered states ahead after clock synchronization. It now recovers the header's authored time from its server day. Three consecutive 250 ms runs, local and 100 ms runs pass with raids; 773 page checks pass. Verification is below. |
+| #12940 | Next in the current burn-down. Tree fires never burn or spread on the room server; only pages step them. |
 | #12947 | Completed: current-code overviews for Aethyr 49, 50, 58, 84 and 85; contradictory follow-up status text corrected; Coax 6, 19 and 41 updated. Verification below. |
 | #12948 | In progress after #12947: nominal integer ID types (audit §6.2, P0), then room, API and ledger adoption. |
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
@@ -139,6 +139,39 @@ Books: #12610 stays open and paused. The only books work approved is #12947.
 | #12718, #12833 | Epics. Close each when its children close. |
 | #12610 | The book epic, paused by the owner. |
 | #12864–#12867 | Excluded; left for Codex. |
+
+## #12941 verification (2026-11-05, 21:09 Chicago)
+
+Before the fix, the third of three 250 ms runs failed at normal load:
+townsfolk walked in place on 24% of walking frames, versus 0% offline and
+the unchanged 15% allowance. The condition and raid checks passed. A new
+delayed-header check then failed against the receipt-time tick anchor.
+That same anchor and ping correction are present in reference commit
+`3582fac170`; this is a pre-existing timing error, not a fire-code change.
+
+`8ba4376dc1` dates a world header from its existing server-day field,
+choosing the nearest 48-minute cycle around the synchronized clock. It
+preserves receipt-time handling for headers without a valid server day.
+The checks cover 0, 125 and 750 ms of delivery delay, both directions across
+the day boundary, and a later ping correction. No wire format, interpolation
+bound or drift tolerance changed.
+
+The full page suite passed 773/773 at the default traversal limit; both
+strengthened clock checks also passed separately. Three fresh, consecutive
+250 ms runs passed every gameplay and raid check. Their worker tick p95
+values were 395, 345 and 375 microseconds, against the existing 11,000
+microsecond budget. Local and 100 ms profiles also passed with raids. All
+five runs reported zero offline stalls and zero dropped milliseconds.
+Recorded load readings during the three 250 ms runs were about 2–9.
+
+The page Wasm is 1,990,798 bytes, within its 2,150,000-byte budget. The
+native room and 988,275-byte worker retain the unchanged simulation and
+qualification from #12945; the page's clock reading is the only runtime
+change. `tools-check` passed. Durable receipts are in
+`docs/verification/everglade-drift-2026-11-05/`; raw browser records remain
+in `/tmp/oa-12941-fixed1/`, `fixed2/`, `fixed3/`, `oa-12941-local/` and
+`oa-12941-100/` under `/tmp`. Qualified binaries and hashes are retained in
+`/tmp/oa-12941-artifacts/`. No production deployment was performed.
 
 ## #12947 verification (2026-11-05)
 

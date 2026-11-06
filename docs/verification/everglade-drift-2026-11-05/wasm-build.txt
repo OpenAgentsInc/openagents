@@ -1,0 +1,5 @@
+coax: note[E0400]: compile-time steps: 19343034 of 20000000 used (96%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    19343034 steps  aethyr/render/tests/package-checks.coax:163:1  #forall 'SPIRV requirements come from framed byte opcodes including adjacent nonfeatures'
+  fix: run coax test --only 'SPIRV requirements come from framed byte opcodes including adjacent nonfeatures' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+wasm.sh: everglade5e.wasm: 119.6 s: Coax to C 112.5 s (3/4 cached), clang 0.8 s (3/19 cached), link 3.5 s, wasm-opt 2.2 s; 1990798 bytes; report /Users/christopherdavid/work/openagents-12941/apps/openagents-web/build/.c/everglade5e.timings.json

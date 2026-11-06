@@ -1,0 +1,3 @@
+ok   #test net: headers without a valid server day retain their receipt-time fallback (1 case, 39286 steps, 36 ms)
+1 of 773 checks (--only 'net: headers without'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

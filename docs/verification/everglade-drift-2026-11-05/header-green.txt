@@ -1,0 +1,3 @@
+ok   #test net: a delayed world header dates its tick at the server, including either side of midnight (1 case, 6148644 steps, 400 ms)
+1 of 773 checks (--only 'net: a delayed world header'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
