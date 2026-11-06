@@ -142,7 +142,7 @@ if len(sys.argv) > 4:
     sword_base = u32(vb, 24209616+31*64)*4
     assert vb[sword_base:sword_base+len(sword)] == sword
     _, start, count = entries[2]
-    assert pack[start+29710980:start+29710980+134418*4] == (packed / 'echo.sword-indices').read_bytes()
+    assert pack[start+73125756:start+73125756+134418*4] == (packed / 'echo.sword-indices').read_bytes()
     for index, (_, start, count) in enumerate(entries[3:]):
         label = bytes(pack[32+(index+3)*48+16:32+(index+3)*48+48]).split(b'\0',1)[0].decode()
         file = (source.parent / 'section-source' if index < 2 else slay) / label
@@ -150,6 +150,47 @@ if len(sys.argv) > 4:
     print(json.dumps({'slay_uv_pairs_bit_exact': 101672, 'sword_vertices_bit_exact': 25547,
                       'sword_indices_bit_exact': 134418, 'bundled_source_textures_bit_exact': len(entries)-3,
                       'slay_mesh_and_morph_geometry_equals_valley': True}))
+
+    # Original Slay strands differ from the Valley groom. Check every endpoint
+    # against the native length-prefixed SDK arrays, not the packer's output.
+    segment = 0
+    groom = (packed / 'echo.groom').read_bytes()
+    groom_indices = (packed / 'echo.groom-indices').read_bytes()
+    assert len(groom) == 110489120 and u32(groom, 4) == 2301856
+    assert vb[54295280:54295280+len(groom)] == groom
+    for asset, stem in enumerate(['Hair_S_UpdoBuns', 'Eyebrows_L_Echo']):
+        original = (slay.parent / 'echo-source' / (stem + '.strands')).read_bytes()
+        at = 4
+        arrays = []
+        for width in [12, 4, 4, 2, 4, 8]:
+            count = u32(original, at)
+            at += 4
+            arrays.append(memoryview(original)[at:at+count*width])
+            at += count*width
+        assert at == len(original)
+        positions, radii, coords, counts, offsets, _ = arrays
+        positions = list(struct.iter_unpack('<3f', positions))
+        radii = list(struct.unpack('<' + str(len(radii)//4) + 'f', radii))
+        coords = list(struct.unpack('<' + str(len(coords)//4) + 'I', coords))
+        offsets = list(struct.unpack('<' + str(len(offsets)//4) + 'I', offsets))
+        maximum = max(radii)
+        for curve, (count,) in enumerate(struct.iter_unpack('<H', counts)):
+            assert offsets[curve+1]-offsets[curve] == count
+            for point in range(offsets[curve], offsets[curve+1]-1):
+                row = 32+segment*48
+                for endpoint in range(2):
+                    p = positions[point+endpoint]
+                    expected = tuple(f32(x*f32(.01)) for x in (p[0],p[2],p[1]))
+                    assert struct.unpack_from('<3f', groom, row+endpoint*16) == expected
+                    radius = f32(f32(radii[point+endpoint]/maximum)*f32(.00005 if asset == 0 else .00004))
+                    assert struct.unpack_from('<f', groom, row+endpoint*16+12)[0] == radius
+                    assert u32(groom, row+32+endpoint*4) == coords[point+endpoint]
+                assert u32(groom, row+44) == 26+asset
+                assert struct.unpack_from('<6I', groom_indices, segment*24) == tuple(1000000+segment*6+k for k in range(6))
+                segment += 1
+    assert segment == 2301856
+    print(json.dumps({'slay_source_groom_segments_exact': segment, 'slay_groom_curves': 118339,
+                      'source_hair_decimated': False}))
 
     if (packed / 'echo.orb-vertices').exists():
         from PIL import Image
@@ -167,7 +208,7 @@ if len(sys.argv) > 4:
         expected_indices = b''.join(struct.pack('<I', x+980000) for (x,) in struct.iter_unpack('<H', dense(og, ob, primitive['indices'])))
         assert (packed / 'echo.orb-indices').read_bytes() == expected_indices
         _, ib_start, ib_count = entries[2]
-        assert pack[ib_start+30248652:ib_start+ib_count] == expected_indices
+        assert pack[ib_start+ib_count-len(expected_indices):ib_start+ib_count] == expected_indices
         pixels = 0
         for field, original, generated in [(8,'T_Distortion_HQ.png','echo.orb-distortion'),(12,'T_OC_EnergyTile_Greyscale.png','echo.orb-energy')]:
             expected = Image.open(slay / original).convert('RGBA').tobytes()

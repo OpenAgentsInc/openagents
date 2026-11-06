@@ -1,0 +1,7 @@
+// Full source Slay groom: one source vertex binding, without decimation.
+#authority;
+#test "The full Slay source binding is requested explicitly and stays below the buffer cap" {
+ #assert slay_gpu_storage()==187564308;
+ #assert slay_gpu_storage()>134217728 && slay_gpu_storage()<268435456;
+}
+slay_gpu_storage :: ()->int #effects(all) {return 187564308;}

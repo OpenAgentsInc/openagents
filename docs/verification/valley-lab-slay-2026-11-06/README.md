@@ -4,6 +4,63 @@ Issue #12962 remains open. The owner extended its face-only request with the
 Slay trailer shot at 0:57: narrowed eyes, raised left palm, blue orb and sword.
 This record qualifies source transport/playback components, not visual parity.
 
+## Skin, face and hair checkpoint
+
+![Target, prior checkpoint and full Slay groom](skin-face-hair.png)
+
+The main Slay groom is **different from Valley's groom**. Native SDK arrays
+contain116,850 main-hair curves and2,401,356 points; the eyebrows retain the
+same1,489 curves/18,839 points. The private Slay package now contains all
+2,301,856 segments, without decimation, replacing the492,907 Valley segments.
+The independent oracle checks every original endpoint, converted radius,
+curve U and generated index, as well as the actual packed GPU groom bytes.
+The main-hair SDK byte digests differ; eyebrow SDK bytes are identical.
+
+Direct hair light now evaluates strand-tangent reflection (R), transmission
+(TT), and internal reflection/transmission (TRT) instead of GGX/Lambert on
+camera-facing ribbons. Source brown/pepper, roughness, specular and backlight
+settings come from Slay's MI_EchoGroom. This is a single-fiber model with an
+interim ambient term. It lacks the native groom's volume multiple scattering,
+deep opacity, tangent breakup and simulated motion; it is visibly too dark.
+
+The head now uses the source highpass R/G specular modulation and ORM.R mask,
+with the native .08 conversion from material Specular to dielectric F0.
+The unused Slay MatID texture slot31 now carries T_Head_highpass_S. The8K
+source PNG is retained byte-exact in the private package; the existing4K
+array upload resizes it through the browser SDK. Valley's legacy binding is
+unchanged. Key, fill, wrap and orb evaluate separate half-vectors and GGX
+responses; the fill retains its source.5 specular scale. Previously every
+light multiplied a single highlight calculated for the key direction.
+Skin remains too orange/glossy: regional roughness, proper rectangular-light
+integration, skin diffusion, eye refraction and source grading remain open.
+
+The native face audit confirms additive local-space/reference-pose flags and
+exactly18 facial tracks, with no omitted head/neck tracks. At body124 these
+facial locals already match reference locals within4.51e-7m translation and
+8.89e-6 quaternion-component error. The additive flag therefore does not
+explain the fixed-frame appearance mismatch. Nearby1125/1132/1137/1142/1147
+captures show the source performance advancing; no invented squint or gaze
+offset is applied. Exact trailer-frame/camera-shake matching remains open.
+
+The full groom's vertex binding is187,564,308 bytes, beyond WebGPU's default
+128MiB storage binding. The opt-in `coaxial_storage_limit_v1` requests that
+exact limit through the SDK on initial open and replacement; absent/zero
+keeps default limits. Unsupported adapters refuse. The full groom explicitly
+raises this lab's vertex-work budget from21m to50m; its4.6GB aggregate budget
+still passes the desktop/phone/DPR scalar cases. This is a desktop source
+detail profile, not a mobile-device qualification.
+
+Current checks:53 shader/helper checks, independent full source/groom oracle,
+13/13 package-gate mutants and1/1 storage-limit mutant. Muted headless Metal
+captures of five source frames, return to walking and isolated face pass
+with no console errors. Wasm91,934 bytes remains within96,000. See
+[the surface receipt](surface-checks.txt). The current full-groom60s diagnostic
+recovers in16,145ms with identical state/pixels, then passes ambient walking
+and the390x844 viewport. It does not qualify the default10s deadline. The
+unchanged599558 indexed module without storage/blend opt-ins also passes on
+the new host. The older admission mutation
+results below apply to unchanged admission implementations at5d4baa60c1.
+
 ![Owner reference left; current Aethyr shot right](comparison.png)
 
 The local view is `http://127.0.0.1:8894/worlds/valley-canyon?pack=valley-slay`.
@@ -19,8 +76,8 @@ applying its serialized keys again would double-transform the animation root.
 
 SDK reads use the clean private SlayData project and the installed UE5.8 SDK.
 They load data-only packages and do not run source Blueprint events or save
-source packages. The 794,477,568-byte private VPK has SHA256
-`9c285e9ffa59b850e93337c4089be86a39e7c54f52cda51419fe86eac7ef4074`.
+source packages. The 1,023,634,576-byte private VPK has SHA256
+`4799fce88387284363fcceb957a8c31d1efbe3b76dac54ec405f32961cd88ce4`.
 ECP3 binds the unchanged rig, full EFC1 morph/face source and SHS1 v2 fixed-shot
 samples. CPU state retains a checked face projection and the admitted shot;
 GPU storage retains sparse position/normal deltas. No licensed source payloads
@@ -52,7 +109,7 @@ are TF0130[4..22], TF0145[3..21], TF0250[19..40], every8s with.15s fades.
 - Current Canyon checks:10/10, including walking, jump taps, non-inverted
   mouse/touch/arrow look, conservative collision and desktop/phone/DPR budgets.
 - Ambient timing and non-face local-pose preservation checks pass.
-- Current Wasm is91,877 bytes within96,000. The original80,000 budget was
+- Current Wasm is91,934 bytes within96,000. The original80,000 budget was
   raised explicitly for shared facial playback and the source-shot view.
 - **Earlier default GPU recovery failure, now superseded:** both new shot and face observations exceeded
   the legacy host's10-second replacement deadline under the observed machine
@@ -104,8 +161,8 @@ module without this export and the parent lab pass on the new host. The
 actual orb GPU comparison adds colour to171,054 supersampled pixels and
 darkens none; the scene remains ready on return to ordinary walking. Hair
 colour uses continuous coverage instead of stochastic opaque colour samples;
-its shadow keeps separate stochastic coverage. This improves the visible
-noise but is not Marschner scattering, deep opacity or sorted/OIT hair.
+its shadow keeps separate stochastic coverage. The new single-fiber R/TT/TRT pass follows after this coverage correction;
+deep opacity, multiple scattering and sorted/OIT hair remain unfinished.
 
 The pixel budget bounds the base raster before the explicit3x portrait
 supersampling: the1280x800 observation captures3840x2400 physical pixels.

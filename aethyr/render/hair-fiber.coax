@@ -1,0 +1,36 @@
+// Single-fiber R / TT / TRT transport. Equations checked against the installed
+// UE5.8 HairBsdf.ush legacy-absorption branch. This does not implement the groom
+// voxel/deep-shadow multiple-scattering volume or strand simulation.
+#module "aethyr.render.hairfiber";
+#test "Fiber Fresnel retains the 1.55 IOR endpoints" {
+ #assert abs(hair_fresnel(1)-0.046520569)<0.000001;
+ #assert hair_fresnel(0)==1;
+}
+#test "Fiber lobes are finite at grazing incidence and black fibers still reflect" {
+ #assert hair_fiber(0,0.32,0.05,0.15,0,0,1,1)>0;
+ for a:0..<3 {for b:0..<3 {v:=hair_fiber(0.08,0.45,0.1,0.5,cast(f32)(a-1),cast(f32)(b-1),1,1);#assert v>=0 && v<100;}}
+}
+#test "Fiber transport agrees with independent double precision lobe evaluations" {
+ #assert abs(hair_fiber(0.08,0.4,0.075,0.3,0.2,-0.1,0.6,0.5)-0.001924306726)<0.000001;
+ #assert abs(hair_fiber(0.02,0.32,0.05,0.15,0,0,-1,-1)-0.08552219604)<0.000001;
+ #assert abs(hair_fiber(0.2,0.45,0.1,0.5,0,0,1,1)-0.02478195972)<0.000001;
+}
+hair_fresnel :: (c:f32)->f32 {f:f32=0.046520569;return f+(1-f)*pow(1-c,5.0f32);}
+hair_gaussian :: (width:f32,angle:f32)->f32 {return exp(-0.5*angle*angle/(width*width))/(2.5066282746*hf_max(width,0.01f32));}
+// sinL / sinV are dot(rootward tangent, light/view); phi is their projected
+// azimuth cosine. These depend on the strand, never on the camera-facing ribbon.
+hair_fiber :: (base:f32,rough:f32,spec:f32,back:f32,sinL:f32,sinV:f32,phi:f32,voL:f32)->f32 {
+ cL:=sqrt(hf_max(0.0f32,1-sinL*sinL));cV:=sqrt(hf_max(0.0f32,1-sinV*sinV));
+ d:=hf_max(0.01f32,sqrt(hf_max(0.0f32,0.5+0.5*(cL*cV+sinL*sinV))));
+ halfPhi:=sqrt(hf_clamp(0.5+0.5*phi,0.0f32,1.0f32));width:=hf_max(0.003921569f32,rough);width*=width;
+ shift:=2*sin(-0.07f32)*(cos(-0.07f32)*halfPhi*cV+sin(-0.07f32)*sinV);
+ reflect:=hair_gaussian(width,sinL+sinV-shift)*0.25*halfPhi*hair_fresnel(sqrt(hf_clamp(0.5+0.5*voL,0.0f32,1.0f32)))*spec*2*hf_mix(1.0f32,back,hf_clamp(-voL,0.0f32,1.0f32));
+ eta:=1/(1.19/d+0.36*d);h:=halfPhi*(1+eta*(0.6-0.8*phi));f:=hair_fresnel(d*sqrt(hf_max(0.0f32,1-h*h)));
+ transmit:=hair_gaussian(width*0.5,sinL+sinV-0.035)*exp(-3.65*phi-3.98)*(1-f)*(1-f)*pow(abs(base),0.5*sqrt(hf_max(0.0f32,1-h*h*eta*eta))/d)*back;
+ f=hair_fresnel(d*0.5);internal:=hair_gaussian(width*2,sinL+sinV-0.14)*exp(17*phi-16.78)*(1-f)*(1-f)*f*pow(abs(base),0.8/d);
+ return reflect+transmit+internal;
+}
+
+hf_max :: (a:f32,b:f32)->f32 {return ifx a>b then a else b;}
+hf_clamp :: (x:f32,lo:f32,hi:f32)->f32 {return ifx x<lo then lo else ifx x>hi then hi else x;}
+hf_mix :: (a:f32,b:f32,t:f32)->f32 {return a+(b-a)*t;}

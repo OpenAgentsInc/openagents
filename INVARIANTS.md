@@ -1788,6 +1788,9 @@ playback. The legacy browser opt-in draw-blend v1 preserves opaque defaults;
 Coax selects additive orb colour or continuous source-over strand coverage.
 The fixed source-shot clock is separate from the walking controller. Source
 sample equality is not qualification of Unreal rendering or screenshot parity.
+The full Slay groom uses an explicit Coax storage-binding request through the
+optional browser storage-limit v1 ABI. Ordinary modules retain default limits;
+unsupported adapters refuse through the SDK rather than dropping source strands.
 Evidence and outstanding exits: `docs/verification/valley-lab-slay-2026-11-06/`.
 
 ## One follow camera eases the walker's view

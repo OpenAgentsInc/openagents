@@ -914,7 +914,10 @@ async function openDevice(made = () => {}) {
   if(roomTraceEnabled)globalThis.coaxial.gpuAdapterInfo={vendor:adapter.info?.vendor,architecture:adapter.info?.architecture,device:adapter.info?.device,description:adapter.info?.description,fallback:adapter.info?.isFallbackAdapter??adapter.isFallbackAdapter??null};
   // a page with data-timing asks for the GPU's timestamps (message 610), when the adapter has them
   const timing = !!script?.dataset.timing && adapter.features.has("timestamp-query");
-  const device = await adapter.requestDevice(timing ? { requiredFeatures: ["timestamp-query"] } : undefined);
+  const storage = engine?.exports.coaxial_storage_limit_v1?.() ?? 0;
+  const options = timing ? { requiredFeatures: ["timestamp-query"] } : {};
+  if (storage) options.requiredLimits = { maxStorageBufferBindingSize: storage };
+  const device = await adapter.requestDevice(options);
   device.lost.then((info) => deviceLost(device, info));
   made(device);
   if (dev) device.addEventListener("uncapturederror", (event) => { console.error("RENDER DEVICE",event.error?.message); });

@@ -81,6 +81,19 @@ static int32 SlayAnimation(const FString& Name, bool FaceOnly, TArray<TSharedPtr
     return 0;
 }
 int32 EchoSourceSlay(const FString& Params) {
+    FString Audit;
+    if (FParse::Value(*Params,TEXT("Audit="),Audit)) {
+        auto* Anim=LoadObject<UAnimSequence>(nullptr,*(TEXT("/Game/Slay/Sequences/TF/Shots/")+Audit.Left(6)+TEXT("/Animations/")+Audit));
+        if (!Anim || !Anim->GetDataModel()) return 34;
+        TSharedRef<FJsonObject> Out=MakeShared<FJsonObject>();
+        Out->SetNumberField(TEXT("additive_type"),static_cast<int32>(Anim->AdditiveAnimType));
+        Out->SetNumberField(TEXT("reference_type"),static_cast<int32>(Anim->RefPoseType));
+        TArray<FName> Names;Anim->GetDataModel()->GetBoneTrackNames(Names);
+        TArray<TSharedPtr<FJsonValue>> Tracks;
+        for (FName Name:Names) Tracks.Add(MakeShared<FJsonValueString>(Name.ToString()));
+        Out->SetArrayField(TEXT("all_track_names"),Tracks);
+        return SlaySave(Audit+TEXT(".audit"),Out)?0:35;
+    }
     FString Only;
     if (FParse::Value(*Params,TEXT("Only="),Only)) {
         TArray<TSharedPtr<FJsonValue>> Rows;

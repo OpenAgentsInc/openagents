@@ -7,6 +7,7 @@
 #include "Misc/Paths.h"
 #include "Serialization/BufferArchive.h"
 #include "Modules/ModuleManager.h"
+#include "HAL/FileManager.h"
 IMPLEMENT_MODULE(FDefaultModuleImpl, EchoSourceSDK)
 int32 EchoSourceReference();
 int32 EchoSourceCurves();
@@ -15,14 +16,19 @@ int32 EchoSourceCamera();
 
 int32 UEchoSourceExportCommandlet::Main(const FString& Params) {
     if (Params.Contains(TEXT("CameraTemplate"))) return EchoSourceCamera();
-    if (Params.Contains(TEXT("Slay"))) return EchoSourceSlay(Params);
+    if (FParse::Param(*Params,TEXT("Slay"))) return EchoSourceSlay(Params);
     if (Params.Contains(TEXT("Curves"))) {
         const int32 Result = EchoSourceCurves();
         if (Result || !Params.Contains(TEXT("Reference"))) return Result;
     }
     if (Params.Contains(TEXT("Reference"))) return EchoSourceReference();
+    FString GroomRoot=TEXT("/Game/AncientContent/Characters/Echo/Hair/");
+    FParse::Value(*Params,TEXT("GroomRoot="),GroomRoot);
+    if (!GroomRoot.EndsWith(TEXT("/"))) GroomRoot+=TEXT("/");
+    const FString Output=FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("echo-source"));
+    IFileManager::Get().MakeDirectory(*Output,true);
     for (const TCHAR* Name : {TEXT("Hair_S_UpdoBuns"), TEXT("Eyebrows_L_Echo")}) {
-        FString AssetPath = FString(TEXT("/Game/AncientContent/Characters/Echo/Hair/")) + Name;
+        FString AssetPath = GroomRoot + Name;
         UGroomAsset* Asset = LoadObject<UGroomAsset>(nullptr, *AssetPath);
         if (!Asset) return 2;
         FHairStrandsDatas Strands, Guides;

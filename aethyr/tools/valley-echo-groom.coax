@@ -8,7 +8,7 @@ eg_position :: (p:Point)->Point {return v3(p.x*0.01,p.z*0.01,p.y*0.01);}
 #test "Groom source axes use the same centimetre conversion as Unreal glTF" {p:=eg_position(v3(10,20,150));#assert abs(p.x-0.1)<0.0000001 && p.y==1.5 && abs(p.z-0.2)<0.0000001;}
 eg_array :: (data:[]u8,at:[]int,width:int)->int {#assert at[0]>=4 && at[0]<=data.count-4;n:=cast(int)scan_u32(data,at[0]);at[0]+=4;#assert n<= (data.count-at[0])/width;begin:=at[0];at[0]+=n*width;return begin;}
 tool_main :: ()->int #export_c #effects(all) {
- a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}source:=args_at(a[..],0);dest:=args_at(a[..],1);input:[16777216]u8;out:[33554432]u8;indices:[16777216]u8;path:[4096]u8;segments:=0;
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}source:=args_at(a[..],0);dest:=args_at(a[..],1);input:[67108864]u8;out:[134217728]u8;indices:[67108864]u8;path:[4096]u8;segments:=0;
  for asset:0..<2 {
   name:=ifx asset==0 then "Hair_S_UpdoBuns.strands" else "Eyebrows_L_Echo.strands";n:=fs_read(fs_join(source,name,path[..]),input[..]);#assert n>0 && scan_u32(input[..],0)==0x31534745;data:=input[0..<n];at:=[1]int.[4];positions:=eg_array(data,at[..],12);np:=(at[0]-positions)/12;radius:=eg_array(data,at[..],4);#assert (at[0]-radius)/4==np;coords:=eg_array(data,at[..],4);#assert (at[0]-coords)/4==np;counts:=eg_array(data,at[..],2);nc:=(at[0]-counts)/2;offsets:=eg_array(data,at[..],4);#assert (at[0]-offsets)/4==nc+1;uvs:=eg_array(data,at[..],8);#assert (at[0]-uvs)/8==nc && at[0]==n;
   max_radius:f32=0;for k:0..<np {r:=f32_from_bits(scan_u32(data,radius+k*4));#assert r>=0 && r<1;max_radius=ifx r>max_radius then r else max_radius;}#assert max_radius>0;

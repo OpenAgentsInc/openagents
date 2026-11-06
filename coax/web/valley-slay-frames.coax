@@ -1,0 +1,15 @@
+// Read-only cinematic-frame observation through the browser SDK.
+#load "valley-capture.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}
+ c:[1]Cdp;if !cdp_launch_background(c[..],1280,800,"slay-frames-") {return 1;}
+ _:=cdp_call(c[..],"Page.enable","",30000);_=cdp_call(c[..],"Emulation.setDeviceMetricsOverride","{\"width\":1280,\"height\":800,\"deviceScaleFactor\":1,\"mobile\":false}",30000);b:[4096]u8;j:[1]Jo;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"source");jo_str(j[..],"globalThis.faceErrors=[];const ce=console.error;console.error=(...a)=>{faceErrors.push(a.map(String).join(' '));ce(...a)}");jo_end(j[..]);_=cdp_call(c[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(j[..]),30000);jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"url");jo_str(j[..],args_at(a[..],0));jo_end(j[..]);_=cdp_call(c[..],"Page.navigate",jo_text(j[..]),30000);
+ ready:=false;until:=proc_now_ms()+90000;while proc_now_ms()<until {n:=cdp_evaluate(c[..],"!!globalThis.coaxial?.sceneReady");if n>=0 && jv_raw(c[0].doc[0],n)=="true" {ready=true;break;}proc_sleep(100);}
+ ok:=ready;frame:=1125;
+ for target,k:[5]int.[1125,1132,1137,1142,1147] {
+  while ok && frame<target {ok=fc_key(c[..],".");frame+=1;}
+  if ok {n:=cdp_evaluate(c[..],"new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r(true))))");ok=n>=0 && fc_shot(c[..],args_at(a[..],1),[5]string.["1125.png","1132.png","1137.png","1142.png","1147.png"][k]);}
+ }
+ if ok {ok=fc_key(c[..],"r") && fc_eval(c[..],"return to walking after cinematic material captures","coaxial.sceneReady&&coaxial.guardProbe(92)===0&&faceErrors.length===0") && fc_key(c[..],"f") && fc_eval(c[..],"isolated face remains ready","coaxial.sceneReady&&coaxial.guardProbe(89)===1&&faceErrors.length===0");}
+ cdp_close(c[..]);if ok {print("PASS five1280x800 source frames, return to walking and isolated face; no console errors\n");}return ifx ok then 0 else 1;
+}

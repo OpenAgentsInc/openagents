@@ -1,30 +1,19 @@
 // Version 1 optional pack digest gate. Browser hashes received bytes; Coax owns admission.
 #load "../../aethyr/assets.coax";
 #authority;
-CANYON_PACK_BYTES :: 794477568;
-CANYON_PACK_SHA256 :: "5e0fa638d37aacecbb9870d0a25a6b9a9f3e136e49eb849d5201063a8cfa47da";
-CANYON_PACK_DIGEST :: [32]u8.[0x5e,0x0f,0xa6,0x38,0xd3,0x7a,0xac,0xec,0xbb,0x98,0x70,0xd0,0xa2,0x5a,0x6b,0x9a,0x9f,0x3e,0x13,0x6e,0x49,0xeb,0x84,0x9d,0x52,0x01,0x06,0x3a,0x8c,0xfa,0x47,0xda];
-// Keep the already installed, independently verified fixed-camera pack valid.
-// Both identities name complete private source exports of this exact size.
-CANYON_PACK_FIXED_DIGEST :: [32]u8.[0x9c,0x28,0x5e,0x9f,0xfa,0x59,0xb8,0x50,0xe9,0x33,0x37,0xc4,0x08,0x9b,0xe8,0x6a,0x39,0xe7,0xc5,0x4f,0x52,0xcd,0xa5,0x14,0x19,0xfe,0x86,0xea,0xc7,0xef,0x40,0x74];
+CANYON_PACK_BYTES :: 1023634576;
+// Full Slay groom (118,339 curves) plus the TF0290 source camera template.
+CANYON_PACK_SHA256 :: "5807c40f1c56dd67727bc7a72605049e6ca533c177251ab9b8c156fd0560dc0c";
+CANYON_PACK_DIGEST :: [32]u8.[0x58,0x07,0xc4,0x0f,0x1c,0x56,0xdd,0x67,0x72,0x7b,0xc7,0xa7,0x26,0x05,0x04,0x9e,0x6c,0xa5,0x33,0xc1,0x77,0x25,0x1a,0xb9,0xb8,0xc1,0x56,0xfd,0x05,0x60,0xdc,0x0c];
 #test "Canyon pack gate pins every digest byte and exact length before GPU upload" {
-  digest:[33]u8;hex:="9c285e9ffa59b850e93337c4089be86a39e7c54f52cda51419fe86eac7ef4074";
+  digest:[33]u8;hex:="5807c40f1c56dd67727bc7a72605049e6ca533c177251ab9b8c156fd0560dc0c";
   for k:0..<32 {digest[k]=cast(u8)(asset_digit(hex[k*2])*16+asset_digit(hex[k*2+1]));}
-  #assert canyon_pack_accept(digest[0..<32],794477568);
-  #assert !canyon_pack_accept(digest[0..<31],794477568) && !canyon_pack_accept(digest[..],794477568);
-  #assert !canyon_pack_accept(digest[0..<32],794477567) && !canyon_pack_accept(digest[0..<32],794477569);
-  for k:0..<32 {digest[k]^=1;#assert !canyon_pack_accept(digest[0..<32],794477568);digest[k]^=1;}
-}
-#test "the source handheld camera pack has its own complete admitted identity" {
-  digest:[32]u8;hex:="5e0fa638d37aacecbb9870d0a25a6b9a9f3e136e49eb849d5201063a8cfa47da";
-  for k:0..<32 {digest[k]=cast(u8)(asset_digit(hex[k*2])*16+asset_digit(hex[k*2+1]));}
-  #assert canyon_pack_accept(digest[..],794477568);
-  #assert !canyon_pack_accept(digest[..],794477567) && !canyon_pack_accept(digest[..],794477569);
-  for k:0..<32 {digest[k]^=1;#assert !canyon_pack_accept(digest[..],794477568);digest[k]^=1;}
+  #assert canyon_pack_accept(digest[0..<32],1023634576);
+  #assert !canyon_pack_accept(digest[0..<31],1023634576) && !canyon_pack_accept(digest[..],1023634576);
+  #assert !canyon_pack_accept(digest[0..<32],1023634575) && !canyon_pack_accept(digest[0..<32],1023634577);
+  for k:0..<32 {digest[k]^=1;#assert !canyon_pack_accept(digest[0..<32],1023634576);digest[k]^=1;}
 }
 canyon_pack_accept :: (digest:[]u8,bytes:int)->bool #effects(all) {
   if digest.count!=32 || bytes!=CANYON_PACK_BYTES {return false;}
-  handheld:=true;fixed:=true;
-  for k:0..<32 {if digest[k]!=CANYON_PACK_DIGEST[k] {handheld=false;}if digest[k]!=CANYON_PACK_FIXED_DIGEST[k] {fixed=false;}}
-  return handheld || fixed;
+  for k:0..<32 {if digest[k]!=CANYON_PACK_DIGEST[k] {return false;}}return true;
 }

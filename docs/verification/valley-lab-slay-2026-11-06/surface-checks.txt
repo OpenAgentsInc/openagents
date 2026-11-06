@@ -1,0 +1,97 @@
+Skin / face / full Slay groom source-detail checkpoint, 2026-11-06.
+This run used the labeled 60s diagnostic deadline. Default 10s recovery was later qualified in ../valley-recovery-2026-11-06 on the earlier Valley groom; it has not been re-run with the full Slay groom.
+
+slay-fiber-checks.log
+ok   #test Fiber Fresnel retains the 1.55 IOR endpoints (1 case, 44 steps, 0 ms)
+ok   #test Fiber lobes are finite at grazing incidence and black fibers still reflect (1 case, 4683 steps, 0 ms)
+ok   #test Fiber transport agrees with independent double precision lobe evaluations (1 case, 1379 steps, 0 ms)
+3 checks, 3 passed, 0 failed
+
+
+slay-surface-gpu-checks.log
+ok   #test Groom ribbons form two consistent triangles per original curve segment (1 case, 226 steps, 0 ms)
+ok   #test Strand colour coverage preserves the former stochastic expectation continuously (1 case, 162 steps, 0 ms)
+ok   #test Echo source face graph applies instance colour multiplier desaturation contrast and tint (1 case, 431 steps, 0 ms)
+ok   #test Slay head instance retains its own desaturation and tint instead of Valley settings (1 case, 198 steps, 0 ms)
+ok   #test Slay skin specular uses both highpass channels and the ORM specular mask (1 case, 170 steps, 0 ms)
+ok   #test Character material override uses original collection gain four gamma 1.2 and instance rolloff (1 case, 401 steps, 0 ms)
+ok   #test Source angle corrected normal blend preserves either flat input (1 case, 301 steps, 0 ms)
+ok   #test Source groom colours retain the demo's brown root tip and pepper settings (1 case, 162 steps, 0 ms)
+ok   #test Eye pupil scaling retains centre and rim and source corner shadow bounds (1 case, 232 steps, 0 ms)
+ok   #test Original lash opacity tapers to the root and preserves the central tip (1 case, 147 steps, 0 ms)
+ok   #test Canyon material helpers retain linear roughness and bounded filmic response (1 case, 167 steps, 0 ms)
+ok   #test Each light evaluates its own microfacet highlight and back lights contribute zero (1 case, 1028 steps, 0 ms)
+ok   #test uniforms read at offsets, geometry as WGSL's (1 case, 1104 steps, 0 ms)
+ok   #test scalar builtins (1 case, 2399 steps, 0 ms)
+ok   #test conversions clamp; bits and bytes (1 case, 1677 steps, 0 ms)
+ok   #test textures by vector (1 case, 448 steps, 0 ms)
+ok   #test array image queries retain their scalar dimension values (1 case, 26 steps, 0 ms)
+ok   #test fine derivative names preserve the scalar CPU compatibility profile (1 case, 52 steps, 0 ms)
+ok   #test vectors are their components' arithmetic (1 case, 624 steps, 0 ms)
+ok   #test a matrix applies by columns (1 case, 722 steps, 0 ms)
+ok   #test the scalar builtins are WGSL's (1 case, 210 steps, 0 ms)
+ok   #test sampling reads texel centers, clamped to the edge (1 case, 2132 steps, 0 ms)
+ok   #test comparison sampling counts the texels the reference is not behind (1 case, 552 steps, 0 ms)
+ok   #test display values round trip through linear light (1 case, 1070 steps, 0 ms)
+ok   #test unlit light tones back to its display value (1 case, 826 steps, 0 ms)
+ok   #test the sun and sky light a surface as aethyr's Grid (1 case, 470 steps, 0 ms)
+ok   #forall robot lines thin and dim with distance, never under a pixel (180 cases, 78791 steps, 1 ms)
+ok   #test robot line widths and light at their ends (1 case, 1316 steps, 0 ms)
+ok   #test a hotbar slot: glass inside, nothing far outside, brighter picked and pressed (1 case, 7363 steps, 0 ms)
+ok   #test the dance icon is a note: a head, a stem, a flag (1 case, 1779 steps, 0 ms)
+ok   #test scalar sampling adapters retain their established zero-derivative profile (1 case, 1812 steps, 0 ms)
+ok   #test owned texture filtering averages one four and eight centered taps (1 case, 9058 steps, 0 ms)
+ok   #test owned layer filtering preserves the selected layer and bounded bias (1 case, 10275 steps, 0 ms)
+ok   #test sampling outside the footprint profile refuses fragment publication (1 case, 138 steps, 0 ms)
+ok   #test portable footprint chooses the longer texel derivative and a per-tap UV step (1 case, 1160 steps, 0 ms)
+ok   #test portable footprint caps eight taps by raising the covered mip footprint (1 case, 866 steps, 0 ms)
+ok   #test portable footprint magnification stays one centered tap and preserves derivative sign (1 case, 872 steps, 0 ms)
+ok   #test portable footprint finite admission covers exact size derivative and bias limits (1 case, 1412 steps, 0 ms)
+ok   #test portable footprint clamp uses a signed32 carrier over its entire admitted box (1 case, 1123 steps, 0 ms)
+ok   #forall portable footprint refuses every nonfinite derivative and bias field (5 cases, 1467 steps, 0 ms)
+ok   #test portable footprint retains the other minor axis and nonzero vertical major step (1 case, 854 steps, 0 ms)
+ok   #test GGX environment response retains independent normal grazing and rough endpoint values (1 case, 231 steps, 0 ms)
+ok   #test Source film profile preserves middle grey and black before display encoding (1 case, 2578 steps, 0 ms)
+ok   #test GPU morph inputs add position and normal deltas, and zero weights preserve source bits (1 case, 355 steps, 0 ms)
+ok   #test zero morph weight preserves the original scalar bits (1 case, 98 steps, 0 ms)
+ok   #test morphs add signed weighted deltas before any skin transform (1 case, 51 steps, 0 ms)
+ok   #test curve sampling clamps endpoints and interpolates source frames (1 case, 287 steps, 0 ms)
+ok   #test Source orb base emission retains tint, desaturation and front-facing opacity (1 case, 759 steps, 0 ms)
+ok   #test Raw texture sampling retains texel centres, bilinear centres and negative repeat (1 case, 1521 steps, 0 ms)
+ok   #test Raw sRGB sampling decodes texels before filtering (1 case, 1378 steps, 0 ms)
+ok   #test Fiber Fresnel retains the 1.55 IOR endpoints (1 case, 44 steps, 0 ms)
+ok   #test Fiber lobes are finite at grazing incidence and black fibers still reflect (1 case, 4683 steps, 0 ms)
+ok   #test Fiber transport agrees with independent double precision lobe evaluations (1 case, 1379 steps, 0 ms)
+53 checks, 53 passed, 0 failed
+
+
+slay-full-groom-sha-mutation.log
+coax jobs: the load average is 12.5, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 12, until it drops
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+13 mutants, 13 killed, 0 survived
+
+
+slay-gpu-limit-mutation.log
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+1 mutant, 1 killed, 0 survived
+
+
+slay-full-groom-oracle-final.log
+{"source_morph_deltas_bit_exact": 564903, "gpu_csr_records_bit_exact": 564903, "source_face_clips": 20, "curve_samples_bit_exact": 143750, "facial_local_samples_exact_values": 18400, "shot_body_local_samples_exact_values": 27000}
+{"slay_uv_pairs_bit_exact": 101672, "sword_vertices_bit_exact": 25547, "sword_indices_bit_exact": 134418, "bundled_source_textures_bit_exact": 35, "slay_mesh_and_morph_geometry_equals_valley": true}
+{"slay_source_groom_segments_exact": 2301856, "slay_groom_curves": 118339, "source_hair_decimated": false}
+{"orb_source_vertices_bit_exact": 559, "orb_source_indices_bit_exact": 2880, "orb_source_RGBA_pixels_bit_exact": 1114112, "orb_hand_rotation_frames": 200, "maximum_hand_quaternion_error": 1.9227726430481873e-07}
+
+
+slay-full-groom-frames.log
+PASS five1280x800 source frames, return to walking and isolated face; no console errors
+
+
+slay-storage-host-legacy-correct-pack.log
+PASS unchanged599558 indexed realm on new browser host, without draw blend v1 export
+
+
+slay-full-groom-diagnostic.log
+{\"ready\":true,\"shot\":1,\"frame\":124,\"face\":4,\"hashes\":[\"c0cbed46e61ee3afce7bb427954c75169f0925d0744d65ce1c12c30bcfd5cfd0\",\"550dab80308161eca6c14dc474ddfff76fd7cb5a80f70a062e0110527099fa22\",\"c0cbed46e61ee3afce7bb427954c75169f0925d0744d65ce1c12c30bcfd5cfd0\",\"5a068477c388e5363400e3e6f8f4463797db86ca1b79fc5a3636a49c1fbaea16\",\"5a068477c388e5363400e3e6f8f4463797db86ca1b79fc5a3636a49c1fbaea16\",\"62070bf206a1c326962077e406dae560005bf964f04aad31e8fdb20b231d9c91\"],\"errors\":[],\"recovery\":{\"state\":\"recovered\",\"reason\":\"destroyed\",\"losses\":1,\"ms\":16145,\"waited\":4}}
+DIAGNOSTIC ONLY: extended recovery deadline; default10s is not qualified by this run
+PASS Slay source shot: frame stepping, layered playback, GPU recovery, ambient locomotion, phone viewport

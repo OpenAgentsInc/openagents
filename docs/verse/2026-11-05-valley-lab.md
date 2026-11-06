@@ -692,6 +692,19 @@ independent all-corner checks, browser observations and screenshots.
 
 ## Current implementation: Slay performance (#12962, still open)
 
+Skin/face/hair follow-up: the full Slay groom replaces the different Valley
+strand dataset (118,339 curves /2,301,856 segments, no decimation). Source
+highpass/ORM head specular modulation, separate per-light highlights and
+single-fiber R/TT/TRT transport are implemented. A native additive/track audit
+finds no missing head/neck tracks. The exact187,564,308-byte source binding
+is requested by the optional storage-limit v1 host ABI; the lab explicitly
+raises its vertex-work budget to50m while keeping its4.6GB aggregate limit.
+Full source endpoint/texture checks and the updated comparison are in
+[the skin/face/hair record](../verification/valley-lab-slay-2026-11-06/README.md).
+The next work remains regional skin roughness/diffusion, rectangular-light
+integration, eyes/refraction, hair volume scattering and source camera/frame
+matching. This checkpoint is not visual parity or mobile qualification.
+
 The owner's target is the Slay trailer frame at 0:57 (desktop screenshot
 2026-11-05 22:44:37): Echo's narrowed eyes and expression, raised open hand,
 blue glowing orb, close camera and warm/cool lighting. This extends #12962's
@@ -714,7 +727,7 @@ must retain the existing Valley body clips.
    image differences and outstanding source render features before pushing.
 
 The first implementation is now the parent P destination:
-`/worlds/valley-canyon?pack=valley-slay`. Its private 794,477,568-byte bundle
+`/worlds/valley-canyon?pack=valley-slay`. Its private 1,023,634,576-byte bundle
 adds 181 named morph targets (564,903 sparse position/normal deltas), 20
 24-fps facial clips, 125 mapped curves and 16 facial bones to the existing
 334-joint/24-body-clip Echo port. Morphs execute before skinning in shared
@@ -901,8 +914,8 @@ module without this export and the parent lab pass on the new host. The
 actual orb GPU comparison adds colour to171,054 supersampled pixels and
 darkens none; the scene remains ready on return to ordinary walking. Hair
 colour uses continuous coverage instead of stochastic opaque colour samples;
-its shadow keeps separate stochastic coverage. This improves the visible
-noise but is not Marschner scattering, deep opacity or sorted/OIT hair.
+its shadow keeps separate stochastic coverage. The new single-fiber R/TT/TRT pass follows after this coverage correction;
+deep opacity, multiple scattering and sorted/OIT hair remain unfinished.
 
 The pixel budget bounds the base raster before the explicit3x portrait
 supersampling: the1280x800 observation captures3840x2400 physical pixels.

@@ -10,6 +10,8 @@
 
 ## Valley Lab Slay preview (2026-11-06)
 
+- The skin/face/hair checkpoint now uses Slay's full118,339-curve groom, its head specular mask and separate per-light highlights. Refresh the local preview to load it. [Target / previous / current QA crops](docs/verification/valley-lab-slay-2026-11-06/skin-face-hair.png) retain the visible gaps: skin is too orange/glossy and hair still needs volume scattering. This desktop source-detail profile requests a187,564,308-byte GPU storage binding; mobile hardware is not qualified.
+
 - [ ] Try [the local source-shot view](http://127.0.0.1:8894/worlds/valley-canyon?pack=valley-slay). It starts paused at TF0290 sequence frame 1125. P plays/pauses; comma/period step; J returns to that shot. F isolates facial performance; brackets select clips; B toggles neutral; T restarts. R returns to walking, WASD moves, Shift walks, Space jumps, drag/arrows look, C/H inspect.
 - The owner explicitly requested reopening the preview. Automated checks remain muted/headless. This is an unfinished visual port: hard/soft lighting response, hair coverage, orb surface/flare, sword and temple scenery still differ from the Slay screenshot. Source animation equality does not establish visual parity.
 
