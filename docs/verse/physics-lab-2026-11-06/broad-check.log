@@ -1,0 +1,12 @@
+ok   #test physics lab Aethyr: broad phase includes a rotated box pair and orders ties by stable ID (1 case, 953 steps, 0 ms)
+ok   #test physics lab Aethyr: a real falling box advances and the existing plane solver stops penetration (1 case, 3963395 steps, 82 ms)
+ok   #test physics lab broad phase: every SAT overlap survives the conservative sweep and capacity fails explicitly (1 case, 2782166 steps, 76 ms)
+ok   #test physics lab record: literal little-endian bytes and exact lengths (1 case, 8452 steps, 0 ms)
+ok   #test physics lab record: checksum changes for a velocity, rotation or last body's position (1 case, 15353 steps, 0 ms)
+ok   #test physics lab: canonical scenes name their actual requested body counts and fixed profile (1 case, 2007 steps, 0 ms)
+ok   #test physics lab: fixed stack, pile and slope coordinates cover ground, row and layer transitions (1 case, 15122 steps, 0 ms)
+ok   #test physics lab: a hand-computed draw pins the first falling box, grid dimensions and extents (1 case, 1761 steps, 0 ms)
+ok   #test physics lab: body generation rejects invalid identities and preserves explicit seed bounds (1 case, 22513 steps, 0 ms)
+ok   #forall physics lab: every requested body has finite shared binary32 inputs (48 cases, 49692 steps, 0 ms)
+10 of 52 checks (--only 'physics lab'), 10 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

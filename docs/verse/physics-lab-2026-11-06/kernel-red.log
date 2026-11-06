@@ -1,0 +1,10 @@
+aethyr/lab/physics-aethyr.coax:14:3: error[E0315]: procedure 'lab_order' is not declared
+    lab_order(b[..],order[..],tmp[..]);#assert order[0]==0 && order[1]==2 && order[2]==1;
+    ^
+aethyr/lab/physics-aethyr.coax:15:24: error[E0315]: procedure 'lab_pairs' is not declared
+    a:[8]int;z:[8]int;n:=lab_pairs(b[..],order[..],a[..],z[..],0.5);
+                         ^
+aethyr/lab/physics-aethyr.coax:21:22: error[E0315]: procedure 'lab_advance' is not declared
+    for t:0..<120 {ok:=lab_advance(b[..],1.0/60,d3(0,-9.81,0),plane(D3_Y,0),d3(0.5,0.5,0.5),0.1,0.5,8,order[..],tmp[..],a[..],z[..]);#assert ok;}
+                       ^
+3 errors

@@ -1,0 +1,22 @@
+aethyr/lab/physics-metrics.coax:7:6: error[E0315]: procedure 'lab_metrics' is not declared
+    m:=lab_metrics(b[..],lab_spec(0),order[..],tmp[..],a[..],z[..]);
+       ^
+aethyr/lab/physics-metrics.coax:10:5: error[E0315]: procedure 'lab_metrics' is not declared
+    m=lab_metrics(b[..],lab_spec(0),order[..],tmp[..],a[..],z[..]);#assert abs(m.penetration-0.2)<0.000001 && m.at_rest==2;
+      ^
+aethyr/lab/physics-metrics.coax:11:27: error[E0315]: procedure 'lab_metrics' is not declared
+    b[1].vel=d3(0.05,0,0);m=lab_metrics(b[..],lab_spec(0),order[..],tmp[..],a[..],z[..]);#assert m.at_rest==1;
+                            ^
+aethyr/lab/physics-metrics.coax:14:42: error[E0315]: procedure 'lab_time_sort' is not declared
+    times:=[10]int.[100,1,9,4,7,2,6,3,8,5];lab_time_sort(times[..]);
+                                           ^
+aethyr/lab/physics-metrics.coax:15:11: error[E0315]: procedure 'lab_percentile' is not declared
+    #assert lab_percentile(times[..],50)==5 && lab_percentile(times[..],95)==100 && lab_percentile(times[..],99)==100;
+            ^
+aethyr/lab/physics-metrics.coax:15:46: error[E0315]: procedure 'lab_percentile' is not declared
+    #assert lab_percentile(times[..],50)==5 && lab_percentile(times[..],95)==100 && lab_percentile(times[..],99)==100;
+                                               ^
+aethyr/lab/physics-metrics.coax:15:83: error[E0315]: procedure 'lab_percentile' is not declared
+    #assert lab_percentile(times[..],50)==5 && lab_percentile(times[..],95)==100 && lab_percentile(times[..],99)==100;
+                                                                                    ^
+7 errors

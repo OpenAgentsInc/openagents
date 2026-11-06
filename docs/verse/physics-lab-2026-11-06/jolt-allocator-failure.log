@@ -1,0 +1,12 @@
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libthread_db.so.1".
+
+Program received signal SIGABRT, Aborted.
+0x00007ffff789fe0c in __pthread_kill_implementation () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#0  0x00007ffff789fe0c in __pthread_kill_implementation () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#1  0x00007ffff784255e in raise () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#2  0x00007ffff7829350 in abort () from /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6
+#3  0x000055555556d3db in JPH::TempAllocatorImpl::Allocate(unsigned int) ()
+#4  0x00005555555a2ec7 in JPH::ContactConstraintManager::PrepareConstraintBuffer(JPH::PhysicsUpdateContext*) ()
+#5  0x00005555555c918a in JPH::PhysicsSystem::Update(float, int, JPH::TempAllocator*, JPH::JobSystem*) ()
+#6  0x000055555556584a in main ()

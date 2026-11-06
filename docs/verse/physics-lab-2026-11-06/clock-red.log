@@ -1,0 +1,7 @@
+/Users/christopherdavid/work/openagents-12959-physics/coax/lib/sys/selftest.coax:50:10: error[E0315]: procedure 'proc_now_ns' is not declared
+    ns0 := proc_now_ns();
+           ^
+/Users/christopherdavid/work/openagents-12959-physics/coax/lib/sys/selftest.coax:52:10: error[E0315]: procedure 'proc_now_ns' is not declared
+    ns1 := proc_now_ns();
+           ^
+2 errors

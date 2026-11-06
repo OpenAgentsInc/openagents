@@ -147,7 +147,7 @@ Books: #12610 stays open and paused. Approved books work is #12947 and the runna
 | #12718, #12833 | Closed after the final #12845 delivery at `b930cb4cd9`. The [child-state audit](../verification/epic-child-closure-2026-11-06.json) checks all 33 #12718 children and all 38 #12833 children as closed, including formal sub-issues. It preserves each child's existing qualification scope. |
 | #12952, #12953 | Concurrent handle/effects work is in `oa-entity-handles`. Reconcile its current branch and `origin/main` before changing the same compiler or room code. |
 | #12954, #12955 | Remaining compiler transaction and persisted-compatibility work. |
-| #12959 | Next for this burn-down agent: seeded Aethyr/Rapier/Jolt Physics Lab. Reference engines stay in an ignored lab cache; Psionic remains reference-only. |
+| #12959 | Completed: the [Physics Lab](../../aethyr/lab/README.md) runs all six seeded scenes on Aethyr, pinned Rapier 0.36.1 and Jolt 5.6.0 from one command on coderos-4080. Every Aethyr repeat matches all sampled state bytes; all six headless captures are saved. The [results](../verse/physics-lab-2026-11-06.md) retain the stack collapse, settling gaps and timing differences. References stay in an ignored lab cache; no product, book or Psionic adoption is claimed. |
 | #12962 | Concurrent Echo facial-animation work is in `oa-echo-slay-face`; reconcile its current delivery before taking it. |
 | #12610 | The book epic, paused by the owner. |
 | #12864–#12867 | Excluded; left for Codex. |

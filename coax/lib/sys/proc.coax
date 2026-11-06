@@ -161,6 +161,8 @@ proc_run :: (argv: [] string, timeout_ms: int, out: [] u8, err: [] u8) -> ProcRu
 }
 
 proc_now_ms :: () -> int { return cxproc_now_ms(); }
+// Monotonic nanoseconds for elapsed measurements; -1 if the clock effect fails.
+proc_now_ns :: () -> int { return cxproc_now_ns(); }
 proc_sleep :: (ms: int) { r := cxproc_sleep_ms(ms); }
 // The host's environment variable name, into out; "" when unset (see proc_has_env).
 proc_getenv :: (name: string, out: [] u8) -> string {

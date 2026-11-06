@@ -14,6 +14,11 @@ Each primitive is a module with its own checks and, where it decides
 behaviour, zero surviving mutants. One short section per primitive is in
 [docs/verse/engine-core.md](../docs/verse/engine-core.md).
 
+The [Physics Lab](lab/README.md) measures the existing rigid/contact/SAT
+kernels beside pinned Rapier and Jolt references. It runs six shared seeded
+scenes on coderos-4080, with JSON metrics, deterministic Aethyr repeats and
+headless captures. Reference engines stay in its ignored lab cache.
+
 | Module | What |
 | --- | --- |
 | `loop.coax` | The one frame loop: fixed-step simulation, interpolated drawing, one clock |

@@ -1,0 +1,94 @@
+aethyr/lab/physics-scene.coax:21:8: error[E0315]: procedure 'lab_spec' is not declared
+      p:=lab_spec(i);#assert p.ok && p.kind==i && p.count==counts[i] && lab_name(i)==names[i];
+         ^
+aethyr/lab/physics-scene.coax:21:71: error[E0315]: procedure 'lab_name' is not declared
+      p:=lab_spec(i);#assert p.ok && p.kind==i && p.count==counts[i] && lab_name(i)==names[i];
+                                                                        ^
+aethyr/lab/physics-scene.coax:28:12: error[E0315]: procedure 'lab_spec' is not declared
+    #assert !lab_spec(-1).ok && !lab_spec(6).ok && lab_name(-1)=="unknown" && lab_name(6)=="unknown";
+             ^
+aethyr/lab/physics-scene.coax:28:32: error[E0315]: procedure 'lab_spec' is not declared
+    #assert !lab_spec(-1).ok && !lab_spec(6).ok && lab_name(-1)=="unknown" && lab_name(6)=="unknown";
+                                 ^
+aethyr/lab/physics-scene.coax:28:50: error[E0315]: procedure 'lab_name' is not declared
+    #assert !lab_spec(-1).ok && !lab_spec(6).ok && lab_name(-1)=="unknown" && lab_name(6)=="unknown";
+                                                   ^
+aethyr/lab/physics-scene.coax:28:77: error[E0315]: procedure 'lab_name' is not declared
+    #assert !lab_spec(-1).ok && !lab_spec(6).ok && lab_name(-1)=="unknown" && lab_name(6)=="unknown";
+                                                                              ^
+aethyr/lab/physics-scene.coax:29:11: error[E0315]: procedure 'lab_spec' is not declared
+    #assert lab_spec(5).normal.y==f64(f32(0.8)) && lab_spec(5).normal.z==f64(f32(0.6));
+            ^
+aethyr/lab/physics-scene.coax:29:50: error[E0315]: procedure 'lab_spec' is not declared
+    #assert lab_spec(5).normal.y==f64(f32(0.8)) && lab_spec(5).normal.z==f64(f32(0.6));
+                                                   ^
+aethyr/lab/physics-scene.coax:32:6: error[E0315]: procedure 'lab_spec' is not declared
+    p:=lab_spec(0);#assert p.cols==32 && p.rows==32;
+       ^
+aethyr/lab/physics-scene.coax:33:6: error[E0315]: procedure 'lab_body' is not declared
+    b:=lab_body(p,2026,0);
+       ^
+aethyr/lab/physics-scene.coax:36:5: error[E0315]: procedure 'lab_body' is not declared
+    b=lab_body(p,2026,999);#assert b.ok && b.pos.x== -21.25 && b.pos.z==38.75;
+      ^
+aethyr/lab/physics-scene.coax:37:11: error[E0315]: procedure 'lab_spec' is not declared
+    #assert lab_spec(1).cols==100 && lab_spec(1).rows==100;
+            ^
+aethyr/lab/physics-scene.coax:37:36: error[E0315]: procedure 'lab_spec' is not declared
+    #assert lab_spec(1).cols==100 && lab_spec(1).rows==100;
+                                     ^
+aethyr/lab/physics-scene.coax:38:11: error[E0315]: procedure 'lab_spec' is not declared
+    #assert lab_spec(2).cols==174 && lab_spec(2).rows==173;
+            ^
+aethyr/lab/physics-scene.coax:38:36: error[E0315]: procedure 'lab_spec' is not declared
+    #assert lab_spec(2).cols==174 && lab_spec(2).rows==173;
+                                     ^
+aethyr/lab/physics-scene.coax:43:6: error[E0315]: procedure 'lab_spec' is not declared
+    p:=lab_spec(0);
+       ^
+aethyr/lab/physics-scene.coax:44:12: error[E0315]: procedure 'lab_body' is not declared
+    #assert !lab_body(p,0,-1).ok && !lab_body(p,0,p.count).ok && !lab_body(p,0,30000).ok;
+             ^
+aethyr/lab/physics-scene.coax:44:36: error[E0315]: procedure 'lab_body' is not declared
+    #assert !lab_body(p,0,-1).ok && !lab_body(p,0,p.count).ok && !lab_body(p,0,30000).ok;
+                                     ^
+aethyr/lab/physics-scene.coax:44:65: error[E0315]: procedure 'lab_body' is not declared
+    #assert !lab_body(p,0,-1).ok && !lab_body(p,0,p.count).ok && !lab_body(p,0,30000).ok;
+                                                                  ^
+aethyr/lab/physics-scene.coax:45:12: error[E0315]: procedure 'lab_body' is not declared
+    #assert !lab_body(LabSpec.{},0,0).ok && !lab_body(p,-1,0).ok && !lab_body(p,4294967296,0).ok;
+             ^
+aethyr/lab/physics-scene.coax:45:44: error[E0315]: procedure 'lab_body' is not declared
+    #assert !lab_body(LabSpec.{},0,0).ok && !lab_body(p,-1,0).ok && !lab_body(p,4294967296,0).ok;
+                                             ^
+aethyr/lab/physics-scene.coax:45:68: error[E0315]: procedure 'lab_body' is not declared
+    #assert !lab_body(LabSpec.{},0,0).ok && !lab_body(p,-1,0).ok && !lab_body(p,4294967296,0).ok;
+                                                                     ^
+aethyr/lab/physics-scene.coax:46:11: error[E0315]: procedure 'lab_body' is not declared
+    #assert lab_body(p,0,0).ok && lab_body(p,4294967295,0).ok;
+            ^
+aethyr/lab/physics-scene.coax:46:33: error[E0315]: procedure 'lab_body' is not declared
+    #assert lab_body(p,0,0).ok && lab_body(p,4294967295,0).ok;
+                                  ^
+aethyr/lab/physics-scene.coax:48:8: error[E0315]: procedure 'lab_spec' is not declared
+      s:=lab_spec(kind);a:=lab_body(s,2026,0);b:=lab_body(s,2026,0);c:=lab_body(s,2027,0);
+         ^
+aethyr/lab/physics-scene.coax:48:26: error[E0315]: procedure 'lab_body' is not declared
+      s:=lab_spec(kind);a:=lab_body(s,2026,0);b:=lab_body(s,2026,0);c:=lab_body(s,2027,0);
+                           ^
+aethyr/lab/physics-scene.coax:48:48: error[E0315]: procedure 'lab_body' is not declared
+      s:=lab_spec(kind);a:=lab_body(s,2026,0);b:=lab_body(s,2026,0);c:=lab_body(s,2027,0);
+                                                 ^
+aethyr/lab/physics-scene.coax:48:70: error[E0315]: procedure 'lab_body' is not declared
+      s:=lab_spec(kind);a:=lab_body(s,2026,0);b:=lab_body(s,2026,0);c:=lab_body(s,2027,0);
+                                                                       ^
+aethyr/lab/physics-scene.coax:51:13: error[E0315]: procedure 'lab_body' is not declared
+      #assert lab_body(s,2026,s.count-1).ok;
+              ^
+aethyr/lab/physics-scene.coax:55:6: error[E0315]: procedure 'lab_spec' is not declared
+    p:=lab_spec(kind);i:=sample*(p.count-1)/7;b:=lab_body(p,20261106,i);
+       ^
+aethyr/lab/physics-scene.coax:55:48: error[E0315]: procedure 'lab_body' is not declared
+    p:=lab_spec(kind);i:=sample*(p.count-1)/7;b:=lab_body(p,20261106,i);
+                                                 ^
+31 errors
