@@ -356,6 +356,30 @@ Each issue ends on a check that runs on our own machines. "R" numbers are the
 [memory-safety.md](memory-safety.md); V1–V12 come from this doc. The order
 below is the suggested filing and work order.
 
+### Filed first, for Everglade multiplayer (2026-11-05)
+
+Four items help Everglade's rooms now, so they were filed ahead of the stages
+below:
+
+| Issue | Spec item | Why Everglade needs it |
+| --- | --- | --- |
+| [#12952](https://github.com/OpenAgentsInc/openagents/issues/12952) | V6, V7 (`Handle(T)`) | Stale references caused the fire-blame, shout and blocked-seat bugs. Builds on #12948's nominal IDs. |
+| [#12953](https://github.com/OpenAgentsInc/openagents/issues/12953) | V3, V4 (enforced effects) | The page and room compile the same rules; a clock or I/O read in them causes drift. |
+| [#12954](https://github.com/OpenAgentsInc/openagents/issues/12954) | V10 (`#transaction`) | An action that fails halfway through a tick leaves partial writes or traps the room. Needs #12953. |
+| [#12955](https://github.com/OpenAgentsInc/openagents/issues/12955) | V11 (`coax compat`, `#persisted`) | Rolling deploys across six shards and saved characters break on incompatible changes. |
+
+Not yet filed, in order of value to Everglade:
+
+1. **Hardening the room's packet path:** V1, V2, S4 and S6 on the room
+   server's WebSocket decoding. One malformed frame must never trap a shard
+   (MMORPG audit §8.3). File before the room count grows.
+2. **Entities own their resources (V12):** turns "the owner left, so its
+   fires and shouts end" into one rule instead of a fix per feature.
+3. **Structured jobs (V8, V9):** rooms run on one vCPU today, so parallel
+   jobs don't help yet. File when room density needs more than one core.
+4. **Everything else** (S0–S3c, S5, S7–S9): general safety work with no
+   Everglade bug behind it. Follow the stages below.
+
 ### Stage 1: decide and inventory
 
 | Issue | Title | Scope | Done when | R |
