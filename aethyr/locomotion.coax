@@ -13,6 +13,8 @@ LocomotionProfile :: struct {
   ride_height: f32 = 0.4; step_smooth: f32 = 10;
   slide_grip: f32 = 0.1; sink_limit: f32 = 0.05;
   run_animation_margin: f32 = 0.25;
+  source_velocity: bool;
+  source_friction:f32=4; source_braking:f32=10; source_braking_factor:f32=2; source_air_control:f32;
 }
 // book:end profile
 
@@ -58,6 +60,12 @@ LocomotionProfile :: struct {
   #assert !locomotion_finite(1000) && !locomotion_finite(-1000);
 }
 
+#forall "source locomotion tuning rejects nonfinite negative and excessive coefficients" field:0..<4, bad:0..<4 {
+ p:LocomotionProfile;v:=ifx bad==0 then -0.01f32 else ifx bad==1 then 1000.0f32 else ifx bad==2 then 0.0f32/0.0f32 else 1.0f32/0.0f32;
+ if field==0 {p.source_friction=v;}if field==1 {p.source_braking=v;}if field==2 {p.source_braking_factor=v;}if field==3 {p.source_air_control=v;}#assert !locomotion_profile_ok(p);
+}
+#test "source locomotion accepts zero coefficients and bounded air control" {p:LocomotionProfile;p.source_velocity=true;p.source_friction=0;p.source_braking=0;p.source_braking_factor=0;p.source_air_control=1;#assert locomotion_profile_ok(p);p.source_air_control=1.001;#assert !locomotion_profile_ok(p);}
+
 locomotion_finite :: (value: f32) -> bool {
   return value == value && value > -f32(LOCOMOTION_LIMIT) && value < f32(LOCOMOTION_LIMIT);
 }
@@ -65,5 +73,7 @@ locomotion_profile_ok :: (p: LocomotionProfile) -> bool {
   values := [11] f32.[p.walk_speed, p.run_speed, p.gravity, p.jump_speed, p.acceleration, p.turn_rate,
     p.ride_height, p.step_smooth, p.slide_grip, p.sink_limit, p.run_animation_margin];
   for i: 0..<11 { if !locomotion_finite(values[i]) || values[i] < 0 { return false; } }
+  for v:[4]f32.[p.source_friction,p.source_braking,p.source_braking_factor,p.source_air_control] {if !locomotion_finite(v) || v<0 {return false;}}
+  if p.source_air_control>1 {return false;}
   return p.run_speed >= p.walk_speed && p.gravity > 0 && p.acceleration > 0 && p.slide_grip <= 1;
 }

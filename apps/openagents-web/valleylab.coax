@@ -809,8 +809,8 @@ valley_scan_panel :: (s:[]ValleyLab,out:[]f32,n:int,pen:HdPen)->int {
 }
 
 #test "Valley source pair navigation fits the outbox and works by key hash and touch" #steps 1000000000 {
-  s:[1]ValleyLab;#assert valley_key(s[..],80,true) && s[0].action==1 && cast(string)s[0].outbox[0..<s[0].out_n]=="/worlds/valley-canyon?pack=valley-canyon";
-  s[0].action=0;for c,k:"section" {s[0].inbox[k]=c;}valley_hash(s[..],7);#assert s[0].action==1 && s[0].out_n==40;
+  s:[1]ValleyLab;#assert valley_key(s[..],80,true) && s[0].action==1 && cast(string)s[0].outbox[0..<s[0].out_n]=="/worlds/valley-canyon?pack=valley-echo";
+  s[0].action=0;for c,k:"section" {s[0].inbox[k]=c;}valley_hash(s[..],7);#assert s[0].action==1 && s[0].out_n==38;
   valley_scan_lab(s[..],0);s[0].action=0;s[0].width=390;s[0].height=844;#assert valley_pointer(s[..],100,732,0,1,1) && s[0].action==1;
 }
-valley_canyon_open :: (s:[]ValleyLab) {url:="/worlds/valley-canyon?pack=valley-canyon";for c,k:url {s[0].outbox[k]=c;}s[0].out_n=url.count;s[0].action=1;}
+valley_canyon_open :: (s:[]ValleyLab) {url:="/worlds/valley-canyon?pack=valley-echo";for c,k:url {s[0].outbox[k]=c;}s[0].out_n=url.count;s[0].action=1;}

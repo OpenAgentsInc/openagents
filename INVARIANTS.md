@@ -1756,6 +1756,12 @@ flight and boat/warp paths. Evidence: `aethyr/tests/walk-qualification.json`,
 
 ## One follow camera eases the walker's view
 
+Valley Lab explicitly opts into `locomotion-source.coax`'s flat-ground
+CalcVelocity/braking profile, decoded from the source Echo defaults. Other
+walking realms keep their existing profile. Source tuning never bypasses
+paid 1/64 s steps, capsule collision or queued input. Source numbers qualify
+this scalar port, not the complete Unreal camera, ability or AnimBP runtime.
+
 The walking controller's camera (`aethyr/walk.coax`, every walking realm and
 Dead Gears' `camera_room`) moves only through `aethyr/follow.coax`: the look
 and zoom (`follow_look`, `follow_zoom`), one step of the spring and the room

@@ -1,0 +1,29 @@
+// Synthetic format oracle and negative cases; no licensed bytes.
+// Small valid synthetic rigs exercise byte boundaries independently of the licensed asset.
+echo_rig_fixture :: (b:[]u8,joints:int)->int {
+ n:=416+joints*80+24*2*joints*28;for k:0..<n {b[k]=0;}scan_put(b,0,0x31484345);scan_put(b,4,1);scan_put(b,8,cast(u32)joints);scan_put(b,12,24);scan_put(b,16,416);scan_put(b,20,cast(u32)n);scan_put(b,24,cast(u32)joints);
+ for k:0..<joints {at:=416+k*80;scan_put(b,at,cast(u32)k);for r:0..<3 {scan_put(b,at+4+(r*4+r)*4,f32_bits(1));}scan_put(b,at+76,f32_bits(1));}
+ at:=416+joints*80;for c:0..<24 {scan_put(b,32+c*16,cast(u32)at);scan_put(b,36+c*16,2);scan_put(b,40+c*16,f32_bits(1.0/30.0));for k:0..<2*joints {scan_put(b,at+k*28+24,f32_bits(1));}at+=2*joints*28;}return n;
+}
+#test "Echo rigs admit the lower and full source joint limits and reject truncation" #steps 1000000000 {b:[600000]u8;for j:[3]int.[1,2,334] {n:=echo_rig_fixture(b[..],j);#assert echo_rig_valid(b[0..<n]);#assert !echo_rig_valid(b[0..<n-1]);}#assert !echo_rig_valid(b[0..<415]);}
+#forall "Echo rig rejects each structural header corruption" field:0..<7 {b:[8000]u8;n:=echo_rig_fixture(b[..],2);offsets:=[7]int.[0,4,8,12,16,20,24];scan_put(b[..],offsets[field],0xffffffff);#assert !echo_rig_valid(b[0..<n]);}
+#forall "Echo rig rejects every nonfinite reference and animation word" slot:0..<710 #steps 300000000 {b:[8000]u8;n:=echo_rig_fixture(b[..],2);at:=ifx slot<38 then 416+(slot/19)*80+4+(slot%19)*4 else 576+(slot-38)*4;scan_put(b[..],at,0x7fc00000);#assert !echo_rig_valid(b[0..<n]);}
+#test "Echo rig rejects bad hierarchy timing quaternion speed and empty tracks" {b:[8000]u8;n:=echo_rig_fixture(b[..],2);scan_put(b[..],416,1);#assert !echo_rig_valid(b[0..<n]);n=echo_rig_fixture(b[..],2);scan_put(b[..],492,f32_bits(0));#assert !echo_rig_valid(b[0..<n]);n=echo_rig_fixture(b[..],2);scan_put(b[..],24,0);#assert !echo_rig_valid(b[0..<n]);for at:[5]int.[32,36,40,44,600] {n=echo_rig_fixture(b[..],2);scan_put(b[..],at,0xffffffff);#assert !echo_rig_valid(b[0..<n]);}}
+
+#test "Echo rig format predicates retain exact boundary contracts" {
+ #assert echo_rig_size_ok(416) && echo_rig_size_ok(12582912) && !echo_rig_size_ok(415) && !echo_rig_size_ok(12582913);
+ #assert echo_rig_frames_ok(2) && echo_rig_frames_ok(1000) && !echo_rig_frames_ok(1) && !echo_rig_frames_ok(1001);
+ #assert echo_rig_rotation_ok(1) && !echo_rig_rotation_ok(0.99) && !echo_rig_rotation_ok(1.01);
+ #assert echo_rig_close(1,1) && !echo_rig_close(0.0001,0) && !echo_rig_close(-0.0001,0);
+}
+
+#test "Echo rig counts byte spans and rotation words have independent bounds" {
+ #assert echo_rig_counts_ok(1,1) && echo_rig_counts_ok(334,334) && !echo_rig_counts_ok(0,1) && !echo_rig_counts_ok(335,1) && !echo_rig_counts_ok(2,0) && !echo_rig_counts_ok(2,3);
+ #assert echo_rig_bones_fit(496,1) && !echo_rig_bones_fit(495,1) && echo_rig_bones_fit(576,2) && !echo_rig_bones_fit(575,2);
+ #assert echo_rig_poses_fit(1112,1000,2,2) && !echo_rig_poses_fit(1111,1000,2,2);
+ b:[32]u8;scan_put(b[..],0,f32_bits(0.6));scan_put(b[..],4,f32_bits(0.8));#assert echo_rig_quat_ok(b[0..<16]) && !echo_rig_quat_ok(b[0..<15]) && !echo_rig_quat_ok(b[0..<20]);
+ scan_put(b[..],4,0);#assert !echo_rig_quat_ok(b[0..<16]);scan_put(b[..],4,0x7f800000);#assert !echo_rig_float_bytes(b[0..<8]);#assert !echo_rig_float_bytes(b[0..<3]);
+}
+#test "Echo rig rejects finite invalid nominal speed and zero pose quaternion" {
+ b:[8000]u8;n:=echo_rig_fixture(b[..],2);scan_put(b[..],44,f32_bits(-1));#assert !echo_rig_valid(b[0..<n]);n=echo_rig_fixture(b[..],2);scan_put(b[..],44,f32_bits(10));#assert !echo_rig_valid(b[0..<n]);n=echo_rig_fixture(b[..],2);scan_put(b[..],600,0);#assert !echo_rig_valid(b[0..<n]);
+}

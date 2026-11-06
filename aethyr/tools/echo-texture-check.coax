@@ -1,0 +1,9 @@
+// Browser SDK decoder oracle for each complete original texture, independently of the world renderer.
+#import "Basic";
+#load "../../coax/lib/net/cdp.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}c:[1]Cdp;if !cdp_launch_background(c[..],128,128,"echo-textures-") {return 1;}
+ b:[4096]u8;j:[1]Jo;url:[4096]u8;jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"url");jo_str(j[..],fs_join(args_at(a[..],0),"assets/valley/canyon-poses.json",url[..]));jo_end(j[..]);n:=cdp_call(c[..],"Page.navigate",jo_text(j[..]),30000);
+ if n>=0 {proc_sleep(500);n=cdp_evaluate(c[..],"(async()=>{let b=await(await fetch('/private/valley-echo.pack')).arrayBuffer(),v=new DataView(b),rows=[];for(let k=3;k<v.getUint32(4,true);k++){let at=32+k*48,start=v.getUint32(at+4,true),length=v.getUint32(at+8,true),name=new TextDecoder().decode(new Uint8Array(b,at+16,32)).split(String.fromCharCode(0))[0];try{let image=await createImageBitmap(new Blob([new Uint8Array(b,start,length)]));rows.push([name,image.width,image.height]);image.close()}catch(e){rows.push([name,String(e)])}}return JSON.stringify(rows)})()");}
+ if n>=0 {print("%\n",jv_raw(c[0].doc[0],n));}else {print("decoder: %\n",cdp_error(c[..]));}cdp_close(c[..]);return ifx n>=0 then 0 else 1;
+}

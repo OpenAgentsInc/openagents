@@ -1525,12 +1525,12 @@ async function loadPack(pack) {
     }
     loading.textures(0, 2 * of(PACK_LAYER).length);   // each layer decoded, then on the GPU
     if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;
-    const images = gpu.renderer?.canonicalLayers ? of(PACK_LAYER).map(e=>e.bytes)
+    const images = !gpu.renderer || gpu.renderer.canonicalLayers ? of(PACK_LAYER).map(e=>e.bytes)
       : await Promise.all(of(PACK_LAYER).map((e) => createImageBitmap(new Blob([e.bytes])).then((b) => (loading.textures(1, 0), b))));
     if (images.length) { layers.texture = await layerTexture(images);if (renderUrl) await renderReload;if (!parts.every(currentAsset)) return;if (gpu.renderer) gpu.renderer.layerTexture = layers.texture;layers.size = images.length; }
     else layers.failed = true;
     for (const e of of(PACK_SOUND)) if (!assets.some((a) => a.kind === "sound" && a.name === e.name)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: e.bytes, done: true });
-  } catch (e) { for (const a of parts) a.failed = true; if (!pack.quiet) say(`${app}: ${e.message}`, true); }
+  } catch (e) { for (const a of parts) a.failed = true; if (dev) console.error(`${app} asset pack: ${e.message}`); if (!pack.quiet) say(`${app}: ${e.message}`, true); }
   pack.fetching = false;pack.done = true;
   if (!parts.every(currentAsset)) return;
   for (const a of parts) { a.done = true; deliver(a); }
@@ -1561,7 +1561,7 @@ async function loadPackV1(pack){
       await rendererReady();const entries=result.entries,of=kind=>entries.filter(entry=>entry.kind===kind);
       const [catalog,vertices,indices,layers]=parts;
       loading.textures(0,2*of(PACK_LAYER).length);
-      const images=gpu.renderer?.canonicalLayers?of(PACK_LAYER).map(entry=>entry.bytes):await Promise.all(of(PACK_LAYER).map(entry=>createImageBitmap(new Blob([entry.bytes])).then(image=>(loading.textures(1,0),image))));
+      const images=!gpu.renderer||gpu.renderer.canonicalLayers?of(PACK_LAYER).map(entry=>entry.bytes):await Promise.all(of(PACK_LAYER).map(entry=>createImageBitmap(new Blob([entry.bytes])).then(image=>(loading.textures(1,0),image))));
       await rendererReady();
       const texture=images.length?await layerTexture(images):null;
       await rendererReady();
@@ -1690,21 +1690,49 @@ function fetchedOnce(url) {
   return fetches.get(url);
 }
 // A 2D-array texture, an image a layer, sRGB, mipmapped (every image at the first one's size).
+async function layerBitmap(bytes, options) {
+  // WebCodecs exposes an explicit decoder lifetime. Close it before the next
+  // large atlas, instead of leaving encoded-image decoder caches to GC.
+  if (globalThis.ImageDecoder && bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71) {
+    const decoder = new ImageDecoder({ data: bytes, type: "image/png" });
+    try {
+      const { image } = await decoder.decode({ frameIndex: 0 });
+      try { return await createImageBitmap(image, options); }
+      finally { image.close(); }
+    } finally { decoder.close(); }
+  }
+  return createImageBitmap(new Blob([bytes]), options);
+}
 async function layerTexture(images) {   // the loading screen counts each layer as it goes up
   if (gpu.renderer) { const renderer=gpu.renderer,texture = await renderer.makeLayers(images);loading.textures(images.length*(renderer.canonicalLayers?2:1), 0);return texture; }
-  const { device } = gpu, [w, h] = [images[0].width, images[0].height];
+  // Decode/upload/release one original image at a time. Large source atlases must not
+  // retain every full decoded bitmap plus every resized mip concurrently.
+  const encoded = images[0] instanceof Uint8Array;
+  const first = encoded ? await layerBitmap(images[0]) : images[0];
+  if (encoded) loading.textures(1, 0);
+  const { device } = gpu, [w, h] = [first.width, first.height];
   const levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
   const texture = device.createTexture({ size: [w, h, images.length], format: "rgba8unorm-srgb", mipLevelCount: levels,
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
-  for (const [layer, image] of images.entries()) {
-    for (let level = 0; level < levels; level++) {
-      const lw = Math.max(1, w >> level), lh = Math.max(1, h >> level);
-      const source = level === 0 && image.width === w && image.height === h ? image
-        : await createImageBitmap(image, { resizeWidth: lw, resizeHeight: lh, resizeQuality: "high" });
-      device.queue.copyExternalImageToTexture({ source }, { texture, mipLevel: level, origin: [0, 0, layer] }, [lw, lh]);
+  try {
+    for (let layer = 0; layer < images.length; layer++) {
+      let image;
+      try { image = layer === 0 ? first : encoded ? await layerBitmap(images[layer], { resizeWidth: w, resizeHeight: h, resizeQuality: "high" }) : images[layer]; }
+      catch (error) { throw new Error(`texture layer ${layer}: ${error.message}`); }
+      if (encoded && layer !== 0) loading.textures(1, 0);
+      try {
+        for (let level = 0; level < levels; level++) {
+          const lw = Math.max(1, w >> level), lh = Math.max(1, h >> level);
+          const source = level === 0 && image.width === w && image.height === h ? image
+            : await createImageBitmap(image, { resizeWidth: lw, resizeHeight: lh, resizeQuality: "high" });
+          try { device.queue.copyExternalImageToTexture({ source }, { texture, mipLevel: level, origin: [0, 0, layer] }, [lw, lh]); }
+          finally { if (source !== image) source.close(); }
+        }
+        await device.queue.onSubmittedWorkDone();
+      } finally { image.close(); }
+      loading.textures(1, 0);
     }
-    loading.textures(1, 0);
-  }
+  } catch (error) { first.close();texture.destroy();throw error; }
   return texture;
 }
 function sceneLayout() {
@@ -2448,7 +2476,10 @@ function draw(now) {
   if (engineInstalling || !engine || !gpu?.bg || recovering) return;
   releaseWaiting();   // once this frame, which draws the state as the loss found it, is done
   const [dw, dh] = devicePixels || [Math.max(1, Math.round(canvas.clientWidth * devicePixelRatio)), Math.max(1, Math.round(canvas.clientHeight * devicePixelRatio))];
-  const f = drawn(dw) * SUPERSAMPLE, w = Math.max(1, Math.round(dw * f)), h = Math.max(1, Math.round(dh * f));
+  // Optional sampling v1: the Coax realm declares its integer supersampling scale.
+  // The existing pixel-budget path bounds the source raster before this SDK resize.
+  const sampling = Math.min(3, Math.max(1, engine.exports.coaxial_sampling_v1?.(arena.state) || SUPERSAMPLE));
+  const f = drawn(dw) * sampling, w = Math.max(1, Math.round(dw * f)), h = Math.max(1, Math.round(dh * f));
   const pending = gpu.device.__coaxialFrames || 0;
   if (traceRow) {traceRow[5]=w;traceRow[6]=h;traceRow[10]=pending;}
   if (gpu.renderer && !gpu.renderer.available()) return;

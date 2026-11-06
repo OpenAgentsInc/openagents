@@ -1,0 +1,3 @@
+coax jobs: waiting for 10 of 12 build workers held by 1 other coax process; running 2 now (coax status shows them)
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+25 mutants, 25 killed, 0 survived

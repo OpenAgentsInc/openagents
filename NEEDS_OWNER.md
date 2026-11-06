@@ -1,9 +1,9 @@
 # Owner actions
 
-## Valley Lab walking preview (2026-11-05)
+## Valley Lab Echo preview (2026-11-05)
 
-- [ ] Open [the local Canyon Pair walking view](http://127.0.0.1:8891/worlds/valley-canyon?pack=valley-canyon) to try it. WASD moves, Space jumps, right-side drag or arrows look, R resets and O changes to orbit. The existing lab also opens it with P. Automated desktop/phone checks pass.
-- The preview is served locally; repository instructions require headless checks and prohibit opening a visible browser window.
+- [ ] Try [the local Echo walking view](http://127.0.0.1:8892/worlds/valley-canyon?pack=valley-echo). WASD moves, Shift walks, Space jumps, drag or arrows look, R resets and O changes to orbit. C inspects the character; H inspects the face. Report movement direction and visible skin/eye/hair problems.
+- The owner explicitly requested reopening this local preview. Automated checks use muted headless Chrome. This is an unfinished visual port; the Slay reference shot and facial performance are the next task (#12962).
 
 ## WoW automation terminated (2026-11-04)
 

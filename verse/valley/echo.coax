@@ -1,0 +1,48 @@
+// Echo's original local poses, played through shared Aethyr pose arithmetic. Raw data stays private.
+#load "echo-rig-policy.coax";
+#load "../../aethyr/anim/pose.coax";
+Echo :: struct {
+ data:[ECHO_RIG_CAP]u8;bytes:int;ready:bool;joints:int;tracks:int;
+ parent:[ECHO_JOINTS]int;bind:[ECHO_JOINTS*12]f32;rest:[ECHO_JOINTS]SkinLocal;
+ pose:[ECHO_JOINTS]SkinLocal;from:[ECHO_JOINTS]SkinLocal;gq:[ECHO_JOINTS]Quat;gt:[ECHO_JOINTS]Point;palette:[ECHO_JOINTS*12]f32;
+ drive_inputs:bool;input_on:bool;run_requested:bool;blending:bool;clip:int= -1;time:f32;age:f32;moving:bool;grounded:bool=true;revision:int;
+}
+echo_pose_at :: (b:[]u8,at:int)->SkinLocal {return SkinLocal.{t=scan_point(b,at),q=Quat.{x=f32_from_bits(scan_u32(b,at+12)),y=f32_from_bits(scan_u32(b,at+16)),z=f32_from_bits(scan_u32(b,at+20)),w=f32_from_bits(scan_u32(b,at+24))}};}
+echo_admit :: (s:[]Echo,n:int)->bool {
+ if n<0 || n>s[0].data.count || !echo_rig_valid(s[0].data[0..<n]) {s[0].ready=false;return false;}s[0].ready=true;s[0].bytes=n;s[0].joints=cast(int)scan_u32(s[0].data[..],8);s[0].tracks=cast(int)scan_u32(s[0].data[..],24);
+ for k:0..<s[0].joints {at:=416+k*80;s[0].parent[k]=cast(int)scan_u32(s[0].data[..],at)-1;for word:0..<12 {s[0].bind[k*12+word]=f32_from_bits(scan_u32(s[0].data[..],at+4+word*4));}s[0].rest[k]=echo_pose_at(s[0].data[..],at+52);s[0].pose[k]=s[0].rest[k];}
+ echo_reset(s);echo_advance(s,0,0,true,0);return true;
+}
+echo_reset :: (s:[]Echo) {s[0].clip= -1;s[0].time=0;s[0].age=0;s[0].moving=false;s[0].grounded=true;}
+echo_duration :: (s:[]Echo,clip:int)->f32 {return f32_from_bits(scan_u32(s[0].data[..],32+clip*16+8));}
+echo_start_clip :: (run:bool,angle:f32)->int {
+ // The source graph chooses 90-degree starts in (45,135], 180-degree starts beyond 135.
+ degrees:=angle*57.295779513;left:=degrees<0;magnitude:=abs(degrees);
+ if magnitude>135 {return ifx run then (ifx left then 16 else 17) else (ifx left then 12 else 13);}
+ if magnitude>45 {return ifx run then (ifx left then 14 else 15) else (ifx left then 10 else 11);}
+ return ifx run then 7 else 5;
+}
+echo_advance :: (s:[]Echo,dt:f32,speed:f32,grounded:bool,turn:f32) {
+ if !s[0].ready {return;}moving:=ifx s[0].drive_inputs then s[0].input_on else speed>0.05;run:=ifx s[0].drive_inputs then s[0].run_requested else speed>2;clip:=s[0].clip;chosen:=clip;
+ if clip<0 {chosen=ifx grounded then 0 else 3;}
+ if !grounded {chosen=3;}else if !s[0].grounded {chosen=4;}
+ else if moving && !s[0].moving {chosen=echo_start_clip(run,turn);}
+ else if !moving && s[0].moving {chosen=ifx clip==2 || clip==7 || (clip>=14 && clip<=17) then 8 else 6;}
+ else if clip==1 || clip==2 {chosen=ifx moving then (ifx run then 2 else 1) else 0;}
+ else if clip>=0 && s[0].time>=echo_duration(s,clip)-0.1 {chosen=ifx moving then (ifx run then 2 else 1) else 0;}
+ if chosen!=clip {s[0].blending=clip>=0;for k:0..<s[0].joints {s[0].from[k]=s[0].pose[k];}s[0].time=ifx chosen==6 then 0.1f32 else ifx chosen==8 then 0.15f32 else ifx chosen==12 then 0.2f32 else ifx chosen==13 then 0.25f32 else 0.0f32;s[0].age=0;}
+ s[0].clip=chosen;s[0].time+=dt*(ifx chosen==1 then speed/1.47 else ifx chosen==2 then speed/4.27 else 1.0f32);s[0].age+=dt;
+ descriptor:=32+chosen*16;first:=cast(int)scan_u32(s[0].data[..],descriptor);frames:=cast(int)scan_u32(s[0].data[..],descriptor+4);duration:=echo_duration(s,chosen);looping:=chosen==0 || chosen==1 || chosen==2 || chosen==18 || chosen==19 || chosen==22;
+ time:=ifx looping then s[0].time-duration*floor(s[0].time/duration) else lo(s[0].time,duration);frame:=lo(time*30,cast(f32)(frames-1));a:=cast(int)floor(frame);b:=ifx a+1<frames then a+1 else a;share:=frame-cast(f32)a;fade:=ifx s[0].blending then pose_fade(s[0].age,0.1) else 1.0f32;
+ for k:0..<s[0].joints {p:=s[0].rest[k];if k<s[0].tracks {p=pose_blend(echo_pose_at(s[0].data[..],first+(a*s[0].tracks+k)*28),echo_pose_at(s[0].data[..],first+(b*s[0].tracks+k)*28),share);}s[0].pose[k]=pose_blend(s[0].from[k],p,fade);pose_chain(s[0].gq[..],s[0].gt[..],s[0].parent[k],k,s[0].pose[k]);pose_palette(s[0].gq[k],s[0].gt[k],s[0].bind[..],k,s[0].palette[..]);}
+ s[0].moving=moving;s[0].grounded=grounded;s[0].revision+=1;
+}
+#test "Echo animation samples source local keys and preserves the inverse bind" #steps 1000000000 {
+ s:[1]Echo;n:=echo_rig_fixture(s[0].data[..],1);first:=496;scan_put(s[0].data[..],first+28+4,f32_bits(2));#assert echo_admit(s[..],n);echo_advance(s[..],1.0/60.0,0,true,0);#assert abs(s[0].palette[7]-1)<0.00001 && abs(quat_dot(s[0].pose[0].q,s[0].pose[0].q)-1)<0.000001;
+ echo_reset(s[..]);echo_advance(s[..],0,0,true,0);#assert s[0].clip==0 && s[0].time==0;
+}
+#test "Echo locomotion chooses source starts stops jog threshold and landing" #steps 1000000000 {
+ s:[1]Echo;n:=echo_rig_fixture(s[0].data[..],1);#assert echo_admit(s[..],n);echo_advance(s[..],0,1.47,true,0);#assert s[0].clip==5;echo_advance(s[..],0,0,true,0);#assert s[0].clip==6;
+ echo_advance(s[..],0,4.27,true,0);#assert s[0].clip==7;echo_advance(s[..],0,4.27,false,0);#assert s[0].clip==3;echo_advance(s[..],0,0,true,0);#assert s[0].clip==4;
+ #assert echo_start_clip(false,-1.57)==10 && echo_start_clip(false,1.57)==11 && echo_start_clip(true,-3)==16 && echo_start_clip(true,3)==17;
+}

@@ -1,0 +1,25 @@
+{
+  "vertices_bit_exact": 313371,
+  "indices_bit_exact": 1470318,
+  "influences_per_vertex": 8,
+  "clips_bit_exact": 24,
+  "source_frames_bit_exact": 2696,
+  "joints": 334,
+  "material_slots_match_sdk": {
+    "ECHO_HEAD_SLOT": "11",
+    "ECHO_SKIN_SLOT": "6",
+    "ECHO_EYE_LEFT_SLOT": "9",
+    "ECHO_EYE_RIGHT_SLOT": "17",
+    "ECHO_LASH_SLOT": "18"
+  },
+  "wasm_palette_max_absolute_error": 8.345676768550803e-07,
+  "groom_curves": 45091,
+  "groom_points_checked": 537998,
+  "groom_segments_checked": 492907,
+  "original_png_layers_bit_exact": 32,
+  "pack_sha256": "104416a0a810d17523d099eeeaf2670e53ffd15f03c028ac4967b7f2b4cc0793",
+  "rig_sha256": "a11a5c8e9629ceba728ea8af7fdce83801608f2b567ce33b4f61d4cbc7b0dc4c",
+  "vertices_sha256": "add5f9172c5f1846802e5108587372fc90a1232279b9361ce684536b6096d54d",
+  "indices_sha256": "9427306ed657805dab549e23ed5244f9c1a4e3775968b84f9d91c1962bbbd667",
+  "groom_sha256": "7bc7b8f0174c96da23fd0e9dc55b62c77d0601fbeb4dfc0b3650d60c09956f3e"
+}

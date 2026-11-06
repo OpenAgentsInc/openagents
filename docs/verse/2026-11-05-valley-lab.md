@@ -665,7 +665,30 @@ The [source-section record](../verification/valley-lab-canyon-pair-2026-11-05/RE
 contains exact source identities, original poses, reproducible SDK/Coax tools,
 independent all-corner checks, browser observations and screenshots.
 
-## Next implementation task
+## Next implementation task: Slay performance (#12962)
+
+The owner's target is the Slay trailer frame at 0:57 (desktop screenshot
+2026-11-05 22:44:37): Echo's narrowed eyes and expression, raised open hand,
+blue glowing orb, close camera and warm/cool lighting. This extends #12962's
+face-only scope with a separate fixed shot recreation; ordinary locomotion
+must retain the existing Valley body clips.
+
+1. Land and qualify the current Echo port, then use a fresh worktree.
+2. Read Slay through the installed Unreal SDK. Identify the actual source
+   sequence/frame, body and facial tracks, camera and orb transforms. Export
+   all 20 face clips, target names and sparse position/normal deltas privately.
+3. Add bounded face-pack admission and shared Aethyr morph/curve playback.
+   Apply morphs before skinning, layer facial bones by name, and test zero
+   weights, bad indices, nonfinite deltas and unresolved bindings.
+4. Add a fixed source-shot view, preserving the actual hand/body pose and
+   expression. Port the orb, lighting and bloom in Coax, comparing fixed
+   captures to the supplied reference. Do not substitute neutral Idle or an
+   arbitrary sphere and label it an exact match.
+5. Add selectable face clips and documented ambient segments over locomotion;
+   check blend boundaries, desktop/phone cost and GPU recovery. Record actual
+   image differences and outstanding source render features before pushing.
+
+## Subsequent engine work
 
 Qualify **Valley on the shared frame/pass/resource renderer**, using the
 current CPU-copy path as the reference. Give real GPU vertex/index/page
@@ -687,7 +710,7 @@ Continue the remaining milestone 0/1 exits alongside that step: saved
 walkthrough/replay, bounded source import and shared-renderer qualification.
 A working station does not upgrade a book chapter's completion status.
 
-## Landed: walk around the original Canyon Pair
+## Earlier stage: walk around the original Canyon Pair
 
 The parent lab's **P** key and `#section` open
 `/worlds/valley-canyon?pack=valley-canyon`, now in first person by default.
@@ -716,7 +739,50 @@ the shared input contract;
 reset clears movement and restores the initial feet. Orbit freezes locomotion
 and clears held controls.
 
-## Assessment: the original project's controller and Echo avatar
+## Current Echo port: third-person walking and source inspection
+
+The parent P action now opens `/worlds/valley-canyon?pack=valley-echo`.
+The 668,024,432-byte private bundle retains both original Canyon instances,
+Echo's source mesh/UVs/normals/tangents, eight skin influences, 334 palette
+joints, 24 animation clips (2,696 frames), 32 original texture files and
+45,091 groom curves (492,907 rendered segments). Source card geometry is
+retained for auditing but excluded from drawing when strands are present.
+The independent source-byte oracle checks every vertex/index, bind/rest
+transform, animation sample, strand endpoint and bundled texture. Browser
+Wasm Idle palette differs from independent double precision by at most
+8.35e-7. No licensed source data is committed.
+
+WASD moves, Shift walks, Space performs the lab jump, drag/arrows look,
+O freezes in orbit, R resets, C gives a full character inspection and H a
+face close-up. Shared touch sticks support concurrent movement and look.
+The source flat-ground profile uses 0.42 m capsule radius, 1.92 m height,
+1.47/4.27 m/s walk/run speeds, 5 m/s² acceleration, 10 m/s² braking,
+ground friction 4, braking factor 2 and zero air control. These are decoded
+SDK defaults, not proof of complete original gameplay. Aethyr owns paid
+64 Hz steps and conservative lab collisions; Space remains a lab jump,
+not the original ability-based vault.
+
+Material slots are now checked against the native SDK manifest (head 11,
+skin 6, eyes 9/17, lashes 18). Source albedo overrides, packed roughness,
+normal maps, source gray environment radiance and a checked film curve are
+ported in Coax. Bounded sequential image upload avoids retaining every
+decoded 8K source and resized mip at once. Source inspection supersamples
+the strand ribbons within an explicit raster cap.
+
+**Visual parity is unfinished.** Eyes/refraction/occlusion, regional skin
+scattering, strand shading/coverage, facial morph playback, full animation
+graph, source camera stack, cloth and hair simulation remain incomplete.
+The native reference's groom also renders incorrectly and cannot qualify
+hair parity. The original game's incompatible native modules were not run.
+The neutral face is not the Slay expression requested for #12962.
+
+The source velocity, locomotion integration, walking, collision profile,
+rig admission and pack identity gates killed 98/25/598/33/165/13 mutants,
+respectively, with zero survivors. The independent float32 velocity oracle
+checks 1,024 cases; film mapping checks 97 independent values. These results
+apply to the unchanged scalar/source paths, not to full Unreal rendering.
+
+## Earlier assessment: the original project's controller and Echo avatar
 
 Inspected the local `ValleyoftheAncient2` project under
 `~/Documents/Unreal Projects/`. This assessment comes from its C++ source,

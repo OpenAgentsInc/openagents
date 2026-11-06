@@ -1,0 +1,31 @@
+// Coax VPK assembler: original Canyon streams + Echo source streams/rig and original texture maps.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../verse/valley/scan.coax";
+#load "../../verse/valley/echo-materials.coax";
+EB_MAPS :: [30]string.["T_echo_Costume1_D.png","T_echo_Costume2_D.png","T_echo_Costume3_D.png","T_echo_Costume4_D.png","T_echo_Costume5_D.png","T_echo_Head_D_noBrows.png","eyes_sclera_D_01_sharpen2_fixed_L.png","T_EyeIrisBaseColor.png","hair_alpha.png","T_echo_Costume1_ORM.png","T_echo_Costume2_ORM.png","T_echo_Costume3_ORM.png","T_echo_Costume3_Gold_ORM.png","T_echo_Costume4_ORM.png","T_echo_Costume5_ORM.png","T_echo_Head_ORM.png","T_echo_Costume1_N.png","T_echo_Costume2_N.png","T_echo_Costume3_N.png","T_echo_Costume4_N.png","T_echo_Costume5_N.png","T_echoGirl_Head_N.png","T_Eye_Wet_N.png","head_thickness_map_001_tweaked.png","toksvig_macro.png","additional_roughness2.png","T_echoGirl_Head_micro_N.png","T_echo_HeadBrows_N.png","T_echo_HeadTest_BrowMask.png","T_echo_Head_MatID.png"];
+EB_ALBEDO :: [26]int.[4,4,2,-1,6,3,2,10,4,8,-1,7,-1,3,-1,5,-1,8,-1,-1,-1,-1,-1,2,-1,6];
+EB_ORM :: [26]int.[14,13,11,-1,16,12,11,-1,13,-1,-1,17,-1,12,-1,15,-1,-1,-1,-1,-1,-1,-1,11,-1,16];
+EB_NORMAL :: [26]int.[20,20,18,-1,22,19,18,-1,20,24,-1,23,-1,19,-1,21,-1,24,-1,-1,-1,-1,-1,18,-1,22];
+#test "Echo material tables use valid layers and keep source maps first" {for k:0..<26 {#assert EB_ALBEDO[k]<27 && EB_ORM[k]<27 && EB_NORMAL[k]<27;}#assert EB_ALBEDO[ECHO_HEAD_SLOT]==7 && EB_NORMAL[ECHO_HEAD_SLOT]==23 && EB_ORM[ECHO_HEAD_SLOT]==17;#assert EB_ALBEDO[ECHO_SKIN_SLOT]==2 && EB_NORMAL[ECHO_SKIN_SLOT]==18 && EB_ALBEDO[0]==4 && EB_NORMAL[24]== -1;}
+eb_path :: (root:string,name:string,b:[]u8)->string {return fs_join(root,name,b);}
+eb_append :: (out:[]u8,at:int,input:[]u8,entry:int,kind:u32,name:string)->int {
+ #assert at>=0 && input.count<=out.count-at;record:=32+entry*48;scan_put(out,record,kind);scan_put(out,record+4,cast(u32)at);scan_put(out,record+8,cast(u32)input.count);short:=ifx name.count<32 then name else name[0..<31];for c,k:short {out[record+16+k]=c;}for k:0..<input.count {out[at+k]=input[k];}return (at+input.count+3)/4*4;
+}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {return 2;}source:=args_at(a[..],0);echo:=args_at(a[..],1);canyon:=args_at(a[..],2);canyon_maps:=args_at(a[..],3);out:[1073741824]u8;input:[134217728]u8;combined:[134217728]u8;path:[4096]u8;entries:=3+2+EB_MAPS.count;at:=32+entries*48;
+ n:=fs_read(eb_path(echo,"echo.rig",path[..]),input[..]);#assert n==10142528;at=eb_append(out[..],at,input[0..<n],0,1,"echo-rig");
+ n=fs_read(eb_path(canyon,"canyon.vertices.bin",path[..]),combined[..]);#assert n==24209616;header:=n;for k:0..<2048 {combined[header+k]=0;}
+ for k:0..<26 {m:=header+k*64;scan_put(combined[..],m,cast(u32)(EB_ALBEDO[k]+1));scan_put(combined[..],m+4,cast(u32)(EB_NORMAL[k]+1));scan_put(combined[..],m+8,cast(u32)(EB_ORM[k]+1));scan_put(combined[..],m+12,cast(u32)(ifx k==24 then 11 else 0));
+  color:=ifx k==24 then v3(0.65,0.422206,0.241219) else ifx k==10 then v3(0.8,0.76,0.65) else v3(1,1,1);for q:0..<3 {scan_put(combined[..],m+16+q*4,f32_bits(ifx q==0 then color.x else ifx q==1 then color.y else color.z));}scan_put(combined[..],m+28,f32_bits(ifx k==0 then 0.85f32 else 0.0f32));scan_put(combined[..],m+32,f32_bits(ifx k==24 then 0.45f32 else ifx k==9 || k==17 then 0.08f32 else 0.65f32));scan_put(combined[..],m+36,cast(u32)(ifx k==3 || k==12 || k==14 || k==16 || (k>=18 && k<=21) || k==22 then 1 else 0));
+ }
+ // Source strands replace the blonde fallback; all source mesh bytes remain retained for audit.
+ for k:24..<26 {scan_put(combined[..],header+k*64+36,1);}
+ for k:26..<28 {m:=header+k*64;for q:0..<3 {scan_put(combined[..],m+16+q*4,f32_bits(1.0f32));}scan_put(combined[..],m+32,f32_bits(0.4f32));}
+ n=fs_read(eb_path(echo,"echo.vertices",path[..]),combined[header+2048..<combined.count]);#assert n==30083616;groom:=fs_read(eb_path(echo,"echo.groom",path[..]),combined[header+2048+n..<combined.count]);#assert groom==23659568;at=eb_append(out[..],at,combined[0..<header+2048+n+groom],1,2,"vertices");
+ n=fs_read(eb_path(canyon,"canyon.indices.bin",path[..]),combined[..]);#assert n==11999940;extra:=fs_read(eb_path(echo,"echo.indices",path[..]),combined[n..<combined.count]);#assert extra==5881272;for k:0..<extra/4 {scan_put(combined[..],n+k*4,scan_u32(combined[..],n+k*4)+504367);}groom=fs_read(eb_path(echo,"echo.groom-indices",path[..]),combined[n+extra..<combined.count]);#assert groom==11829768;at=eb_append(out[..],at,combined[0..<n+extra+groom],2,3,"indices");
+ for k:0..<2+EB_MAPS.count {filename:=ifx k==0 then "Albedo.png" else ifx k==1 then "Roughness.png" else EB_MAPS[k-2];n=fs_read(eb_path(ifx k<2 then canyon_maps else source,filename,path[..]),input[..]);if n<0 && k<2 {return 3;}#assert n>0;at=eb_append(out[..],at,input[0..<n],3+k,4,filename);}
+ scan_put(out[..],0,0x314b5056);scan_put(out[..],4,cast(u32)entries);scan_put(out[..],8,cast(u32)at);scan_put(out[..],12,cast(u32)at);scan_put(out[..],16,32);scan_put(out[..],20,cast(u32)(32+entries*48));#assert fs_write(eb_path(echo,"valley-echo.pack",path[..]),cast(string)out[0..<at]);h:[64]u8;#assert asset_hex(asset_id(cast(string)out[0..<at]),h[..]);print("Echo bundle bytes=% sha256=% layers=%\n",at,cast(string)h[..],2+EB_MAPS.count);return 0;
+}
