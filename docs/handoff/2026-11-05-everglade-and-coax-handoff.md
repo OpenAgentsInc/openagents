@@ -168,9 +168,8 @@ The page Wasm is 1,990,798 bytes, within its 2,150,000-byte budget. The
 native room and 988,275-byte worker retain the unchanged simulation and
 qualification from #12945; the page's clock reading is the only runtime
 change. `tools-check` passed. Durable receipts are in
-`docs/verification/everglade-drift-2026-11-05/`; raw browser records remain
-in `/tmp/oa-12941-fixed1/`, `fixed2/`, `fixed3/`, `oa-12941-local/` and
-`oa-12941-100/` under `/tmp`. Qualified binaries and hashes are retained in
+`docs/verification/everglade-drift-2026-11-05/`; each profile receipt names
+its raw browser-record directory under `/tmp`. Qualified binaries and hashes are retained in
 `/tmp/oa-12941-artifacts/`. No production deployment was performed.
 
 ## #12947 verification (2026-11-05)
