@@ -93,7 +93,8 @@ valleylab 160000
 # Named face admission, sparse morph playback and source-rate facial-bone overlays (#12962): 85,271 bytes.
 valleycanyon 96000
 # Valley's bounded source-page admission, source LOD selection and index-bank ABI add ~4 KiB.
-valleyworld 124000
+# The shared canyon code's Slay replay control and face-view hero lighting add ~1.5 KiB: 125,445 bytes.
+valleyworld 128000
 # #12921: buffered V2 frame input adds checked per-step control state.
 # Linux measured garden 286741, villa 524872, fairy 660104, realm 517429 bytes; about 5% room.
 # Optional socket-owned room timing and clock intervals; 21,910 release bytes.

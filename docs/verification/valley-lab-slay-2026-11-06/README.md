@@ -179,3 +179,23 @@ full linear-HDR compositing, the source material-time phase,
 exact reference frame selection and cinematic background remain open. The
 handheld profile imports the exact source camera template; its recovery and
 mobile cost limitations are retained in that separate record.
+
+## Skin pass and face view, 2026-11-06
+
+- The exported `T_toksvig_macro` is zero in every sampled texel, in both the
+  PNG and a fresh TGA re-export, so it is only a small Toksvig correction. The
+  head's roughness is about 0.1–0.2, as in the source. `MF_PerPartRoughnessModulation`
+  only scales it by 0.85–1.2 per region (plus 0.25 on the chest). Its region
+  masks `T_Head_Skin_001/007/008/009_R` are not exported yet.
+- The pinpoint "wet" highlights came from shading TF0290's 64 x 64 cm
+  RectLight key, 345.18 cm away, as a point. The key and the orb now widen
+  roughness with Unreal's sphere-light `New_a2` term (`SLAY_KEY_SIZE` 0.10462).
+- Skin uses subsurface-profile style lighting: two specular lobes at 0.75x
+  and 1.30x roughness, mixed 0.85, plus wrapped diffuse that carries red past
+  the terminator and bends diffuse normals toward the geometric normal.
+- The H and F face views now use the TF0290 hero frame's lights and the Slay
+  skin profile, moved to Echo, through a longer lens (4.2 at 1.58 m). Before,
+  they used Valley's single generic sun at 0.65 m with a wide lens.
+- T or the on-screen REPLAY button replays the shot; playback stops on the last frame.
+- Still open: orange albedo balance, eye shading, hair volume scattering, and
+  the per-region roughness masks.
