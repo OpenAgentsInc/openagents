@@ -22,7 +22,6 @@ with a comment. Check the issue and `git log origin/main` for their results.
 | Issue | Work | Worktree |
 | --- | --- | --- |
 | #12936 | Fix the production room regression, then finish the release (rooms, then web) | `../openagents-roomperf` |
-| #12927 | Checked, wrapping and saturating integer operations; migrate the room counters | `../openagents-coax-int` |
 | #12938 | Split the carrier C unit so a gameplay edit rebuilds in under 20 s | `../openagents-carrier` |
 
 If one of them stops without closing its issue, read its last issue comment
@@ -122,6 +121,10 @@ Aethyr (#12856 closed; #12845 partly done):
 Compiler:
 
 - #12924, read-only views, closed by Codex at 21:31 UTC.
+- #12927 (`a059472dfb`, `d5e28e528f`): `add_checked`, `add_sat` and
+  `add_wrap` (with sub and mul versions) on every integer width, the same in
+  debug, release, the evaluator and native code. Fields marked `#counter`
+  refuse plain arithmetic (E0840). The room and ledger counters use them.
 - #12925: build timings, a cache for each step, and two emitter fixes. A
   gameplay edit went from 56 s to 44 s, and a test-name edit from 46 s to 6 s.
 - #12926: capacity refusals name the limit, its top users and a fix. The
@@ -137,7 +140,9 @@ Books: #12610 stays open. The owner said "no more books work". Don't work it.
 
 | Issue | Owner or status |
 | --- | --- |
-| #12936, #12927, #12938 | A running agent (see above) |
+| #12936, #12938 | A running agent (see above) |
+| #12944 | No agent. **Blocker.** The room server fails to link on main, with 21 duplicate `cb_*` symbols, since `010c25bbed` (Codex lane). This blocks room builds, the API room checks, the drift check and the #12936 release. The #12936 agent knows. |
+| #12945 | No agent. Other failures on main: the `results-cache-policy` test, traversal budgets for `everglade5e-room-raid` and `rigid.coax d3_dot`, and listing drift in Aethyr chapter 89. |
 | #12941 | No agent. The drift check's 250 ms profile failed twice after the fire fixes, on Hold Person timing, conditions and townspeople walking in place. It may be real or caused by load, and it gates release.sh. Check it first if #12936's release is stuck. |
 | #12940 | No agent. Tree fires never burn or spread on the room server; only pages step them. |
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
