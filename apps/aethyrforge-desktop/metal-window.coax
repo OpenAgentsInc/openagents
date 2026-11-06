@@ -5,14 +5,7 @@
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/proc.coax";
 #load "../../coax/lib/json/json.coax";
-mw_op :: (o:[]Jo,name:string) {jo_obj(o);jo_key(o,"op");jo_str(o,name);}
-mw_wait :: (o:[]Jo,ms:int) {mw_op(o,"wait");jo_key(o,"ms");jo_int(o,ms);jo_end(o);}
-mw_observe :: (o:[]Jo,name:string) {mw_op(o,"observe");jo_key(o,"label");jo_str(o,name);jo_end(o);}
-mw_key :: (o:[]Jo,down:bool) {mw_op(o,"key");jo_key(o,"key");jo_int(o,119);jo_key(o,"down");jo_bool(o,down);jo_end(o);}
-mw_field :: (d:Jv,node:int,name:string)->int {return jv_int(d,jv_get(d,node,name),-1);}
-mw_value :: (d:Jv,row:int,column:int)->int {return jv_int(d,jv_at(d,row,column),-1);}
-mw_label :: (d:Jv,name:string)->int {rows:=jv_get(d,0,"observations");for i:0..<jv_len(d,rows) {row:=jv_at(d,rows,i);if jv_raw_eq(jv_raw(d,jv_get(d,row,"label")),name) {return row;}}return -1;}
-mw_percentile :: (v:[]int,n:int)->f64 {for i:1..<n {x:=v[i];at:=i;while at>0 && v[at-1]>x {v[at]=v[at-1];at-=1;}v[at]=x;}return f64(v[(n-1)*95/100])/1000000;}
+#load "metal-window-plan.coax";
 tool_main :: ()->int #export_c {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])<4 {tool_errln("usage: metal-window ROOT STAGED_APP DATA_DIRECTORY NEW_OUTPUT [--hz HZ] [--size CSS_WIDTHxHEIGHT] [--warmup-ms MILLISECONDS] [--require-presentation]");return 2;}
  rate:=args_whole(args_value(a[..],"--hz","60"));size:=args_size(args_value(a[..],"--size","640x360"));warmup:=args_whole(args_value(a[..],"--warmup-ms","2000"));if rate<1 || rate>240 || !size.ok || warmup<0 || warmup>60000 {return 2;}

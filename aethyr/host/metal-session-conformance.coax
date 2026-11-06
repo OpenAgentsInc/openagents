@@ -1,0 +1,17 @@
+// Actual ordinary Metal window, GPU replacement and engine reload receipt.
+#load "metal-session-fixtures.coax";
+#authority;
+#test "ordinary session admits actual progress and a same-seat reload with fresh gesture ownership" {
+ q:=hms_good();#assert hms_accept(q);q.frames=1;q.recovered_frames=2;q.seat=3;q.recovered_seat=3;q.reloaded_seat=3;#assert hms_accept(q);
+ q.recovered_frames=1;#assert !hms_accept(q);q=hms_good();q.frames=0;#assert !hms_accept(q);q=hms_good();q.seat=-1;q.recovered_seat=-1;q.reloaded_seat=-1;#assert !hms_accept(q);
+ q=hms_good();q.reloaded_frames=0;#assert !hms_accept(q);q=hms_good();q.post_frames=0;#assert !hms_accept(q);
+}
+#forall "each refused session fact independently prevents completion" field:0..<21,side:0..<2 {
+ q:=hms_good();bad:=ifx side==0 then -1 else 3;
+ if field==0{q.net=bad;}if field==1{q.recoveries=bad;}if field==2{q.recovered_net=bad;}if field==3{q.recovered_seat=bad;}if field==4{q.reloaded_net=bad;}if field==5{q.reloaded_seat=bad;}
+ if field==6{q.retired_live=bad;}if field==7{q.retired_words=bad;}if field==8{q.retired_media=bad;}if field==9{q.retired_audio=bad;}if field==10{q.retired_active=bad;}if field==11{q.pre_frames=bad;}if field==12{q.pre_started=bad;}if field==13{q.post_started=bad;}if field==14{q.nonzero=bad;}if field==15{q.closed_live=bad;}if field==16{q.closed_words=bad;}if field==17{q.closed_media=bad;}if field==18{q.closed_audio=bad;}if field==19{q.closed_active=bad;}if field==20{q.recovered_frames=q.frames;}
+ #assert !hms_accept(q);
+}
+hms_accept :: (q:HmsObserved)->bool #export_c {
+ return q.frames>0&&q.net==2&&q.seat>=0&&q.recovered_frames>q.frames&&q.recoveries==1&&q.recovered_net==2&&q.recovered_seat==q.seat&&q.reloaded_frames>0&&q.reloaded_net==2&&q.reloaded_seat==q.seat&&q.retired_live==0&&q.retired_words==0&&q.retired_media==0&&q.retired_audio==1&&q.retired_active==0&&q.pre_frames==0&&q.pre_started==0&&q.post_frames>0&&q.post_started==1&&q.nonzero==0&&q.closed_live==0&&q.closed_words==0&&q.closed_media==0&&q.closed_audio==1&&q.closed_active==0;
+}

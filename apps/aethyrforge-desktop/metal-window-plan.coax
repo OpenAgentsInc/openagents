@@ -1,0 +1,10 @@
+// Common window-plan byte transport and raw receipt accessors.
+#load "../../coax/lib/json/json.coax";
+mw_op :: (o:[]Jo,name:string) {jo_obj(o);jo_key(o,"op");jo_str(o,name);}
+mw_wait :: (o:[]Jo,ms:int) {mw_op(o,"wait");jo_key(o,"ms");jo_int(o,ms);jo_end(o);}
+mw_observe :: (o:[]Jo,name:string) {mw_op(o,"observe");jo_key(o,"label");jo_str(o,name);jo_end(o);}
+mw_key :: (o:[]Jo,down:bool) {mw_op(o,"key");jo_key(o,"key");jo_int(o,119);jo_key(o,"down");jo_bool(o,down);jo_end(o);}
+mw_field :: (d:Jv,node:int,name:string)->int {return jv_int(d,jv_get(d,node,name),-1);}
+mw_value :: (d:Jv,row:int,column:int)->int {return jv_int(d,jv_at(d,row,column),-1);}
+mw_label :: (d:Jv,name:string)->int {rows:=jv_get(d,0,"observations");for i:0..<jv_len(d,rows) {row:=jv_at(d,rows,i);if jv_raw_eq(jv_raw(d,jv_get(d,row,"label")),name) {return row;}}return -1;}
+mw_percentile :: (v:[]int,n:int)->f64 {for i:1..<n {x:=v[i];at:=i;while at>0 && v[at-1]>x {v[at]=v[at-1];at-=1;}v[at]=x;}return f64(v[(n-1)*95/100])/1000000;}

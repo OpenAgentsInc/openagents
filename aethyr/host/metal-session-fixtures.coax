@@ -1,0 +1,8 @@
+// Independently authored receipt data used only by session observer checks.
+HmsObserved :: struct {
+ frames:int;net:int;seat:int;recovered_frames:int;recoveries:int;recovered_net:int;recovered_seat:int;
+ reloaded_frames:int;reloaded_net:int;reloaded_seat:int;retired_live:int;retired_words:int;retired_media:int;
+ retired_audio:int;retired_active:int;pre_frames:int;pre_started:int;post_frames:int;post_started:int;
+ nonzero:int;closed_live:int;closed_words:int;closed_media:int;closed_audio:int;closed_active:int;
+}
+hms_good :: ()->HmsObserved {return HmsObserved.{frames=10,net=2,seat=0,recovered_frames=11,recoveries=1,recovered_net=2,recovered_seat=0,reloaded_frames=1,reloaded_net=2,reloaded_seat=0,retired_audio=1,post_frames=1,post_started=1,closed_audio=1};}

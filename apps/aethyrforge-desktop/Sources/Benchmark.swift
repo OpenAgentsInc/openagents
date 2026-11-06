@@ -8,11 +8,12 @@ extension ForgeApp {
     // Execute only SDK effects from the Coax-authored native measurement
     // plan. Coax reduces these raw clocks and decides the qualification.
     func measureMetal(_ planURL: URL) async throws {
-        guard let view = metalWorld, let host = view.host,
+        guard let view = metalWorld, var host = view.host,
               let plan = try JSONSerialization.jsonObject(with:Data(contentsOf:planURL)) as? [String:Any],
               plan["schema"] as? String == "aethyr.metal.window-plan.v1",
               let report = plan["report"] as? String else { throw ShellError.failed("Invalid native measurement plan.") }
         var observations: [[String:Any]] = []
+        var retirements: [[String:Any]] = []
         let started = ProcessInfo.processInfo.systemUptime
         let cpu = forge_process_cpu_ns(ProcessInfo.processInfo.processIdentifier)
         for op in plan["operations"] as? [[String:Any]] ?? [] {
@@ -32,6 +33,15 @@ extension ForgeApp {
             case "status": showStatus()
             case "world": enterWorld()
             case "focus": view.focus(op["focused"] as? Bool ?? false)
+            case "recover":
+                guard mf_recover(host) else { throw ShellError.failed("Native device recovery failed.") }
+            case "reload":
+                let audio = view.audio?.source
+                reloadWorld()
+                retirements.append(["ledgerLive":mf_closed_info(0),"ledgerWords":mf_closed_info(1),"mediaBytes":mf_closed_info(2),"audio":audio?.observations() ?? [:]])
+                guard let replacement = view.host else { throw ShellError.failed("Native reload did not open a replacement host.") }
+                host = replacement
+                try await waitForScene()
             case "resize": window.setContentSize(NSSize(width:(op["width"] as! NSNumber).doubleValue,height:(op["height"] as! NSNumber).doubleValue))
             case "snapshot": guard mf_snapshot(host,op["file"] as! String) else { throw ShellError.failed("Native snapshot failed.") }
             case "presented": guard mf_snapshot_presented(host,op["file"] as! String) else { throw ShellError.failed("Native display readback failed.") }
@@ -53,7 +63,8 @@ extension ForgeApp {
         let seconds = ProcessInfo.processInfo.systemUptime-started
         var result: [String:Any] = ["schema":"aethyr.metal.window-result.v1","observations":observations,"seconds":seconds,"cpuPercentOfOneCore":Double(forge_process_cpu_ns(ProcessInfo.processInfo.processIdentifier)-cpu)/1e9/seconds*100,"residentBytes":forge_process_resident_bytes(ProcessInfo.processInfo.processIdentifier),"displayFPS":window.screen?.maximumFramesPerSecond ?? 0,"preferredFPS":view.preferredHz,"visible":window.isVisible && window.occlusionState.contains(.visible),"thermal":ProcessInfo.processInfo.thermalState.rawValue,"lowPower":ProcessInfo.processInfo.isLowPowerModeEnabled,"firstFrameSeconds":firstFrameSeconds]
         let closedAudio = view.audio?.source
-        view.close(); result["closedLedgerLive"] = mf_closed_info(0); result["closedLedgerWords"] = mf_closed_info(1)
+        view.close(); result["closedLedgerLive"] = mf_closed_info(0); result["closedLedgerWords"] = mf_closed_info(1); result["closedMediaBytes"] = mf_closed_info(2)
+        result["retirements"] = retirements
         result["closedAudio"] = closedAudio?.observations() ?? [:]
         try JSONSerialization.data(withJSONObject:result,options:[.prettyPrinted,.sortedKeys]).write(to:URL(fileURLWithPath:report),options:.atomic)
         stopChildren(); NSApp.terminate(nil)
