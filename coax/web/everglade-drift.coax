@@ -90,10 +90,13 @@ btext :: (o: [] Buf) -> string { return cast(string) o[0].b[0..<o[0].n]; }
 // One page's record: its rows, its marks (name, first row, wall ms) and its words as they changed.
 DrMark :: struct { name: [24] u8; name_n: int; row: int; t: int; step: int; }
 DrText :: struct { t: int; which: int; text: [160] u8; n: int; }
+DR_FOLK :: 47; DR_FACTS :: 256;
+DrFolk :: struct { t: int; lo: int; hi: int; cond: [DR_FOLK] int; }
 DrPage :: struct {
   rows: [DR_ROWS * DR_COLS] int; n: int;
   marks: [DR_MARKS] DrMark; marks_n: int;
   texts: [DR_TEXTS] DrText; texts_n: int;
+  facts: [DR_FACTS] DrFolk; facts_n: int;
   hold_from: int = -1; hold_to: int = -1;   // the hold's length, not compared (dr_hold_window)
 }
 dr_at :: (p: [] DrPage, r: int, c: int) -> int { return p[0].rows[r * DR_COLS + c]; }
@@ -180,6 +183,64 @@ dr_way :: (pr: DrProbe, a: [] DrPage, b: [] DrPage, window: int, t0: int, t1: in
       v[0].mine = dr_at(a, first, pr.col); v[0].other = other[0]; v[0].by = by;
     }
   }
+}
+dr_folk_present :: (f: DrFolk, i: int) -> bool {
+  return ifx i < 24 then (f.lo & (1 << i)) != 0 else (f.hi & (1 << (i - 24))) != 0;
+}
+DrFolkMatch :: struct { seen: bool; ok: bool; other: int; }
+dr_folk_match :: (b: [] DrPage, i: int, t: int, window: int, want: int) -> DrFolkMatch {
+  out: DrFolkMatch;
+  for f: 0..<b[0].facts_n {
+    at := b[0].facts[f];
+    until := ifx f + 1 < b[0].facts_n then b[0].facts[f + 1].t else 1 << 60;
+    if at.t > t + window || until <= t - window || !dr_folk_present(at, i) { continue; }
+    out.seen = true; out.other = at.cond[i];
+    if at.cond[i] == want { out.ok = true; return out; }
+  }
+  return out;
+}
+dr_folk_way :: (a: [] DrPage, b: [] DrPage, window: int, t0: int, t1: int, v: [] DrVerdict) {
+  if a[0].facts_n < 1 || b[0].facts_n < 1 { v[0].drifted = true; v[0].step = "missing person observations"; return; }
+  run: [DR_FOLK] int; fact := 0; conditioned := false;
+  for r: 0..<a[0].n {
+    t := dr_at(a, r, C_T); if t < t0 || t > t1 { continue; }
+    while fact + 1 < a[0].facts_n && a[0].facts[fact + 1].t <= t { fact += 1; }
+    at := a[0].facts[fact]; if at.t > t { continue; }
+    for i: 0..<DR_FOLK {
+      if !dr_folk_present(at, i) { run[i] = 0; continue; }
+      match := dr_folk_match(b, i, t, window, at.cond[i]);
+      if !match.seen || match.ok { run[i] = 0; if match.ok && at.cond[i] != 0 { conditioned = true; } continue; }
+      run[i] += 1; v[0].frames += 1;
+      if run[i] == DR_RUN && !v[0].drifted {
+        v[0].drifted = true; v[0].t = t; v[0].step = dr_step_at(a, t); v[0].mine = at.cond[i]; v[0].other = match.other;
+        note: [1] Buf; bput(note[..], "person "); bint(note[..], i); bput(note[..], " has condition bits "); bint(note[..], at.cond[i]); bput(note[..], " versus "); bint(note[..], match.other);
+        for k: 0..<note[0].n { v[0].note[k] = note[0].b[k]; } v[0].note_n = note[0].n;
+      }
+    }
+  }
+  if !conditioned && !v[0].drifted { v[0].drifted = true; v[0].t = t0; v[0].step = "no shared conditioned person"; }
+}
+#test "conditions compare the same people rather than counting an out-of-view guard" {
+  a: [1] DrPage; b: [1] DrPage;
+  a[0].n = 8; b[0].n = 8; a[0].facts_n = 1; b[0].facts_n = 1;
+  a[0].facts[0] = DrFolk.{t = 0, lo = 1}; a[0].facts[0].cond[0] = 18432;
+  b[0].facts[0] = DrFolk.{t = 0, lo = 1, hi = 1024}; b[0].facts[0].cond[0] = 18432; b[0].facts[0].cond[34] = 18432;
+  for r: 0..<8 {
+    a[0].rows[r * DR_COLS + C_T] = 1000 + r * 33; b[0].rows[r * DR_COLS + C_T] = 1000 + r * 33;
+    a[0].rows[r * DR_COLS + C_ST] = 1000 + r * 33; b[0].rows[r * DR_COLS + C_ST] = 1000 + r * 33;
+    a[0].rows[r * DR_COLS + C_FCOND] = 1; b[0].rows[r * DR_COLS + C_FCOND] = 2;
+  }
+  v: [1] DrVerdict; dr_folk_way(a[..], b[..], 50, 1000, 1300, v[..]);
+  #assert !v[0].drifted;
+  b[0].facts[0].cond[0] = 256;
+  v[0] = DrVerdict.{}; dr_folk_way(a[..], b[..], 50, 1000, 1300, v[..]);
+  #assert v[0].drifted && v[0].mine == 18432 && v[0].other == 256;
+  // Equal totals cannot hide conditions swapped between two visible people.
+  a[0].facts[0].lo = 3; a[0].facts[0].cond[1] = 256;
+  b[0].facts[0].lo = 3; b[0].facts[0].cond[1] = 18432;
+  for r: 0..<8 { a[0].rows[r * DR_COLS + C_FCOND] = 2; b[0].rows[r * DR_COLS + C_FCOND] = 2; }
+  v[0] = DrVerdict.{}; dr_folk_way(a[..], b[..], 50, 1000, 1300, v[..]);
+  #assert v[0].drifted;
 }
 
 // The session's script: each step's name, then its keys. Both pages get each at once.
@@ -379,6 +440,18 @@ dr_pull :: (c: [] Cdp, pg: [] DrPage) -> bool {
     at += k;
   }
   pg[0].n = n;
+  if dr_int(c, "__dr.factsOverflow ? 1 : 0", 1) != 0 { return false; }
+  fv := cdp_evaluate(c, "__dr.facts");
+  if fv < 0 { return false; }
+  fd := cdp_doc(c); fe := fd.nodes[fv].first; pg[0].facts_n = 0;
+  while fe != -1 && pg[0].facts_n < DR_FACTS {
+    f := pg[0].facts[pg[0].facts_n..<pg[0].facts_n + 1];
+    f[0].t = jv_int(fd, jv_at(fd, fe, 0), -1); f[0].lo = jv_int(fd, jv_at(fd, fe, 1), 0); f[0].hi = jv_int(fd, jv_at(fd, fe, 2), 0);
+    bits := jv_at(fd, fe, 3);
+    for i: 0..<DR_FOLK { f[0].cond[i] = jv_int(fd, jv_at(fd, bits, i), -1); if f[0].cond[i] < 0 { return false; } }
+    pg[0].facts_n += 1; fe = fd.nodes[fe].next;
+  }
+  if fe != -1 || pg[0].facts_n < 1 { return false; }
   v := cdp_evaluate(c, "__dr.marks");
   if v >= 0 {
     d := cdp_doc(c); e := d.nodes[v].first; pg[0].marks_n = 0;
@@ -573,9 +646,11 @@ dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport, worker: b
   for pr: probes {
     win := window + (ifx pr.lossy then resend else 0);
     v: [1] DrVerdict;
-    dr_way(pr, a, b, win, t0, t1, v[..]);
+    if pr.col == C_FCOND { dr_folk_way(a, b, win, t0, t1, v[..]); }
+    else { dr_way(pr, a, b, win, t0, t1, v[..]); }
     w: [1] DrVerdict;
-    dr_way(pr, b, a, win, t0, t1, w[..]);
+    if pr.col == C_FCOND { dr_folk_way(b, a, win, t0, t1, w[..]); }
+    else { dr_way(pr, b, a, win, t0, t1, w[..]); }
     // the room's side drifting first is said as the room's value against offline's
     if w[0].drifted && (!v[0].drifted || w[0].t < v[0].t) { x := w[0]; x.mine = w[0].other; x.other = w[0].mine; x.frames += v[0].frames; v[0] = x; }
     else { v[0].frames += w[0].frames; }
@@ -812,6 +887,8 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
           cn: [1] Buf; bput(cn[..], run.dir); bput(cn[..], "/conds-"); bput(cn[..], profile); bput(cn[..], ifx side == 0 then "-offline.txt" else "-room.txt");
           ct: [65536] u8;
           _ := fs_write(btext(cn[..]), dr_str(ifx side == 0 then ca[..] else cb[..], "__dr.conds.join('\\n') + '\\n'", ct[..]));
+          cn[0].n = 0; bput(cn[..], run.dir); bput(cn[..], "/facts-"); bput(cn[..], profile); bput(cn[..], ifx side == 0 then "-offline.json" else "-room.json");
+          _ = fs_write(btext(cn[..]), dr_str(ifx side == 0 then ca[..] else cb[..], "JSON.stringify(__dr.facts)", ct[..]));
         }
         // when each key reached each page (wall ms CODE down|up): keys-PROFILE-offline.txt, -room.txt
         for side: 0..<2 {

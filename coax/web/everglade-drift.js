@@ -12,6 +12,7 @@
   addEventListener("pointermove", (e) => { if (e.buttons || document.pointerLockElement) D.look = 1; }, true);
   // each key as the page heard it (wall ms, its code, down or up): when the driver's press reached this page
   D.keys = [];
+  D.facts = []; D.factsOverflow = false;
   addEventListener("keydown", (e) => { if (!e.repeat) D.keys.push(Math.round(now()) + " " + e.code + " down"); }, true);
   addEventListener("keyup", (e) => D.keys.push(Math.round(now()) + " " + e.code + " up"), true);
   // a row's columns, in order (the driver reads them by these names)
@@ -98,6 +99,8 @@
         const fcs = fc.join(" ");
         if (fcs !== D.fcond) {
           D.fcond = fcs;
+          const bits = []; for (let i = 0; i < 47; i++) bits.push(fp(100 + i));
+          if (D.facts.length < 256) D.facts.push([t, r0, r1, bits]); else D.factsOverflow = true;
           if (D.conds.length < 2000) D.conds.push(t + " " + fcs + " you_mm=" + fp(0) + "," + fp(2)
             + " npc0_cm=" + np(600) + "," + np(601) + " bot0_cm=" + np(8) + "," + np(9));
         }
