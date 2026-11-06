@@ -1,0 +1,45 @@
+coax: note[E0400]: compile-time steps: 159208968 of 200000000 used (79%), above three quarters of the limit; more than 200000000 fails with E0400
+  top users of compile-time steps:
+    24133040 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/aethyr/rigid.coax:61:1  in 'd3_dot' (1270160 times)
+    21062652 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/aethyr/rigid.coax:50:1  in 'd3' (3510442 times)
+    20487078 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/aethyr/rigid.coax:55:1  in 'd3_add' (1138171 times)
+    18211200 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/aethyr/rigid.coax:57:1  in 'd3_scale' (1214080 times)
+    14929308 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/aethyr/rigid.coax:62:1  in 'd3_cross' (414703 times)
+  fix: do less work in 'd3_dot', split the check, or give it a larger budget with a larger #steps N on the check
+coax: note[E0400]: compile-time traversal work: 130103484 of 134217728 used (96%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    35766276 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/apps/openagents-web/everglade5e-room-raid.coax:170:1  in 'e5rd_up' (121654 times)
+    7370955 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/apps/openagents-web/everglade-raid-tactics.coax:571:10  copying arguments into 'rt_blocked_in' (387945 calls)
+    6605160 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/apps/openagents-web/everglade5e-room-raid.coax:801:1  in 'e5rd_step' (2600 times)
+    5526212 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/apps/openagents-web/everglade5e-room-raid.coax:1129:1  #test 'room raid: squads at every gate and the bridge go round the walls, towers, buildings and trees, through the wall only by a gate or where the town's wall is broken, and home again (#12747)' itself
+    5275872 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/apps/openagents-web/everglade5e-room-raid.coax:156:46  copying arguments into 'e5rd_is' (251232 calls)
+  fix: copy fewer whole arrays and structs in 'e5rd_up' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+coax: note[E0400]: compile-time steps: 833666462 of 900000000 used (92%), above three quarters of the limit; more than 900000000 fails with E0400
+  top users of compile-time steps:
+    462346508 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/verse/everglade/plan.coax:606:1  in 'everglade_in_woods' (186824 times)
+    245921792 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/aethyr/terrain.coax:114:1  in 'shaped' (62658 times)
+    32609782 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/apps/openagents-web/everglade-sky.coax:34:1  in 'sky_bake' (2 times)
+    17599794 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/apps/openagents-web/everglade.coax:587:1  in 'water_grid_build' (2 times)
+    11047036 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/apps/openagents-web/everglade-sky.coax:26:1  in 'sky_ball' (424886 times)
+  fix: do less work in 'everglade_in_woods', split the check, or give it a larger budget with a larger #steps N on the check
+coax: note[E0400]: compile-time traversal work: 117615478 of 134217728 used (87%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    40147254 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/aethyr/rigid.coax:50:1  in 'd3' (6691209 times)
+    8323332 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/verse/demolish.coax:1831:1  in 'demo_apart' (570578 times)
+    5909515 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/verse/demolish.coax:1595:1  in 'demo_pair' (31491 times)
+    4554664 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/aethyr/rigid.coax:125:9  copying arguments into 'd3_dot' (569333 calls)
+    4554664 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/aethyr/rigid.coax:126:65  copying arguments into 'd3_dot' (569333 calls)
+  fix: copy fewer whole arrays and structs in 'd3' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+coax: note[E0400]: compile-time steps: 21749884 of 28000000 used (77%), above three quarters of the limit; more than 28000000 fails with E0400
+  top users of compile-time steps:
+    3325140 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/aethyr/query.coax:59:1  in 'query_finite' (255780 times)
+    2853176 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/aethyr/walk.coax:399:1  in 'step' (8820 times)
+    2143260 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/aethyr/locomotion.coax:72:1  in 'locomotion_profile_ok' (8820 times)
+    1852200 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/aethyr/locomotion.coax:69:1  in 'locomotion_finite' (132300 times)
+    1058400 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit/source/aethyr/collide.coax:164:1  in 'collide_move' (8820 times)
+  fix: do less work in 'query_finite', split the check, or give it a larger budget with a larger #steps N on the check
+room: start check: 0 fields off their defaults, the same from any memory
+built /tmp/oa-12960/apps/openagents-web/build/fast-edit/oracle-room
+real 737.25
+user 1448.60
+sys 15.42

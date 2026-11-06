@@ -1,0 +1,11 @@
+Linux x86_64
+CPU(s):                                  28
+Model name:                              Intel(R) Core(TM) i7-14700K
+CPU(s) scaling MHz:                      58%
+coax0 0.51.2
+088782b2838c3119eeb5b352f9ef36144d08171da8b910e1a0a79d93e401ee4e  coax/bin/coax
+dc7e9a786b609e9908a1229f9e8b278f26d5effeec8f2e398b7240bcd009d327  apps/openagents-web/build/fast-edit/room
+50da3fc2c8f52db818ac44933d9c570055d8750abc0ffea17d27bc5d75df8e14  apps/openagents-web/build/fast-edit/hot-base.wasm
+49f63c394ec6e4400beb1e80bbafc2c005eb90a3c4d0024274a162784d9ed4ed  apps/openagents-web/build/fast-edit/oracle-room
+62b5859b17f9f527e9d62c72730412edd72955d72cfa58dbdd382651c4a35002  apps/openagents-web/build/fast-edit/oracle/everglade5e.wasm
+599558ee039267a782571c4f6b87c22ad508308b

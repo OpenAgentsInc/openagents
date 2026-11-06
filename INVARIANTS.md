@@ -5209,6 +5209,20 @@ for `#authority` files, after an edit. `coax c` of Everglade, Newland and
 the CLI gives byte-identical C cold, warm and after an edit (the commit
 records it).
 
+## Development body replacement keeps the resident host and requires a source proof
+
+The explicit Everglade scalar experiment in `coax/web/fast-edit.coax` seals
+the compiler, source graphs, SDK, toolchains and all bytes outside `door_ease`.
+Its closed f32 candidate receives no host pointers. The native room publishes
+between complete Coax calls; the page publishes between animation frames and
+refuses an active Wasm room worker. A rejected offer retains the old callable.
+The guarded commit command requires completed room/page checks for the exact
+current source and matching index bytes. Background failure appears in the
+development session. Ordinary builds retain their existing checking path.
+The Linux/native and Wasm observations, mutation gates and full-build comparison
+are in `docs/verification/fast-edit-2026-11-06/`. General replacement and migration
+remain roadmap R26–R27 work.
+
 ## CPU reflection lowers to bounded ordinary values
 
 `type_info`, `field_info` and `enum_info` are implemented in the Coax parser

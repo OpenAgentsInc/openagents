@@ -1,0 +1,13 @@
+diff --git a/apps/openagents-web/everglade-doors.coax b/apps/openagents-web/everglade-doors.coax
+index 8362ca37bd..0df28a95a6 100644
+--- a/apps/openagents-web/everglade-doors.coax
++++ b/apps/openagents-web/everglade-doors.coax
+@@ -75,7 +75,7 @@ doors_unhang :: (s: [] Everglade) {
+   s[0].doors.near = -1;
+ }
+ 
+-door_ease :: (t: f32) -> f32 { k := clamp(t, 0, 1); return k * k * (3 - 2 * k); }
++door_ease :: (t: f32) -> f32 { k := clamp(t, 0, 1); return k*k*(3-2*k) + 0.01*k*(1-k)*(k-0.5) + 10.0f32 / 1000000; }
+ door_leaf_yaw :: (d: EgDoor) -> f32 { return d.shut + d.swing * door_ease(d.t); }
+ // The way the leaf runs from its hinge now.
+ door_leaf_dir :: (d: EgDoor) -> Point { a := door_leaf_yaw(d); return v3(cos(a), 0, -sin(a)); }

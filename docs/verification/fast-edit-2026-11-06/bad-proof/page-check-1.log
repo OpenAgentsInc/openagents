@@ -1,0 +1,21 @@
+/tmp/oa-12960/apps/openagents-web/build/fast-edit-bad/source/apps/openagents-web/everglade-doors.coax:337:5: error[E0406]: assertion failed
+      #assert abs(g[0].objects[o] - cos(a)) < 0.0001 && abs(g[0].objects[o + 2] - sin(a)) < 0.0001;
+      ^
+  note: in #test doors: E at each door opens it, E again shuts it, and nothing else happens
+1 error
+coax: note[E0400]: compile-time steps: 19343034 of 20000000 used (96%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    15744112 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit-bad/source/aethyr/render/package.coax:178:1  in 'render_package_spirv_bytes' (30 times)
+    573375 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit-bad/source/coax/lib/json/json.coax:258:1  in 'jv_raw_eq' (9525 times)
+    477240 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit-bad/source/coax/lib/json/json.coax:165:1  in 'jv_string_end' (1650 times)
+    360975 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit-bad/source/coax/lib/json/json.coax:77:1  in 'jv_parse' (15 times)
+    291750 steps  /tmp/oa-12960/apps/openagents-web/build/fast-edit-bad/source/coax/lib/crypto/sha256-kernel.coax:63:1  in 'S_compress' (30 times)
+  fix: do less work in 'render_package_spirv_bytes', split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+coax: note[E0400]: compile-time traversal work: 117615478 of 134217728 used (87%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    40147254 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit-bad/source/aethyr/rigid.coax:50:1  in 'd3' (6691209 times)
+    8323332 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit-bad/source/verse/demolish.coax:1831:1  in 'demo_apart' (570578 times)
+    5909515 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit-bad/source/verse/demolish.coax:1595:1  in 'demo_pair' (31491 times)
+    4554664 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit-bad/source/aethyr/rigid.coax:125:9  copying arguments into 'd3_dot' (569333 calls)
+    4554664 visits  /tmp/oa-12960/apps/openagents-web/build/fast-edit-bad/source/aethyr/rigid.coax:126:65  copying arguments into 'd3_dot' (569333 calls)
+  fix: copy fewer whole arrays and structs in 'd3' (pass a view or an index, assign single fields); or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)

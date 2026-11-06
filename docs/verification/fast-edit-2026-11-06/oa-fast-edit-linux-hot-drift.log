@@ -1,0 +1,172 @@
+everglade-drift: room 127.0.0.1:9060, page 127.0.0.1:9061, results in /tmp/oa-fast-edit-hot-drift
+profile local: round trip 0 ms
+  step start
+  step crate
+  step strafe
+  step walk
+  step jump
+  step rg
+  step wos
+  step ww
+  step held
+  step folk
+  step end
+  (offline room host: 0 stalls, 0 ms of its beat dropped)
+  (native room tick: p95 1140 us, p99 1170 us, budget 8000 us at p95: within)
+ok    local position (in your heading, since the step)
+ok    local camera heading
+ok    local lift height
+ok    local Reverse Gravity shown
+ok    local Reverse Gravity particles
+ok    local Wind Wall shown
+ok    local Wind Wall particles
+ok    local Wall of Stone shown
+ok    local Wall of Stone panels
+ok    local spell and condition particles
+ok    local hotbar slots
+ok    local condition on you
+ok    local condition on others
+ok    local conditions on the town's people
+ok    local your engine conditions
+ok    local stables down
+ok    local plate text
+ok    local status lines
+ok    local camera jump, offline
+ok    local camera jump, room
+ok    local camera turn with no look, offline
+ok    local camera turn with no look, room
+ok    local corrections
+ok    local a townsperson held
+ok    local NPC speed against clip
+  step raid
+  step fight
+  step end
+ok    local stables collapse, offline raid
+ok    local stables collapse, room raid
+ok    local level up through XP
+ok    local hotbar follows the level
+profile 100: round trip 100 ms, jitter 30 ms, 2% lost
+  step start
+  step crate
+  step strafe
+  step walk
+  step jump
+  step rg
+  step wos
+  step ww
+  step held
+  step folk
+  step end
+  (offline room host: 0 stalls, 0 ms of its beat dropped)
+  (native room tick: p95 1160 us, p99 1180 us, budget 8000 us at p95: within)
+ok    100 position (in your heading, since the step)
+ok    100 camera heading
+ok    100 lift height
+ok    100 Reverse Gravity shown
+ok    100 Reverse Gravity particles
+ok    100 Wind Wall shown
+ok    100 Wind Wall particles
+ok    100 Wall of Stone shown
+ok    100 Wall of Stone panels
+ok    100 spell and condition particles
+ok    100 hotbar slots
+ok    100 condition on you
+ok    100 condition on others
+ok    100 conditions on the town's people
+ok    100 your engine conditions
+ok    100 stables down
+ok    100 plate text
+ok    100 status lines
+ok    100 camera jump, offline
+ok    100 camera jump, room
+ok    100 camera turn with no look, offline
+ok    100 camera turn with no look, room
+ok    100 corrections
+ok    100 a townsperson held
+ok    100 NPC speed against clip
+  step raid
+  step fight
+  step end
+ok    100 stables collapse, offline raid
+ok    100 stables collapse, room raid
+ok    100 level up through XP
+ok    100 hotbar follows the level
+profile 250: round trip 250 ms, jitter 30 ms, 2% lost
+  step start
+  step crate
+  step strafe
+  step walk
+  step jump
+  step rg
+  step wos
+  step ww
+  step held
+  step folk
+  step end
+  (offline room host: 0 stalls, 0 ms of its beat dropped)
+  (native room tick: p95 1050 us, p99 1080 us, budget 8000 us at p95: within)
+ok    250 position (in your heading, since the step)
+ok    250 camera heading
+ok    250 lift height
+ok    250 Reverse Gravity shown
+ok    250 Reverse Gravity particles
+ok    250 Wind Wall shown
+ok    250 Wind Wall particles
+ok    250 Wall of Stone shown
+ok    250 Wall of Stone panels
+ok    250 spell and condition particles
+ok    250 hotbar slots
+ok    250 condition on you
+ok    250 condition on others
+ok    250 conditions on the town's people
+ok    250 your engine conditions
+ok    250 stables down
+ok    250 plate text
+ok    250 status lines
+ok    250 camera jump, offline
+ok    250 camera jump, room
+ok    250 camera turn with no look, offline
+ok    250 camera turn with no look, room
+ok    250 corrections
+ok    250 a townsperson held
+ok    250 NPC speed against clip
+  step raid
+  step fight
+  step end
+ok    250 stables collapse, offline raid
+ok    250 stables collapse, room raid
+ok    250 level up through XP
+ok    250 hotbar follows the level
+
+| probe | local | 100 | 250 |
+|---|---|---|---|
+| position (in your heading, since the step) | ok | ok | ok |
+| camera heading | ok | ok | ok |
+| lift height | ok | ok | ok |
+| Reverse Gravity shown | ok | ok | ok |
+| Reverse Gravity particles | ok | ok | ok |
+| Wind Wall shown | ok | ok | ok |
+| Wind Wall particles | ok | ok | ok |
+| Wall of Stone shown | ok | ok | ok |
+| Wall of Stone panels | ok | ok | ok |
+| spell and condition particles | ok | ok | ok |
+| hotbar slots | ok | ok | ok |
+| condition on you | ok | ok | ok |
+| condition on others | ok | ok | ok |
+| conditions on the town's people | ok | ok | ok |
+| your engine conditions | ok | ok | ok |
+| stables down | ok | ok | ok |
+| plate text | ok | ok | ok |
+| status lines | ok | ok | ok |
+| camera jump, offline | ok | ok | ok |
+| camera jump, room | ok | ok | ok |
+| camera turn with no look, offline | ok | ok | ok |
+| camera turn with no look, room | ok | ok | ok |
+| corrections | ok | ok | ok |
+| a townsperson held | ok | ok | ok |
+| NPC speed against clip | ok | ok | ok |
+| stables collapse, offline raid | ok | ok | ok |
+| stables collapse, room raid | ok | ok | ok |
+| level up through XP | ok | ok | ok |
+| hotbar follows the level | ok | ok | ok |
+holds

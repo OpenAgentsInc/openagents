@@ -138,6 +138,7 @@ Books: #12610 stays open and paused. Approved books work is #12947 and the runna
 | #12958 | Completed by `3b5548bf98`: seed comparison uses stage0; the native math oracle uses a final compiler. Mac and Linux pass. |
 | #12951 | Completed by `b08d3a16a4`: cold, warm and check-level reuse preserve near-limit diagnostics in Coax 0.51.1. Verification below. |
 | #12961 | Completed by `eae6049b87`: Coax 0.51.2 measures peaks against each phase's limits. Retained live storage still counts; sequential, parallel and reused notes agree. Verification below. |
+| #12960 | Completed: a real shared door-rule edit reaches the native room and page in 900.5 ms median over ten runs. Both replaced and full builds pass all three drift profiles with raids; failed checks appear in the session and block the guarded commit. Verification below. |
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
 | #12845 | Open, with no agent. It still needs commands, accepted results and replication behind shared interfaces, profiles for collision and per-recipient fields, Orbit League sharing more than the timing profile, and the book's adoption inventory. |
 | #12910 | Nostr chapter 104 on signet. Blocked on the signet faucet's captcha, which is in NEEDS_OWNER.md. |
@@ -391,3 +392,28 @@ registry and tools checks pass.
 Commands, compiler qualification and book checks are in
 [the verification record](../verification/phase-peaks-2026-11-05/checks.txt).
 No deployment or owner sign-off runs. No new bug is found.
+
+## #12960 verification (2026-11-06)
+
+The development door-rule replacement reaches ordinary native collision calls
+and a later page frame in 900.5 ms median across ten distinct source edits on
+coderos-4080. Every sample is below one second. The page retains its engine,
+state address and seat. The real rule changes; observation probes do not count
+as ordinary gameplay calls.
+
+The admission and publication gates kill 315 and 6 root mutants. Physical
+process-lock checks pass on Mac and Linux, with ASan/UBSan/LSan on Linux.
+All 662 room checks pass. The edited page passes 1,352 checks, reusing 1,197
+and running 155 in the background. The replaced and clean full builds each
+pass local, 100 ms and 250 ms drift with three bots and raids. The full release
+Wasm is 2,030,740 bytes against its unchanged 2,150,000-byte budget.
+
+A deliberately broken body fails the real door check. The session displays
+the failure, the guarded dry-run commit refuses, and HEAD stays unchanged.
+The long checker and its browser observation run as separate bounded steps.
+Unsupported context or interface edits require the ordinary full rebuild.
+General R26/R27 replacement and migration remain separate.
+
+The commands, raw samples, complete check reports and artifact hashes are in
+[the verification record](../verification/fast-edit-2026-11-06/README.md).
+No deployment or owner sign-off runs. No separate bug issue is filed.

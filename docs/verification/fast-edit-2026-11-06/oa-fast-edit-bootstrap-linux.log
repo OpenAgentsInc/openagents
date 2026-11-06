@@ -1,0 +1,150 @@
+In file included from src/eval.cpp:24,
+                 from src/main.cpp:110:
+src/../bootstrap/strict-math.c:5: warning: ignoring '#pragma STDC FP_CONTRACT' [-Wunknown-pragmas]
+    5 | #pragma STDC FP_CONTRACT OFF
+In file included from src/main.cpp:108:
+src/check.cpp: In function 'void coax::attach_check_input(File*, zvec<coax_t_PS_Node>&, const std::vector<void*>&, int64_t)':
+src/check.cpp:168:5: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  168 |     if(v.kind==17 && v.width)n.type=v.width==32?6:7;if(v.kind==69)n.field_index=0;
+      |     ^~
+src/check.cpp:168:53: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+  168 |     if(v.kind==17 && v.width)n.type=v.width==32?6:7;if(v.kind==69)n.field_index=0;
+      |                                                     ^~
+In file included from src/main.cpp:111:
+src/emit_c.cpp: In function 'std::string coax::debug_source_hash(const std::string&)':
+src/emit_c.cpp:4063:57: warning: unused parameter 'text' [-Wunused-parameter]
+ 4063 | static std::string debug_source_hash(const std::string &text) {
+      |                                      ~~~~~~~~~~~~~~~~~~~^~~~
+In file included from src/main.cpp:113:
+src/effects.cpp: In function 'bool coax::effects_report(const Source*, const File*, const EmitOptions&, const std::string&, std::string*)':
+src/effects.cpp:128:55: warning: unused parameter 'file' [-Wunused-parameter]
+  128 | static bool effects_report(const Source *,const File *file,const EmitOptions &opts,const std::string &selected,std::string *text) {
+      |                                           ~~~~~~~~~~~~^~~~
+src/main.cpp: In function 'std::string coax::compiler_hash()':
+src/main.cpp:1317:15: warning: variable 'known' set but not used [-Wunused-but-set-variable]
+ 1317 |   static bool known = false;
+      |               ^~~~~
+src/main.cpp: In function 'int coax::main_impl(int, char**)':
+src/main.cpp:2434:7: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+ 2434 |       if (g_error_count && !g_json_errors) fprintf(stderr,"%d error%s\n",g_error_count,g_error_count==1?"":"s");return 1;
+      |       ^~
+src/main.cpp:2434:113: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+ 2434 |       if (g_error_count && !g_json_errors) fprintf(stderr,"%d error%s\n",g_error_count,g_error_count==1?"":"s");return 1;
+      |                                                                                                                 ^~~~~~
+coax bootstrap:     0 s  stage0 test release-model.coax
+coax bootstrap:     0 s  stage0 mutate release-model.coax
+coax bootstrap:     1 s  stage0 test changelog-model.coax
+coax bootstrap:     0 s  stage0 mutate changelog-model.coax --root-only
+coax bootstrap:     0 s  stage0 test lib/compiler/budget.coax
+coax bootstrap:     0 s  stage0 test lib/compiler/strict-math.coax --library
+coax bootstrap:     0 s  stage0 mutate lib/compiler/budget.coax
+coax bootstrap:     0 s  stage0 test lib/compiler/check-domains.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/check-domains.coax --root-only
+coax bootstrap:     0 s  stage0 test lib/compiler/profiles.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/profiles.coax
+coax bootstrap:     0 s  stage0 test lib/compiler/provenance.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/provenance.coax
+coax bootstrap:     0 s  stage0 test lib/compiler/mutation-schedule.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/mutation-schedule.coax
+coax bootstrap:     1 s  stage0 test lib/compiler/compute.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/compute.coax
+coax bootstrap:     0 s  stage0 test lib/compiler/effects.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/effects.coax --root-only
+coax bootstrap:     0 s  stage0 test lib/compiler/quantity.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/quantity.coax --root-only
+coax bootstrap:     0 s  stage0 test lib/compiler/native-checks.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/native-checks.coax
+coax bootstrap:     0 s  stage0 test lib/compiler/native-execution.coax
+coax bootstrap:     1 s  stage0 mutate lib/compiler/native-execution.coax --root-only
+coax bootstrap:     0 s  stage0 test lib/compiler/quantified-execution.coax
+coax bootstrap:     1 s  stage0 mutate lib/compiler/quantified-execution.coax --root-only
+coax bootstrap:     1 s  stage0 test lib/compiler/native-semantics.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/native-semantics.coax --root-only
+coax bootstrap:     1 s  stage0 test lib/compiler/spirv.coax
+coax bootstrap:     2 s  stage0 mutate lib/compiler/spirv.coax
+coax bootstrap:     2 s  stage0 test lib/compiler/shader.coax
+coax bootstrap:    31 s  stage0 mutate lib/compiler/shader.coax
+coax bootstrap:     0 s  stage0 test lib/compiler/wgsl.coax
+coax bootstrap:     6 s  stage0 mutate lib/compiler/wgsl.coax
+coax bootstrap:     2 s  stage0 test lib/compiler/metal-shader.coax
+coax bootstrap:    11 s  stage0 mutate lib/compiler/metal-shader.coax --root-only
+coax bootstrap:    10 s  stage0 test lib/compiler/lexer.coax
+coax bootstrap:     6 s  stage0 mutate lib/compiler/lexer.coax
+coax bootstrap:     1 s  stage0 test lib/compiler/sources.coax
+coax bootstrap:     0 s  stage0 mutate lib/compiler/sources.coax
+coax bootstrap:     1 s  stage0 test lib/compiler/parser.coax
+coax bootstrap:     1 s  stage0 mutate lib/compiler/parser.coax
+coax bootstrap:    53 s  stage0 test lib/compiler/checker.coax
+coax bootstrap:   106 s  stage0 mutate lib/compiler/checker.coax
+coax bootstrap:     1 s  stage0 test lib/proto/wire.coax
+coax bootstrap:     0 s  stage0 mutate lib/proto/wire.coax
+coax bootstrap:     0 s  stage0 test lib/crypto/sha256-kernel.coax
+coax bootstrap:     0 s  stage0 mutate lib/crypto/sha256-kernel.coax
+coax bootstrap:     0 s  stage0 test lib/proto/fingerprint.coax
+coax bootstrap:     0 s  stage0 mutate lib/proto/fingerprint.coax
+coax bootstrap:     2 s  stage0 test lib/proto/importer.coax
+coax bootstrap:     6 s  stage0 mutate lib/proto/importer.coax
+coax: note[E0400]: compile-time steps: 18320317 of 20000000 used (91%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    8160102 steps  lib/proto/importer.coax:188:1  in 'D_var' (160002 times)
+    5120064 steps  lib/proto/importer.coax:198:1  in 'D_scan' (80001 times)
+    3040057 steps  lib/proto/importer.coax:211:1  in 'D_object' (2 times)
+    720009 steps  lib/proto/importer.coax:161:1  in 'D_wire_number' (80001 times)
+    720006 steps  lib/proto/importer.coax:160:1  in 'D_work' (80001 times)
+  fix: do less work in 'D_var', split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+In file included from src/eval.cpp:24,
+                 from src/main.cpp:110:
+src/../bootstrap/strict-math.c:5: warning: ignoring '#pragma STDC FP_CONTRACT' [-Wunknown-pragmas]
+    5 | #pragma STDC FP_CONTRACT OFF
+In file included from src/main.cpp:108:
+src/check.cpp: In function 'void coax::attach_check_input(File*, zvec<coax_t_PS_Node>&, const std::vector<void*>&, int64_t)':
+src/check.cpp:168:5: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  168 |     if(v.kind==17 && v.width)n.type=v.width==32?6:7;if(v.kind==69)n.field_index=0;
+      |     ^~
+src/check.cpp:168:53: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+  168 |     if(v.kind==17 && v.width)n.type=v.width==32?6:7;if(v.kind==69)n.field_index=0;
+      |                                                     ^~
+In file included from src/main.cpp:113:
+src/effects.cpp: In member function 'void coax::{anonymous}::EffectFacts::expression(const coax::Expr*, bool)':
+src/effects.cpp:66:9: warning: this 'for' clause does not guard... [-Wmisleading-indentation]
+   66 |         for(const Expr *arg:e->args)expression(arg);return;
+      |         ^~~
+src/effects.cpp:66:53: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'for'
+   66 |         for(const Expr *arg:e->args)expression(arg);return;
+      |                                                     ^~~~~~
+src/effects.cpp: In static member function 'static bool coax::{anonymous}::EffectFacts::overlap(const void*, size_t, const void*, size_t)':
+src/effects.cpp:117:5: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  117 |     if(!an||!bn)return false;auto x=(uintptr_t)a,y=(uintptr_t)b;return x<=y?y-x<an:x-y<bn;
+      |     ^~
+src/effects.cpp:117:30: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+  117 |     if(!an||!bn)return false;auto x=(uintptr_t)a,y=(uintptr_t)b;return x<=y?y-x<an:x-y<bn;
+      |                              ^~~~
+src/main.cpp: In function 'int coax::main_impl(int, char**)':
+src/main.cpp:2434:7: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+ 2434 |       if (g_error_count && !g_json_errors) fprintf(stderr,"%d error%s\n",g_error_count,g_error_count==1?"":"s");return 1;
+      |       ^~
+src/main.cpp:2434:113: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the 'if'
+ 2434 |       if (g_error_count && !g_json_errors) fprintf(stderr,"%d error%s\n",g_error_count,g_error_count==1?"":"s");return 1;
+      |                                                                                                                 ^~~~~~
+coax: note[E0400]: compile-time steps: 18320317 of 20000000 used (91%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    8160102 steps  lib/proto/importer.coax:188:1  in 'D_var' (160002 times)
+    5120064 steps  lib/proto/importer.coax:198:1  in 'D_scan' (80001 times)
+    3040057 steps  lib/proto/importer.coax:211:1  in 'D_object' (2 times)
+    720009 steps  lib/proto/importer.coax:161:1  in 'D_wire_number' (80001 times)
+    720006 steps  lib/proto/importer.coax:160:1  in 'D_work' (80001 times)
+  fix: do less work in 'D_var', split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+coax bootstrap:     0 s  coax test lib/compiler/budget.coax
+coax bootstrap:     0 s  coax test lib/compiler/strict-math.coax --library
+coax bootstrap:     0 s  coax test lib/compiler/check-domains.coax
+coax bootstrap:     0 s  coax test lib/compiler/profiles.coax
+coax bootstrap:     0 s  coax test lib/compiler/provenance.coax
+coax bootstrap:     0 s  coax test lib/compiler/mutation-schedule.coax
+coax bootstrap:     5 s  coax test lib/compiler/lexer.coax
+coax bootstrap:     1 s  coax test lib/compiler/parser.coax
+coax bootstrap:    38 s  coax test lib/compiler/checker.coax
+coax bootstrap:     0 s  coax test lib/compiler/sources.coax
+coax bootstrap:     0 s  coax test lib/compiler/native-checks.coax
+coax bootstrap:     0 s  coax test lib/compiler/native-execution.coax
+coax bootstrap:     0 s  coax test lib/compiler/quantified-execution.coax
+coax bootstrap:     1 s  coax test lib/compiler/native-semantics.coax

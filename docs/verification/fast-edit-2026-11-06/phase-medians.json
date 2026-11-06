@@ -1,0 +1,11 @@
+{
+  "edit_to_running_ms": 900.5,
+  "validation_ms": 326.5,
+  "coax_ms": 4,
+  "native_ms": 78.5,
+  "wasm_ms": 78,
+  "parallel_ms": 80.5,
+  "publish_ms": 316,
+  "build_ms": 720.5,
+  "control_and_observation_ms": 184.5
+}
