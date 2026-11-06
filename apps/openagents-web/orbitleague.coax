@@ -1514,7 +1514,10 @@ room_socket :: (s: [] OrbitLeague, kind: int, text: string) -> bool {
     }
   }
   if e.event == SOCKET_FRAME { room_heard(s, text); }
-  if e.event == SOCKET_CLOSED || e.event == SOCKET_ERROR { s[0].sock_open = false; s[0].sock = -1; s[0].sock_state = ROOM_LOST; }
+  if e.event == SOCKET_CLOSED || e.event == SOCKET_ERROR {
+    s[0].sock_open = false; s[0].sock = -1; s[0].sock_state = ROOM_LOST;
+    if s[0].room_authority {game_blur(s);}
+  }
   return true;
 }
 // A state from the server: the ball, the other car, the score and the phase.
@@ -1622,6 +1625,11 @@ room_send :: (s: [] OrbitLeague, dt: f64) {
 room_authority_end :: (s:[]OrbitLeague) {
   if s[0].sock>=0 {closed:=pipe_close(s[0].pipe[..],s[0].sock);}
   s[0].sock_open=false;s[0].sock=-1;s[0].sock_state=ROOM_LOST;
+  game_blur(s);
+}
+room_connection_text :: (s:[]OrbitLeague)->string {
+  if s[0].sock_state==ROOM_LOST && s[0].room_authority {return "ROOM CONNECTION LOST. RELOAD TO REJOIN";}
+  return ifx s[0].sock_state==ROOM_LOST then "LOST THE ROOM: PLAYING ON YOUR OWN" else "JOINING THE ROOM";
 }
 room_authority_body :: (v:[]s32,old:RigidBody)->RigidBody {
   b:=old;b.pos=d3(f64(cast(int)v[0])/1000,f64(cast(int)v[1])/1000,f64(cast(int)v[2])/1000);
@@ -1641,6 +1649,10 @@ room_authority_take :: (s:[]OrbitLeague,text:string) {
   }
   s[0].seat=seat;s[0].room_generation=SeatGeneration.{value=frame.h[2]};s[0].room_tick=frame.h[0];s[0].room_ack=frame.h[3];
   s[0].heard+=1;s[0].sock_state=ROOM_IN;s[0].phase=frame.h[5];s[0].phase_t=f64(frame.h[6])/1000;s[0].clock=f64(frame.h[7])/1000;
+  // Presentation derives spin from the authoritative match clock. It cannot refill fuel or
+  // advance physics; those remain server state. URL-only offline spin settings do not select v2 rules.
+  s[0].played=MATCH_TIME-s[0].clock;s[0].spin_every=SPIN_EVERY;s[0].spin_g=1;
+  s[0].spin_now=spin_share(s[0].played,SPIN_EVERY);s[0].field.scale=s[0].spin_now;
   s[0].score[0]=mine;s[0].score[1]=theirs;s[0].kicks=frame.h[10];s[0].ball_err=D3_ZERO;s[0].oth_n=0;
   s[0].bodies[BALL]=room_view(room_authority_body(frame.v[0..<ORB_FIELDS],s[0].bodies[BALL]),seat);
   fourth:=false;
@@ -2012,7 +2024,10 @@ game_key :: (s: [] OrbitLeague, key: int, mods: int) -> bool #export_c {
   if s[0].clip_play { return true; }
   track_key(s[0].track[..], key, false);
   h := hold_of(key);
-  if h != 0 { s[0].held |= h; return true; }
+  if h != 0 {
+    if s[0].online && s[0].room_authority && s[0].sock_state==ROOM_LOST {return false;}
+    s[0].held |= h; return true;
+  }
   if key == 'c' || key == 'C' { toggle_cam(s); return true; }
   if key == KEY_ESCAPE { leave(s); return true; }
   if key == KEY_ENTER && s[0].phase == PHASE_OVER { play_again(s); return true; }
@@ -2441,7 +2456,7 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
     v = hud_button(s, out, v, BTN_CLIP, cb, ifx s[0].clip_play then "PLAY ORBIT LEAGUE" else ifx copied then "LINK COPIED" else "SAVE CLIP", 8 * k);
   }
   if s[0].online && s[0].sock_state != ROOM_IN {
-    v = centred(d, out, v, ifx s[0].sock_state == ROOM_LOST then "LOST THE ROOM: PLAYING ON YOUR OWN" else "JOINING THE ROOM", w * 0.5, h * 0.3 + 70 * k, 9 * k, white(k, 0.8));
+    v = centred(d, out, v, room_connection_text(s), w * 0.5, h * 0.3 + 70 * k, 9 * k, white(k, 0.8));
   }
   if s[0].phase == PHASE_OVER {
     won := s[0].score[0] > s[0].score[1];
@@ -2459,7 +2474,7 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
     }
   }
   // a clip only plays: none of the driving's controls
-  if !s[0].clip_play {
+  if !s[0].clip_play && !(s[0].online && s[0].room_authority && s[0].sock_state==ROOM_LOST) {
   // boost, bottom right (above the buttons on a phone)
   fuel := cast(f32) s[0].tanks[0].fuel;
   n = put_int(buf[..], 0, cast(int) fuel);
@@ -3239,6 +3254,17 @@ drum_game :: (s: [] OrbitLeague) {
   room_take(s[..],future);#assert s[0].heard==1 && s[0].room_present[0] && s[0].room_generation.value==7;
   s[0].room_seq=18;room_take(s[..],future);
   #assert s[0].heard==2 && s[0].room_tick==10 && !s[0].room_present[0] && s[0].bodies[BOT].pos.y< -100;
+}
+#test "Orbit v2 presentation follows the server spin clock and describes a lost connection truthfully" {
+  s:[1]OrbitLeague;game_reset(s[..]);s[0].online=true;s[0].room_authority=true;s[0].room_seq=17;
+  s[0].room_tick=-1;s[0].sock=2;s[0].sock_open=true;s[0].spin_every=0;s[0].spin_g=HALF_SPIN;
+  room_take(s[..],"S 9 1 7 17 12345 1 1500 202500 3 4 2 1;s 0 0 32834 1000 1000000 1;s 2 0 32768 7");
+  #assert abs(s[0].played-97.5)<0.001 && s[0].spin_every==SPIN_EVERY && s[0].spin_g==1;
+  #assert s[0].spin_now==0;
+  s[0].held=HOLD_UP;room_authority_end(s[..]);
+  #assert room_connection_text(s[..])=="ROOM CONNECTION LOST. RELOAD TO REJOIN";
+  #assert s[0].held==0 && !game_key(s[..],'w',0);
+  s[0].room_authority=false;#assert room_connection_text(s[..])=="LOST THE ROOM: PLAYING ON YOUR OWN";
 }
 
 #test "?room=NAME opens a socket to this site's room, and reports your car 60 times a second once it opens" {
