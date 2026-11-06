@@ -61,3 +61,5 @@ slay_oct_y :: (x:f32,y:f32,z:f32)->f32 {a:=abs(x)+abs(y)+abs(z);ox:=x/a;oy:=y/a;
 // (verse/valley/echo.coax): 20 of them, 8 floats each, model-space ends and a radius.
 SLAY_HAND_CAPSULES :: 20;
 SLAY_HAND_CAPSULE_WORD :: 4264;
+// Mean strands between a hair and its light, in place of UE's per-strand deep-shadow count.
+SLAY_HAIR_COUNT :: 0.3f32;

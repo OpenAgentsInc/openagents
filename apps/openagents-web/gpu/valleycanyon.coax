@@ -126,6 +126,55 @@ cv_echo_core_material :: (m:f32)->bool {return m==0 || m==1 || m==2 || m==4 || m
 cv_echo_normal_blend :: (base:V3,detail:V3)->V3 {t:=v3(base.x,base.y,base.z+1);d:=v3(-detail.x,-detail.y,detail.z);return cv_sub(cv_scale(t,wg_dot3(t,d)/t.z),d);}
 cv_echo_normal :: (a:V4,strength:f32)->V3 {return v3((cv_srgb(a.x)*2-1)*strength,(1-cv_srgb(a.y)*2)*strength,cv_srgb(a.z)*2-1);}
 #test "Source groom colours retain the demo's brown root tip and pepper settings" {c:=cv_echo_groom_colour(0,0.5);#assert abs(c.x-0.08125)<0.000001 && abs(c.z-0.0284375)<0.000001;p:=cv_echo_groom_colour(0.5,0.1);#assert p.x==0.201556 && p.y==0.125356 && p.z==0.070545;}
+// The sample's blonde hair material (MI_Hair_Cards_Blonde): root (darkened), mid and tip colours
+// blended at its 0.55 root-tip bias, its straition colour for 15% of strands, and a per-strand
+// brightness spread. u[2] selects it (1) over the source brown groom (0).
+cv_blonde_groom_colour :: (u:f32,seed:f32)->V3 {
+ if seed<0.15 {return v3(0.432292,0.331606,0.25217);}
+ root:=v3(0.4,0.26710073,0.19570320);mid:=v3(0.65,0.422206,0.241219);tip:=v3(0.8,0.706667,0.52);
+ c:=ifx u<0.55 then cv_add(root,cv_scale(cv_sub(mid,root),u/0.55)) else cv_add(mid,cv_scale(cv_sub(tip,mid),(u-0.55)/0.45));
+ return cv_scale(c,mix(0.8f32,1.1f32,(seed-0.15)/0.85));
+}
+cv_hair_colour :: (u:[]f32,along:f32,seed:f32)->V3 {return ifx u[2]>0.5 then cv_blonde_groom_colour(along,seed) else cv_echo_groom_colour(along,seed);}
+#test "The blonde groom follows the sample's root, mid and tip colours" {
+ r:=cv_blonde_groom_colour(0,1);#assert abs(r.x-0.44)<0.00001 && abs(r.z-0.21527352)<0.00001;
+ m:=cv_blonde_groom_colour(0.55,0.15);#assert abs(m.x-0.52)<0.00001;
+ #assert cv_blonde_groom_colour(0.3,0.1).x==0.432292f32;
+ u:[4]f32;#assert cv_hair_colour(u[..],0,0.5).x==cv_echo_groom_colour(0,0.5).x;u[2]=1;#assert cv_hair_colour(u[..],0,0.5).x==cv_blonde_groom_colour(0,0.5).x;
+}
+// UE 5.8 dual scattering (HairStrandsDeepTransmittanceDualScattering.ush). UE reads each strand's
+// hair count toward the light from deep shadow maps, which are not ported; SLAY_HAIR_COUNT is one
+// mean count (already less the one UE subtracts) for every strand and light. The average front and back scattering is UE's
+// hair LUT (HairStrandsLUT.usf: Specular 0.5, backlit 1, separable R, energy-matched TT absorption)
+// integrated for roughness 0.4 at 16 perceptual absorptions (sqrt of base colour) by 4 light angles.
+cv_hair_average :: (x:f32,sinl:f32,back:bool)->f32 {
+ front:[64]f32=[64]f32.[0.10855,0.11241,0.12050,0.13457,0.30582,0.31060,0.31484,0.30432,0.45927,0.46520,0.46776,0.44113,0.57318,0.58008,0.58177,0.54411,0.65849,0.66616,0.66736,0.62182,0.72311,0.73140,0.73230,0.68097,0.77246,0.78122,0.78193,0.72629,0.81029,0.81942,0.82000,0.76110,0.83927,0.84869,0.84918,0.78781,0.86134,0.87099,0.87142,0.80818,0.87796,0.88777,0.88816,0.82353,0.89021,0.90015,0.90051,0.83485,0.89894,0.90897,0.90931,0.84293,0.90481,0.91490,0.91523,0.84836,0.90834,0.91847,0.91878,0.85162,0.90994,0.92009,0.92040,0.85311];
+ behind:[64]f32=[64]f32.[0.03394,0.03425,0.03567,0.04678,0.03589,0.03630,0.03767,0.04816,0.03792,0.03837,0.03961,0.04944,0.04015,0.04064,0.04175,0.05083,0.04261,0.04316,0.04420,0.05251,0.04531,0.04597,0.04703,0.05458,0.04827,0.04907,0.05028,0.05715,0.05147,0.05247,0.05397,0.06032,0.05491,0.05617,0.05813,0.06418,0.05859,0.06016,0.06276,0.06881,0.06249,0.06444,0.06789,0.07430,0.06662,0.06901,0.07352,0.08075,0.07097,0.07387,0.07966,0.08825,0.07554,0.07901,0.08632,0.09690,0.08032,0.08443,0.09352,0.10681,0.08530,0.09012,0.10125,0.11807];
+ fx:=clampf(x*16-0.5,0.0f32,15.0f32);fs:=clampf(abs(sinl)*4-0.5,0.0f32,3.0f32);i:=cast(int)floor(fx);j:=cast(int)floor(fs);i1:=ifx i<15 then i+1 else 15;j1:=ifx j<3 then j+1 else 3;tx:=fx-floor(fx);ts:=fs-floor(fs);
+ a:=ifx back then behind[i*4+j] else front[i*4+j];b:=ifx back then behind[i*4+j1] else front[i*4+j1];c:=ifx back then behind[i1*4+j] else front[i1*4+j];d:=ifx back then behind[i1*4+j1] else front[i1*4+j1];
+ return fmin(0.99f32,mix(mix(a,b,ts),mix(c,d,ts),tx));
+}
+cv_hair_asin :: (s:f32)->f32 {return wg_atan2(s,sqrt(fmax(0.0f32,1-s*s)));}
+cv_dual_channel :: (af:f32,ab:f32,bf:f32,bb:f32,shift:f32,theta:f32,count:f32,fs:f32)->f32 {
+ af2:=af*af;ab2:=ab*ab;one:=1-af2;big:=ab*af2/one+ab*ab2*af2/(one*one*one);
+ delta:=shift*(1-2*ab2/(one*one))*shift*(2*one*one+4*af2*ab2)/(one*one*one);q:=sqrt(2*bf*bf+bb*bb);sigma:=(1+0.7*af2)*(ab*q+ab*ab2*q)/(ab+ab*ab2*(2*bf+3*bb));
+ sf2:=bf*bf*fmax(1.0f32,count);local:=2*big*exp(-0.5*(theta-delta)*(theta-delta)/(sf2+sigma*sigma))/3.14159265*0.7;
+ global:=mix(1.0f32,pow(af,count)*exp(-0.5*theta*theta/sf2)/3.14159265*0.7,clampf(count,0.0f32,1.0f32));
+ return global*(fs+local);
+}
+cv_hair_dual :: (base:V3,rough:f32,sl:f32,sv:f32,count:f32,fs:V3)->V3 {
+ x:=v3(sqrt(fmax(base.x,0.0f32)),sqrt(fmax(base.y,0.0f32)),sqrt(fmax(base.z,0.0f32)));
+ af:=v3(cv_hair_average(x.x,sl,false),cv_hair_average(x.y,sl,false),cv_hair_average(x.z,sl,false));ab:=v3(cv_hair_average(x.x,sl,true),cv_hair_average(x.y,sl,true),cv_hair_average(x.z,sl,true));
+ r:=clampf(rough,0.18f32,0.6f32);br:=r*r;btt:=r*r*0.25;btrt:=r*r*4;fa:=af.x+af.y+af.z;ba:=ab.x+ab.y+ab.z;
+ bf:=(br*af.x+btt*af.y+btrt*af.z)/fa;bb:=(br*ab.x+btt*ab.y+btrt*ab.z)/ba;shift:=(-0.07*af.x+0.035*af.y+0.14*af.z)/fa;theta:=(cv_hair_asin(sl)+cv_hair_asin(sv))*0.5;
+ return v3(cv_dual_channel(af.x,ab.x,bf,bb,shift,theta,count,fs.x),cv_dual_channel(af.y,ab.y,bf,bb,shift,theta,count,fs.y),cv_dual_channel(af.z,ab.z,bf,bb,shift,theta,count,fs.z));
+}
+#test "Dual scattering reads UE's hair LUT and brightens blonde far more than the source brown" {
+ #assert abs(cv_hair_average(0.21875,0.375,false)-0.58008)<0.00001 && abs(cv_hair_average(0.78125,0.625,true)-0.07966)<0.00001;
+ z:=v3(0,0,0);brown:=cv_hair_dual(v3(0.1,0.062,0.035),0.4,0.1,0.1,0,z);blonde:=cv_hair_dual(v3(0.6,0.45,0.3),0.4,0.1,0.1,0,z);
+ #assert brown.x>0 && brown.x<blonde.x && blonde.x>blonde.z && blonde.x<1;
+ deep:=cv_hair_dual(v3(0.6,0.45,0.3),0.4,0.1,0.1,SLAY_HAIR_COUNT,z);#assert deep.x<blonde.x;one:=v3(1,1,1);#assert cv_hair_dual(v3(0.6,0.45,0.3),0.4,0.1,0.1,0,one).x==1+blonde.x;
+}
 cv_echo_groom_colour :: (u:f32,seed:f32)->V3 {if seed<0.15 {return v3(0.201556,0.125356,0.070545);}brightness:=ifx seed<1.0f32/3 then mix(0.4f32,0.15f32,seed*3) else ifx seed<2.0f32/3 then mix(0.15f32,0.5f32,seed*3-1) else mix(0.5f32,0.0f32,seed*3-2);return cv_scale(v3(mix(0.25f32,0.234375f32,u),mix(0.154883f32,0.164421f32,u),mix(0.0875f32,0.105469f32,u)),brightness);}
 // The source eye's "Scale Pupils" node, at the instance's PupilScale=0.75.
 #test "Eye pupil scaling retains centre and rim and source corner shadow bounds" {c:=cv_echo_pupil(v2(0.5,0.5));#assert c.x==0.5 && c.y==0.5;r:=cv_echo_pupil(v2(1,0.5));#assert r.x==1 && r.y==0.5;#assert cv_echo_eye_shadow(0)==1 && cv_echo_eye_shadow(0.35)==0;}
@@ -142,7 +191,8 @@ cv_orb_shade :: (s:CanyonSurface,u:[]f32,vertices:[]u32)->V4 {
 cv_fiber_light :: (base:V3,t:V3,l:V3,v:V3,rough:f32,seed:f32)->V3 {
  // Rootward tangent follows the source hair BSDF convention.
  root:=cv_scale(t,-1);sl:=wg_dot3(root,l);sv:=wg_dot3(root,v);lp:=cv_sub(l,cv_scale(root,sl));vp:=cv_sub(v,cv_scale(root,sv));phi:=wg_dot3(lp,vp)/sqrt(wg_dot3(lp,lp)*wg_dot3(vp,vp)+0.0001);vl:=wg_dot3(v,l);spec:=mix(0.05f32,0.1f32,seed);back:=mix(0.15f32,0.5f32,seed);
- return v3(hair_fiber(base.x,rough,spec,back,sl,sv,phi,vl),hair_fiber(base.y,rough,spec,back,sl,sv,phi,vl),hair_fiber(base.z,rough,spec,back,sl,sv,phi,vl));
+ // UE's global scattering times (Fs plus local scattering), before the light colour.
+ return cv_hair_dual(base,rough,sl,sv,SLAY_HAIR_COUNT,v3(hair_fiber(base.x,rough,spec,back,sl,sv,phi,vl),hair_fiber(base.y,rough,spec,back,sl,sv,phi,vl),hair_fiber(base.z,rough,spec,back,sl,sv,phi,vl)));
 }
 cv_mul :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}
 #test "Each light evaluates its own microfacet highlight and back lights contribute zero" {
@@ -235,7 +285,7 @@ cv_scene_shade :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,verti
 
   if s.character>0.5 {cv_echo_mask(s.uv,s.material,vertices,sheets,sheet,dx,dy);m:=ECHO_MATERIAL_WORD+cast(int)s.material*16;albedo=v3(cv_word(vertices,m+4),cv_word(vertices,m+5),cv_word(vertices,m+6));rough=cv_word(vertices,m+8);metal=cv_word(vertices,m+7);colour:=cast(int)vertices[m]-1;normal_map:=cast(int)vertices[m+1]-1;orm:=cast(int)vertices[m+2]-1;
    if colour>=0 {a:=render_sample_layer8_grad(sheets,sheet,s.uv,cast(s32)colour,dx,dy,0);albedo=v3(albedo.x*a.x,albedo.y*a.y,albedo.z*a.z);}if orm>=0 {a:=render_sample_layer8_grad(sheets,sheet,s.uv,cast(s32)orm,dx,dy,0);rough=cv_srgb(a.y);metal=cv_srgb(a.z);}
-   if (s.material==26 || s.material==27) {albedo=cv_echo_groom_colour(s.uv.x,s.uv.y);metal=0;rough=mix(0.32f32,0.45f32,s.uv.y)*(1+0.1*s.uv.x);}
+   if (s.material==26 || s.material==27) {albedo=cv_hair_colour(u,s.uv.x,s.uv.y);metal=0;rough=mix(0.32f32,0.45f32,s.uv.y)*(1+0.1*s.uv.x);}
    if s.material==ECHO_LASH_SLOT {albedo=cv_scale(v3(mix(0.08f32,0.16f32,s.uv.y),mix(0.053397f32,0.090834f32,s.uv.y),mix(0.04f32,0.056f32,s.uv.y)),0.5);rough=0.6;metal=0;}
    if s.material==ECHO_HEAD_SLOT {albedo=cv_profile_head_colour(albedo,u[114]<0);metal=0;macro:=render_sample_layer8_grad(sheets,sheet,s.uv,26,dx,dy,0);additional:=render_sample_layer8_grad(sheets,sheet,s.uv,27,dx,dy,0);rough=macro.x+rough*0.2+additional.x;highpass:=render_sample_layer8_grad(sheets,sheet,s.uv,31,dx,dy,0);mask:=render_sample_layer8_grad(sheets,sheet,s.uv,17,dx,dy,0);if u[114]>=0 {skin_f0=cv_echo_head_f0(highpass.x,highpass.y,cv_srgb(mask.x));}}
    if s.material==ECHO_SKIN_SLOT {albedo=cv_echo_body_colour(albedo);rough=rough*0.2+0.45*0.8;metal=0;}

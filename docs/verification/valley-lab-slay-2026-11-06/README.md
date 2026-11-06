@@ -266,7 +266,41 @@ The summed absolute error falls from 831 to 373. Still open:
   its depth of field); the bracer is unchanged at 1,480 (Unreal 149) because
   the palm does not stand between it and the light.
 - The orb side reads slightly green-cyan (G about 15 levels high).
-- Hair is near black where Unreal shows lit brown strands (strand multiple
-  scattering is not ported). The temple background and the cool sky cubemap
-  are not ported.
+- Hair scattering: see "Hair dual scattering and blonde" below. The temple
+  background and the cool sky cubemap are not ported.
 - The shot pack is 1,023,642,576 bytes, sha256 `bcff9de8…cc3f`.
+
+## Hair dual scattering and blonde
+
+Unreal renders of frame 1125 with hair terms switched off show where the
+groom's light comes from. Crown means, sRGB:
+
+| Render | Crown | Hairline |
+|---|---|---|
+| Unreal, full | 52/54/66 | 70/57/63 |
+| No hair sky lighting | 44/50/63 | 65/53/60 |
+| No R (specular) | 51/53/65 | 69/55/61 |
+| No local and global scattering | 29/41/56 | 36/40/53 |
+| No rect lights at all | 36/43/58 | 41/44/57 |
+| Ours before | 23/17/13 | 35/22/16 |
+| Ours now | 66/46/35 | 92/56/38 |
+
+- Dual scattering carries most of Unreal's hair light. The shader now follows
+  `HairStrandsDeepTransmittanceDualScattering.ush`: global scattering times
+  the fiber lobes plus local scattering, for every light.
+- The average front and back scattering is Unreal's hair LUT
+  (`HairStrandsLUT.usf`: Specular 0.5, backlit 1, separable R, energy-matched
+  TT absorption), integrated at roughness 0.4 for 16 absorptions by 4 light
+  angles and held in the shader as two 64-entry tables.
+- Unreal reads each strand's hair count toward the light from deep shadow
+  maps, which are not ported. `SLAY_HAIR_COUNT` = 0.3 is one mean count for
+  every strand; it gives the closest brightness of the values tried (0, 0.3,
+  0.5, 0.7, 1, 2, 3).
+- Our hair is warmer than Unreal's. Unreal's hair stays blue-grey with every
+  rect light off, and its dark skin and scarf also carry more blue than ours.
+  That points at the level's blue height fog and ambient rather than the hair
+  BSDF; it is open.
+- G, or the HAIR button above REPLAY, swaps the source brown groom for the
+  sample's blonde hair colours (`MI_Hair_Cards_Blonde`: darkened root, mid and
+  tip blended at its 0.55 root-tip bias, its straition colour on 15% of
+  strands). It works in the shot, the face view and the inspect view.
