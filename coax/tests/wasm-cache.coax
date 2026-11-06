@@ -19,6 +19,10 @@
 //   - another compiler (a wrapper) compiles the Coax again; another clang
 //     compiles every object again; another wasm-opt links again;
 //     COAXIAL_RUN_STEPS compiles the Coax again;
+//   - a split unit (COAXIAL_SPLIT, #12938) compiles each part as its own
+//     object; an edit to one file's procedure compiles only its part again,
+//     to the bytes an uncached split build writes; COAXIAL_SPLIT=0, or a
+//     unit under four parts' worth of C, compiles the unit whole;
 //   - with the cache off, a build writes the bytes the cached builds wrote.
 #import "Basic";
 #load "../lib/sys/tool.coax";
@@ -57,9 +61,14 @@ run :: (compiler: string, dir: string, body: string, out: [] u8) -> ProcRun {
 // $D/cache (and the variables given) and prints one line: NAME, the exit
 // status and each step's cache use (STEP:UNIT=hit|miss|off), sorted.
 // same A B: prints "same A B" when the two modules have the same bytes.
-FUNCTIONS :: "b() { n=$1; shift; env COAXIAL_WASM_CACHE=\"$D/cache\" COAX_CHECK_CACHE=\"$D/check\" COAXIAL_WASM_REPORT=\"$D/$n.json\" COAXIAL_WASM_TIMES=0 COAXIAL_MODE=dev COAX=\"$C\" \"$@\" coax/web/wasm.sh \"$D/app/tiny.coax\" \"$D/app/tiny-face.c\" \"$D/out/$n.wasm\" > \"$D/$n.log\" 2>&1; s=$?; [ $s = 0 ] || cat \"$D/$n.log\"; echo \"$n status=$s $(grep -o '\"unit\":\"[^\"]*\",\"step\":\"[^\"]*\",\"cache\":\"[^\"]*\"' \"$D/$n.json\" | sed 's/\"unit\":\"\\([^\"]*\\)\",\"step\":\"\\([^\"]*\\)\",\"cache\":\"\\([^\"]*\\)\"/\\2:\\1=\\3/' | sort | tr '\\n' ' ')\"; }; same() { cmp -s \"$D/out/$1.wasm\" \"$D/out/$2.wasm\" && echo \"same $1 $2\"; }; wrap() { printf '#!/bin/sh\\nexec \"%s\" \"$@\"\\n' \"$2\" > \"$D/$1\" && chmod +x \"$D/$1\"; }";
+FUNCTIONS :: "b() { n=$1; shift; env COAXIAL_WASM_CACHE=\"$D/cache\" COAX_CHECK_CACHE=\"$D/check\" COAXIAL_WASM_REPORT=\"$D/$n.json\" COAXIAL_WASM_TIMES=0 COAXIAL_MODE=dev COAX=\"$C\" \"$@\" coax/web/wasm.sh \"$D/app/tiny.coax\" \"$D/app/tiny-face.c\" \"$D/out/$n.wasm\" > \"$D/$n.log\" 2>&1; s=$?; [ $s = 0 ] || cat \"$D/$n.log\"; echo \"$n status=$s $(grep -o '\"unit\":\"[^\"]*\",\"step\":\"[^\"]*\",\"cache\":\"[^\"]*\"' \"$D/$n.json\" | sed 's/\"unit\":\"\\([^\"]*\\)\",\"step\":\"\\([^\"]*\\)\",\"cache\":\"\\([^\"]*\\)\"/\\2:\\1=\\3/' | sort | tr '\\n' ' ')\"; }; s() { n=$1; shift; env COAXIAL_WASM_CACHE=\"$D/cache\" COAX_CHECK_CACHE=\"$D/check\" COAXIAL_WASM_REPORT=\"$D/$n.json\" COAXIAL_WASM_TIMES=0 COAXIAL_MODE=dev COAXIAL_SPLIT=4 COAXIAL_SPLIT_UNIT=1 COAX=\"$C\" \"$@\" coax/web/wasm.sh \"$D/app/split.coax\" \"$D/app/split-face.c\" \"$D/out/$n.wasm\" > \"$D/$n.log\" 2>&1; s=$?; [ $s = 0 ] || cat \"$D/$n.log\"; t=$(grep -o '\"unit\":\"[^\"]*\",\"step\":\"[^\"]*\",\"cache\":\"[^\"]*\"' \"$D/$n.json\" | sed 's/\"unit\":\"\\([^\"]*\\)\",\"step\":\"\\([^\"]*\\)\",\"cache\":\"\\([^\"]*\\)\"/\\2:\\1=\\3/'); echo \"$n status=$s parts=$(echo \"$t\" | grep -c '^clang:split\\.u') miss=$(echo \"$t\" | grep -c '^clang:split\\.u.*=miss') hit=$(echo \"$t\" | grep -c '^clang:split\\.u.*=hit') $(echo \"$t\" | grep -v '^clang:split\\.u' | sort | tr '\\n' ' ')\"; }; same() { cmp -s \"$D/out/$1.wasm\" \"$D/out/$2.wasm\" && echo \"same $1 $2\"; }; wrap() { printf '#!/bin/sh\\nexec \"%s\" \"$@\"\\n' \"$2\" > \"$D/$1\" && chmod +x \"$D/$1\"; }";
 
 SETUP :: "mkdir -p \"$D/app\" \"$D/out\" && printf '#import \"Basic\";\\nSCALE :: 3;\\ntiny_scale :: (x: s32) -> s32 #export_c { return x * SCALE; }\\n' > \"$D/app/tiny.coax\" && printf '#define TINY_EXTRA 1\\n' > \"$D/app/tiny-extra.h\" && printf '#include \"tiny.h\"\\n#include \"tiny-extra.h\"\\n__attribute__((export_name(\\\"tiny_face\\\"))) int tiny_face(int x) { return tiny_scale(x) + TINY_EXTRA; }\\n' > \"$D/app/tiny-face.c\"";
+
+// The split app: four files, each its own run of procedures; with
+// COAXIAL_SPLIT=4 and a part a byte (COAXIAL_SPLIT_UNIT=1: the app is tiny)
+// their runs fall in two parts (split-b.coax's procedure in one of them).
+SPLIT_SETUP :: "printf '#import \"Basic\";\\n#load \"split-a.coax\";\\n#load \"split-b.coax\";\\n#load \"split-c.coax\";\\nsplit_all :: (x: s32) -> s32 #export_c { return split_a(x) + split_b(x) + split_c(x); }\\n' > \"$D/app/split.coax\" && for f in a b c; do printf 'SPLIT_%s :: 3;\\nsplit_%s :: (x: s32) -> s32 { return x * SPLIT_%s; }\\n' $f $f $f > \"$D/app/split-$f.coax\"; done && printf '#include \"split.h\"\\n__attribute__((export_name(\\\"split_face\\\"))) int split_face(int x) { return split_all(x); }\\n' > \"$D/app/split-face.c\"";
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
@@ -111,6 +120,23 @@ tool_main :: () -> int #export_c {
   bad += check(has(t, "clang status=0 clang:tiny.face=miss clang:tiny=miss coax_to_c:tiny=hit link:module=miss \nsame header clang"), "another clang compiles every object and links again, to the same bytes");
   if has(t, "no wasm-opt") { print("  skip another wasm-opt links again (no wasm-opt here)\n"); }
   else { bad += check(has(t, "opt status=0 clang:tiny.face=hit clang:tiny=hit coax_to_c:tiny=hit link:module=miss wasm_opt:module=off \nsame release opt"), "another wasm-opt links again, to the same bytes"); }
+
+  // A split unit (#12938): each part is its own object; an edit to one file's
+  // procedure compiles only its part again, and the bytes match a build
+  // without the cache; putting it back reuses every part.
+  r = run(compiler, dir, SPLIT_SETUP, out[..]);
+  if r.status != 0 { tool_errln("wasm-cache: cannot write the split app"); return 1; }
+  r = run(compiler, dir, "s split0; s split1 && same split0 split1; sed 's/^SPLIT_b :: 3;$/SPLIT_b :: 4;/' \"$D/app/split-b.coax\" > \"$D/t\" && mv \"$D/t\" \"$D/app/split-b.coax\" && s split2; same split0 split2 || echo differs; s split2off COAXIAL_WASM_CACHE= && same split2 split2off; sed 's/^SPLIT_b :: 4;$/SPLIT_b :: 3;/' \"$D/app/split-b.coax\" > \"$D/t\" && mv \"$D/t\" \"$D/app/split-b.coax\" && s split3 && same split0 split3; s whole COAXIAL_SPLIT=0; s small COAXIAL_SPLIT_UNIT= && same whole small; grep -o '\"unit\":\"split[^\"]*\",\"step\":\"clang\"' \"$D/whole.json\"", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  before := bad;
+  bad += check(has(t, "split0 status=0 parts=2 miss=2 hit=0 clang:split.face=miss coax_to_c:split=miss link:module=miss \n"), "a split unit compiles each of its parts once");
+  bad += check(has(t, "split1 status=0 parts=2 miss=0 hit=2 clang:split.face=hit coax_to_c:split=hit link:module=hit \nsame split0 split1"), "the same split build again reuses every part and writes the same bytes");
+  bad += check(has(t, "split2 status=0 parts=2 miss=1 hit=1 clang:split.face=hit coax_to_c:split=miss link:module=miss \ndiffers"), "an edit to one file's procedure compiles only its part again and links again");
+  bad += check(has(t, "split2off status=0 parts=2 miss=0 hit=0 clang:split.face=off coax_to_c:split=off link:module=off \nsame split2 split2off"), "the split build writes the bytes a build without the cache writes");
+  bad += check(has(t, "split3 status=0 parts=2 miss=0 hit=2 clang:split.face=hit coax_to_c:split=hit link:module=hit \nsame split0 split3"), "putting it back reuses every part, with the same bytes");
+  bad += check(has(t, "\"unit\":\"split\",\"step\":\"clang\""), "COAXIAL_SPLIT=0 compiles the unit whole");
+  bad += check(has(t, "small status=0 parts=0 miss=0 hit=0 clang:split.face=hit clang:split=hit coax_to_c:split=miss link:module=hit \nsame whole small"), "a unit under four parts' worth of C is emitted whole, as without a split");
+  if bad > before { print("%", t); }
 
   r = run(compiler, dir, "b off COAXIAL_WASM_CACHE= && same header off", out[..]);
   t = cast(string) out[0..<r.out_n];

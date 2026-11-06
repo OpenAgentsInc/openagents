@@ -162,10 +162,24 @@ if [[ -n "$cache" ]]; then
   flags_sum="$({ tool_id "$clang"; printf '%s\n' "${cflags[@]}"; } | shasum -a 256 | cut -c1-16)"
   find "$cache" -maxdepth 1 -type f -mtime +14 -delete 2> /dev/null || true
 fi
+# COAXIAL_SPLIT=N (#12938): the first unit's C (the app, or its renderer
+# carrier) as up to N translation units and a shared one (coax c --split), so
+# an edit compiles again only the parts whose C changed: Everglade 5e's carrier
+# is 9 MB of C, 12-23 s of clang on coderos-4080 as one unit. Default 16 for a
+# renderer carrier, else 0 (one unit). The compiler makes one part per 512 KiB
+# of procedures' C (COAXIAL_SPLIT_UNIT bytes) and emits a unit under four
+# parts' worth whole. Each part includes the prelude every part shares (the
+# runtime, the types and the prototypes).
+split="${COAXIAL_SPLIT:-}"
+[[ -n "$split" ]] || { split=0; [[ "$render" == 1 ]] && split=16; }
+[[ "$split" =~ ^[0-9]+$ && "$split" -le 256 ]] || { echo "COAXIAL_SPLIT must be a count from 0 to 256" >&2; exit 2; }
+split_unit=(); [[ -z "${COAXIAL_SPLIT_UNIT:-}" ]] || split_unit=(--split-unit "$COAXIAL_SPLIT_UNIT")
+unit_split() { [[ "$1" == "${units[0]%%:*}" && "$split" != 0 ]] && echo "$split" || echo 0; }   # unit: its --split count
 unit_key() {   # unit header-base: the cache key, or nothing (not cacheable)
   local list
   list="$(cd "$repo" && "$repo/coax/web/tool.sh" wasm-size sources "$1")" && [[ -n "$list" ]] || return 0
   { printf '%s\n' coax-wasm-c-1 "$compiler_sum" "$1" "$2" ${run_steps[@]+"${run_steps[@]}"}
+    [[ "$(unit_split "$1")" == 0 ]] || printf 'split %s %s\n' "$(unit_split "$1")" "${COAXIAL_SPLIT_UNIT:-}"
     (cd "$repo" && shasum -a 256 $list); } | shasum -a 256 | cut -c1-64
 }
 keep() {   # file entry: into the cache whole (a rename), never half-written
@@ -187,7 +201,8 @@ emit() {   # unit header-base: its C and header into $work, from the cache or th
   if [[ -n "$key" && -f "$cache/$key.h" ]] && from_cache "$cache/$key.c" "$work/$2.c" && from_cache "$cache/$key.h" "$work/$2.h"; then
     step "$2" coax_to_c hit "$began"; return 0
   fi
-  (cd "$repo" && "$coax_driver" c "$1" --library --header "$work/$2.h" ${run_steps[@]+"${run_steps[@]}"} --timings "$work/$2.coax.json") > "$work/$2.c"
+  local parts=(); [[ "$(unit_split "$1")" == 0 ]] || parts=(--split "$(unit_split "$1")" ${split_unit[@]+"${split_unit[@]}"})
+  (cd "$repo" && "$coax_driver" c "$1" --library --header "$work/$2.h" ${parts[@]+"${parts[@]}"} ${run_steps[@]+"${run_steps[@]}"} --timings "$work/$2.coax.json") > "$work/$2.c"
   [[ -z "$key" ]] || { keep "$work/$2.h" "$cache/$key.h"; keep "$work/$2.c" "$cache/$key.c"; }
   step "$2" coax_to_c "$([[ -n "$key" ]] && echo miss || echo off)" "$began"
 }
@@ -228,8 +243,25 @@ fi
 # them for a new state (coaxial_state_init) and its own globals.
 objects=("$name.face"); pids=()
 for unit in "${units[@]}"; do
-  compile "${unit##*:}" -I"$work" "$work/${unit##*:}.c" & pids+=($!)
-  objects+=("${unit##*:}")
+  base="${unit##*:}"
+  if [[ "$(unit_split "${unit%%:*}")" == 0 ]]; then
+    compile "$base" -I"$work" "$work/$base.c" & pids+=($!)
+    objects+=("$base")
+    continue
+  fi
+  # A split unit's stream: the prelude, then each part after "/* coax-unit ID */".
+  mkdir -p "$work/parts"
+  ids="$(awk -v dir="$work/parts" -v base="$base" '
+    /^\/\* coax-unit [A-Za-z0-9]+ \*\/$/ { if (f) close(f); f = dir "/" base ".u" $3 ".c"; print "#include \"" base ".prelude.h\"" > f; print $3; next }
+    { if (f) print > f; else print > (dir "/" base ".prelude.h") }' "$work/$base.c")"
+  if [[ -z "$ids" ]]; then   # small enough to be emitted whole
+    compile "$base" -I"$work" "$work/$base.c" & pids+=($!)
+    objects+=("$base")
+  fi
+  for id in $ids; do
+    compile "$base.u$id" -I"$work" "$work/parts/$base.u$id.c" & pids+=($!)
+    objects+=("$base.u$id")
+  done
 done
 compile "$name.face" -I"$work" -I"$(dirname "$face")" "$face" & pids+=($!)
 if [[ "$render" == 1 ]]; then
@@ -245,6 +277,13 @@ stack_bytes=1048576
 [[ "$render" == 1 ]] && stack_bytes=4194304
 link=(--target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -mexec-model=reactor
       -Wl,--import-memory,--max-memory=67108864,-z,stack-size="$stack_bytes",--export=__heap_base,--gc-sections,--strip-debug)
+# A release's link still optimizes every unit together (full LTO), then
+# generates code in 8 parallel parts (#12938). Everglade 5e with its carrier
+# split, on coderos-4080 at load 9: 10.2 s linked in one part, 7.3 s in 8,
+# 2,014,681 and 2,015,523 bytes after wasm-opt (the unsplit carrier linked in
+# one part made 2,038,414). The count is fixed, never the machine's cores: it
+# decides the bytes.
+[[ "$mode" == dev ]] || link+=(-Wl,--lto-partitions=8)
 object_files=(); for o in "${objects[@]}"; do object_files+=("$work/$o.o"); done
 wasm_opt=""; [[ "$mode" == dev ]] || wasm_opt="${COAXIAL_WASM_OPT:-$(command -v wasm-opt || true)}"
 module_key=""

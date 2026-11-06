@@ -179,3 +179,23 @@ and wasm-opt ran and which sysroot and runtime libraries it links.
 `coax/web/tool.sh coax/tests/wasm-cache.coax COMPILER` changes each input in
 turn and checks that the step reruns and that the bytes match a build without
 the cache.
+
+A renderer carrier's C is split (`COAXIAL_SPLIT`, default 16 for a carrier and
+0 otherwise; `coax c --library --split N`) into one part per 512 KiB of its
+procedures' C (`COAXIAL_SPLIT_UNIT`, `--split-unit BYTES`), at most N; a unit
+under four parts' worth is emitted whole, as without a split, since splitting
+a small unit only makes a release larger. The compiler writes one stream: a
+prelude (the runtime, the types, the view helpers and every procedure's
+prototype), then up to N parts and a shared part, each after a line
+`/* coax-unit ID */`. `wasm.sh` writes each part to `parts/BASE.uID.c`, which
+includes the prelude, and compiles it as its own object (`clang` rows named
+`BASE.uID`). Procedures go to parts in runs of neighbours from one source file;
+a run ends after a procedure whose name hashes to 0 mod 8, and its part is the
+hash of the file and the run's first procedure name, mod the part count (a
+unit growing past a 512 KiB step changes the count, and every part once). A generic instance
+goes with its generic. Each part names its own compile-time values, and the
+shared part holds the init, show and host-default helpers. So an edit that
+changes one procedure's C compiles one part again, not 9 MB of C; an edit that
+changes a type, a signature or line numbers changes the prelude and compiles
+every part. A release links with `--lto-partitions=8`: full link-time
+optimization over every part, then code generation in 8 parallel parts.
