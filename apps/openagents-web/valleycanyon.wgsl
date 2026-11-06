@@ -850,9 +850,10 @@ fn coax_p_cv_scene_shade(p_s: coax_t13, p_dx: vec2f, p_dy: vec2f) -> vec4f {
     l_skin = ((l_s.f6 > 0x1.000000p-1f) && ((l_s.f7 == 0x1.600000p3f) || (l_s.f7 == 0x1.800000p2f)));
     l_geo = coax_p_wg_normalize3(l_s.z);
     l_delta = coax_p_cv_sub(coax_p_cv_at(116i), l_s.y);
-    l_colour_79 = coax_p_cv_add(coax_p_cv_scale(l_albedo, 0x1.47ae14p-4f), coax_p_cv_mul(coax_p_cv_scale(coax_p_cv_slay_light(l_skin, l_albedo, l_f0, l_metal, l_rough, l_n, l_geo, l_l, l_v, 0x1.000000p0f, 0x1.ac8606p-4f), (l_shadow * coax_at_u(i32(123i)))), coax_p_cv_at(120i)));
-    l_colour_79 = coax_p_cv_add(l_colour_79, coax_p_cv_mul(coax_p_cv_scale(coax_p_cv_slay_light(l_skin, l_albedo, l_f0, l_metal, l_rough, l_n, l_geo, coax_p_cv_at(97i), l_v, 0x1.000000p0f, 0.0f), coax_at_u(i32(115i))), coax_p_v3(0x1.000000p0f, 0x1.9ba010p-2f, 0x1.9cc986p-3f)));
-    l_colour_79 = coax_p_cv_add(l_colour_79, coax_p_cv_mul(coax_p_cv_scale(coax_p_cv_slay_light(l_skin, l_albedo, l_f0, l_metal, l_rough, l_n, l_geo, coax_p_cv_at(28i), l_v, 0x1.000000p-1f, 0.0f), coax_at_u(i32(31i))), coax_p_cv_at(124i)));
+    l_colour_79 = coax_p_cv_add(coax_p_cv_scale(l_albedo, 0x1.47ae14p-4f), coax_p_cv_mul(coax_p_cv_scale(coax_p_cv_slay_light(l_skin, l_albedo, l_f0, l_metal, l_rough, l_n, l_geo, l_l, l_v, 0x1.000000p0f, 0x1.40f7fcp-4f), (l_shadow * coax_at_u(i32(123i)))), coax_p_cv_at(120i)));
+    l_colour_79 = coax_p_cv_add(l_colour_79, coax_p_cv_mul(coax_p_cv_scale(coax_p_cv_slay_light(l_skin, l_albedo, l_f0, l_metal, l_rough, l_n, l_geo, coax_p_cv_at(97i), l_v, 0x1.000000p0f, 0x1.ac1d6cp-2f), coax_at_u(i32(115i))), coax_p_v3(0x1.000000p0f, 0x1.9ba010p-2f, 0x1.9cc986p-3f)));
+    l_colour_79 = coax_p_cv_add(l_colour_79, coax_p_cv_mul(coax_p_cv_scale(coax_p_cv_slay_light(l_skin, l_albedo, l_f0, l_metal, l_rough, l_n, l_geo, coax_p_cv_at(28i), l_v, 0x1.000000p-1f, 0x1.ac1d6cp-2f), coax_at_u(i32(31i))), coax_p_cv_at(124i)));
+    l_colour_79 = coax_p_cv_add(l_colour_79, coax_p_cv_mul(coax_p_cv_scale(coax_p_cv_slay_light(l_skin, l_albedo, l_f0, l_metal, l_rough, l_n, l_geo, coax_p_v3((-0x1.285722p-1f), 0x1.476ba2p-1f, (-0x1.031462p-1f)), l_v, 0x1.000000p-1f, 0x1.ac1d6cp-2f), 0x1.000000p1f), coax_p_v3(0x1.000000p0f, 0x1.eded28p-1f, 0x1.e978d4p-1f)));
     l_colour_79 = coax_p_cv_add(l_colour_79, coax_p_cv_mul(coax_p_cv_scale(coax_p_cv_slay_light(l_skin, l_albedo, l_f0, l_metal, l_rough, l_n, l_geo, coax_p_wg_normalize3(l_delta), l_v, 0x1.000000p0f, coax_p_fmin(0x1.000000p0f, (coax_at_u(i32(119i)) / coax_p_fmax(0x1.47ae14p-7f, sqrt(coax_p_wg_dot3(l_delta, l_delta)))))), ((coax_at_u(i32(114i)) * 0x1.0624dep-9f) / coax_p_fmax(0x1.47ae14p-7f, coax_p_wg_dot3(l_delta, l_delta)))), coax_p_v3(0x1.9a0f0ap-7f, 0x1.541c82p-2f, 0x1.000000p0f)));
   }
   if ((((l_s.f7 == 0x1.a00000p4f) || (l_s.f7 == 0x1.b00000p4f)) && (coax_at_u(i32(114i)) >= 0.0f)))
@@ -865,6 +866,7 @@ fn coax_p_cv_scene_shade(p_s: coax_t13, p_dx: vec2f, p_dy: vec2f) -> vec4f {
       l_colour_79 = coax_p_cv_add(coax_p_cv_scale(l_albedo, 0x1.47ae14p-4f), coax_p_cv_mul(coax_p_cv_scale(coax_p_cv_fiber_light(l_albedo, l_t_83, l_l, l_v, l_rough, l_seed), (l_shadow * coax_at_u(i32(123i)))), coax_p_cv_at(120i)));
       l_colour_79 = coax_p_cv_add(l_colour_79, coax_p_cv_mul(coax_p_cv_scale(coax_p_cv_fiber_light(l_albedo, l_t_83, coax_p_cv_at(97i), l_v, l_rough, l_seed), coax_at_u(i32(115i))), coax_p_v3(0x1.000000p0f, 0x1.9ba010p-2f, 0x1.9cc986p-3f)));
       l_colour_79 = coax_p_cv_add(l_colour_79, coax_p_cv_mul(coax_p_cv_scale(coax_p_cv_fiber_light(l_albedo, l_t_83, coax_p_cv_at(28i), l_v, l_rough, l_seed), coax_at_u(i32(31i))), coax_p_cv_at(124i)));
+      l_colour_79 = coax_p_cv_add(l_colour_79, coax_p_cv_mul(coax_p_cv_scale(coax_p_cv_fiber_light(l_albedo, l_t_83, coax_p_v3((-0x1.285722p-1f), 0x1.476ba2p-1f, (-0x1.031462p-1f)), l_v, l_rough, l_seed), 0x1.000000p1f), coax_p_v3(0x1.000000p0f, 0x1.eded28p-1f, 0x1.e978d4p-1f)));
       l_delta_85 = coax_p_cv_sub(coax_p_cv_at(116i), l_s.y);
       l_colour_79 = coax_p_cv_add(l_colour_79, coax_p_cv_mul(coax_p_cv_scale(coax_p_cv_fiber_light(l_albedo, l_t_83, coax_p_wg_normalize3(l_delta_85), l_v, l_rough, l_seed), ((coax_at_u(i32(114i)) * 0x1.0624dep-9f) / coax_p_fmax(0x1.47ae14p-7f, coax_p_wg_dot3(l_delta_85, l_delta_85)))), coax_p_v3(0x1.9a0f0ap-7f, 0x1.541c82p-2f, 0x1.000000p0f)));
     }

@@ -1,0 +1,25 @@
+// TF0290's light rig, from the Slay sequence (tf0290-light-samples.json, frame 124).
+// The kick, wrap and fill transforms, sizes, colours and intensities do not
+// change during the shot. The shot pack carries the key, wrap and fill per
+// frame; these are the static values the pack does not carry.
+// Light sizes are the sine of the equal-area sphere's angular radius at the
+// target, for the area-light highlight width.
+// Echo_Key: 32 x 64 cm RectLight, local offset (-302.4707, 106.1422, -58.3845) cm.
+SLAY_KEY_SIZE :: 0.0783615;
+// EchoKeyWrap, Echo_Fill and Echo_Kick: 256 x 256 cm RectLights at the
+// BP_LightTarget_Solo template offset (-345.18457, -13.92215, 0) cm.
+SLAY_SOFT_SIZE :: 0.418081;
+// Echo_Kick: rotation roll -9.455322, pitch -39.754028, yaw 41.162022; the
+// unit direction toward the light in shot space (Y up).
+SLAY_KICK_ROLL :: -9.455322265625;
+SLAY_KICK_PITCH :: -39.7540283203125;
+SLAY_KICK_YAW :: 41.16202163696289;
+SLAY_KICK_X :: -0.57878977;
+SLAY_KICK_Y :: 0.63949306;
+SLAY_KICK_Z :: -0.50601486;
+SLAY_KICK_POWER :: 2.0;
+SLAY_KICK_R :: 1.0;
+SLAY_KICK_G :: 0.9647;
+SLAY_KICK_B :: 0.956;
+// Echo_Fill and Echo_Kick: Specular Scale 0.5.
+SLAY_SOFT_SPECULAR :: 0.5;

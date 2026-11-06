@@ -188,8 +188,10 @@ mobile cost limitations are retained in that separate record.
   only scales it by 0.85–1.2 per region (plus 0.25 on the chest). Its region
   masks `T_Head_Skin_001/007/008/009_R` are not exported yet.
 - The pinpoint "wet" highlights came from shading TF0290's 64 x 64 cm
-  RectLight key, 345.18 cm away, as a point. The key and the orb now widen
-  roughness with Unreal's sphere-light `New_a2` term (`SLAY_KEY_SIZE` 0.10462).
+  RectLight key as a point. The key and the orb now widen roughness with
+  Unreal's sphere-light `New_a2` term. TF0290 itself animates the key to
+  32 x 64 cm at 325.83 cm (`SLAY_KEY_SIZE` 0.0783615); the wrap, fill and kick
+  are 256 x 256 cm panels (`SLAY_SOFT_SIZE` 0.418081).
 - Skin uses subsurface-profile style lighting: two specular lobes at 0.75x
   and 1.30x roughness, mixed 0.85, plus wrapped diffuse that carries red past
   the terminator and bends diffuse normals toward the geometric normal.
@@ -199,3 +201,14 @@ mobile cost limitations are retained in that separate record.
 - T or the on-screen REPLAY button replays the shot; playback stops on the last frame.
 - Still open: orange albedo balance, eye shading, hair volume scattering, and
   the per-region roughness masks.
+- The shot pack carried the key, wrap and fill but not `Echo_Kick`
+  (intensity 2, colour 1/0.9647/0.956, specular scale 0.5). Its static source
+  rotation is in `verse/valley/slay-lights.coax`, checked against the pack's
+  axis conversion, and it now lights skin, cloth and hair.
+- Colour check at the cheek: ours is sRGB 194/132/107 against 154/137/142 in
+  the YouTube trailer still. The head texture's mean is 109/66/40 and the
+  TF0290 rig is warm (key 1/0.552/0.402, wrap 1/0.402/0.2016). The trailer
+  frame carries its own grade, bloom, depth of field and compression, so it is
+  not a colour reference. The Temple post-process volume has no colour
+  grading (exposure bias 1.8, AO, DOF only); the cool SkyLight cubemap
+  `HDR_CaptureLighting` (tint 216/241/255) is not ported yet.

@@ -6,6 +6,7 @@
 #load "../../../aethyr/render/filmic.coax";
 #load "../../../aethyr/anim/morph-gpu.coax";
 #load "../../../verse/valley/slay-orb.coax";
+#load "../../../verse/valley/slay-lights.coax";
 #load "../../../aethyr/render/hair-fiber.coax";
 cv_at :: (u:[]f32,at:int)->V3 {return v3(u[at],u[at+1],u[at+2]);}
 cv_add :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
@@ -183,9 +184,7 @@ cv_skin_light :: (base:V3,f0:V3,rough:f32,n:V3,g:V3,l:V3,v:V3,spec_scale:f32,siz
  return cv_add(cv_add(cv_scale(a,0.15),cv_scale(b,0.85)),v3(base.x*dr/3.14159265,base.y*dg/3.14159265,base.z*db/3.14159265));
 }
 cv_slay_light :: (skin:bool,base:V3,f0:V3,metal:f32,rough:f32,n:V3,g:V3,l:V3,v:V3,spec_scale:f32,size:f32)->V3 {if skin {return cv_skin_light(base,f0,rough,n,g,l,v,spec_scale,size);}return cv_area_light(base,f0,metal,rough,n,l,v,spec_scale,size);}
-// TF0290's key is a 64 x 64 cm RectLight 345.18 cm from its target: the sine of
-// the equal-area sphere's angular radius, sqrt(64*64/pi)/345.18.
-SLAY_KEY_SIZE :: 0.10462;
+
 vc_scene_fs :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices:[]u32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
   if u[112]>0.5 && abs(1-s.pos.y/u[1]*2)>u[0]/u[1]/u[113] {gpu_discard();}
   dx:=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y));dy:=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y));
@@ -222,8 +221,9 @@ cv_scene_shade :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,verti
   if u[112]>0.5 {
    skin:=s.character>0.5 && (s.material==ECHO_HEAD_SLOT || s.material==ECHO_SKIN_SLOT);geo:=wg_normalize3(s.normal);delta:=cv_sub(cv_at(u,116),s.world);
    colour=cv_add(cv_scale(albedo,0.08),cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,l,v,1,SLAY_KEY_SIZE),shadow*u[123]),cv_at(u,120)));
-   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_at(u,97),v,1,0),u[115]),v3(1,0.40197778,0.20155625)));
-   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_at(u,28),v,0.5,0),u[31]),cv_at(u,124)));
+   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_at(u,97),v,1,SLAY_SOFT_SIZE),u[115]),v3(1,0.40197778,0.20155625)));
+   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,cv_at(u,28),v,SLAY_SOFT_SPECULAR,SLAY_SOFT_SIZE),u[31]),cv_at(u,124)));
+   colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,v3(SLAY_KICK_X,SLAY_KICK_Y,SLAY_KICK_Z),v,SLAY_SOFT_SPECULAR,SLAY_SOFT_SIZE),SLAY_KICK_POWER),v3(SLAY_KICK_R,SLAY_KICK_G,SLAY_KICK_B)));
    colour=cv_add(colour,cv_mul(cv_scale(cv_slay_light(skin,albedo,f0,metal,rough,n,geo,wg_normalize3(delta),v,1,fmin(1.0f32,u[119]/fmax(0.01f32,sqrt(wg_dot3(delta,delta))))),u[114]*0.002/fmax(0.01f32,wg_dot3(delta,delta))),v3(0.012514,0.33214,1)));
   }
   if (s.material==26 || s.material==27) && u[114]>=0 {
@@ -231,7 +231,7 @@ cv_scene_shade :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,verti
    // Keep the existing ambient approximation; direct transport is now along
    // the fiber rather than Lambert/GGX on a camera-facing ribbon.
    colour=cv_add(cv_scale(albedo,ifx u[112]>0.5 then 0.08f32 else 0.7734375f32),cv_scale(cv_fiber_light(albedo,t,l,v,rough,seed),shadow*(ifx u[112]>0.5 then u[123] else 3.5f32)));
-   if u[112]>0.5 {colour=cv_add(cv_scale(albedo,0.08),cv_mul(cv_scale(cv_fiber_light(albedo,t,l,v,rough,seed),shadow*u[123]),cv_at(u,120)));colour=cv_add(colour,cv_mul(cv_scale(cv_fiber_light(albedo,t,cv_at(u,97),v,rough,seed),u[115]),v3(1,0.40197778,0.20155625)));colour=cv_add(colour,cv_mul(cv_scale(cv_fiber_light(albedo,t,cv_at(u,28),v,rough,seed),u[31]),cv_at(u,124)));delta:=cv_sub(cv_at(u,116),s.world);colour=cv_add(colour,cv_mul(cv_scale(cv_fiber_light(albedo,t,wg_normalize3(delta),v,rough,seed),u[114]*0.002/fmax(0.01f32,wg_dot3(delta,delta))),v3(0.012514,0.33214,1)));}
+   if u[112]>0.5 {colour=cv_add(cv_scale(albedo,0.08),cv_mul(cv_scale(cv_fiber_light(albedo,t,l,v,rough,seed),shadow*u[123]),cv_at(u,120)));colour=cv_add(colour,cv_mul(cv_scale(cv_fiber_light(albedo,t,cv_at(u,97),v,rough,seed),u[115]),v3(1,0.40197778,0.20155625)));colour=cv_add(colour,cv_mul(cv_scale(cv_fiber_light(albedo,t,cv_at(u,28),v,rough,seed),u[31]),cv_at(u,124)));colour=cv_add(colour,cv_mul(cv_scale(cv_fiber_light(albedo,t,v3(SLAY_KICK_X,SLAY_KICK_Y,SLAY_KICK_Z),v,rough,seed),SLAY_KICK_POWER),v3(SLAY_KICK_R,SLAY_KICK_G,SLAY_KICK_B)));delta:=cv_sub(cv_at(u,116),s.world);colour=cv_add(colour,cv_mul(cv_scale(cv_fiber_light(albedo,t,wg_normalize3(delta),v,rough,seed),u[114]*0.002/fmax(0.01f32,wg_dot3(delta,delta))),v3(0.012514,0.33214,1)));}
   }
   if s.character>0.5 && s.material<26 && u[112]<0.5 {environment:=pbr_environment(rough,nv);f90:=clampf(50*f0.y,0.0f32,1.0f32);colour=cv_add(colour,cv_scale(cv_add(cv_scale(f0,environment.a),v3(f90*environment.b,f90*environment.b,f90*environment.b)),0.7734375));}
   if s.character>0.5 {mapped:=film_rec709(film_rgb(colour.x,colour.y,colour.z));return v4(cv_srgb(clampf(mapped.r,0.0f32,1.0f32)),cv_srgb(clampf(mapped.g,0.0f32,1.0f32)),cv_srgb(clampf(mapped.b,0.0f32,1.0f32)),ifx s.material==26 || s.material==27 then cv_groom_opacity(s.paint.x,s.paint.y) else 1.0f32);}
