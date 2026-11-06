@@ -68,7 +68,7 @@ EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, in
   return game_key_up(at(state), key, mods) ? 1u : 0u;
 }
 EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { game_blur(at(state)); drain(state); }
-EXPORT("coaxial_field_probe") int64_t coaxial_field_probe(uint32_t state, int32_t field) { return game_probe(at(state), field); }
+EXPORT("coaxial_field_probe") double coaxial_field_probe(uint32_t state, int32_t field) { return (double)game_probe(at(state), field); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   bool used = game_pointer(at(state), x, y, phase, kind, id);
   drain(state);
