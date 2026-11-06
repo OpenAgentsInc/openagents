@@ -179,6 +179,28 @@ report. Folded helpers cannot retain independent motion through a 65-slot
 mannequin; the [Animation Lab spec](../verse/2026-11-06-animation-lab.md)
 states the mapping and measurement limits.
 
+### `labs anim play` and `labs anim check`
+
+```sh
+openagents labs anim play FILE PRIVATE_DIR/film.mp4
+openagents labs anim check FILE
+```
+
+`FILE` is a performance, scene, cut, project manifest or admitted ALP1
+bundle. JSON documents use an adjacent `project.json` to supply their
+libraries and performances. Performance previews use a studio camera;
+scenes use their first camera; cuts follow the edit.
+
+Play uses a local server at `http://127.0.0.1:8800` (or
+`OPENAGENTS_ANIM_ORIGIN=http://127.0.0.1:PORT`), headless muted Chrome and
+Verse's actual WebGPU frames. It writes a new MP4 under `~/.openagents/`
+and retains frame hashes, PNGs, mixed audio and timing beside it. A5's
+capture profile is 960 × 540, the cut's frame rate, at most 60 seconds.
+Existing outputs are refused. Check writes one JSON object with continuity,
+face, joint, capsule, foot-contact and determinism diagnostics.
+
+See [scene and audio formats, bounds and diagnostic models](../verse/anim-scenes-v1.md).
+
 ### `labs anime`
 
 ```sh

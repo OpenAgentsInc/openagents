@@ -1,0 +1,92 @@
+project_test_bytes :: (out:[]u8)->int {
+ library:[16384]u8;ln:=anim_test_library_bundle(library[..]);performance:[4096]u8;pn:=anim_test_replace(AP_TEST,"\"length\":4","\"length\":6",performance[..]);#assert pn>0;
+ cut:="{\"schema\":\"anim.cut.v1\",\"name\":\"made-cut\",\"scene\":\"made-scene\",\"fps\":30,\"shots\":[{\"name\":\"shot\",\"camera\":\"wide\",\"from\":0,\"to\":5,\"transition\":\"cut\",\"blend\":0}]}";track:="speak,calm,7,0,1~0,0.2,aa,1";parts:=[5]string.[cast(string)library[0..<ln],cast(string)performance[0..<pn],AS_TEST,cut,track];cursor:=60;
+ for part,k:parts {anim_bundle_put(out,20+k*8,cast(u32)cursor);anim_bundle_put(out,24+k*8,cast(u32)part.count);for c,j:part {out[cursor+j]=c;}cursor+=part.count;}
+ for word,k:[5]u32.[0x31504c41,cast(u32)cursor,1,1,1] {anim_bundle_put(out,k*4,word);}return cursor;
+}
+#test "staged project admission composes immutable libraries performances scene cut and voice" #steps 200000000 {
+ b:[32768]u8;n:=project_test_bytes(b[..]);p:[1]SceneProject;#assert project_load(b[0..<n],p[..]) && p[0].ready && p[0].error==0 && p[0].libraries==1 && p[0].performances==1 && p[0].voices==1 && p[0].library[0].count==1 && p[0].scene[0].cast_count==1 && p[0].cut[0].length==5 && p[0].voice[0].n==1;
+ #assert p[0].bytes.count==n && anim_equal(p[0].performance[0].name,anim_named("made-performance")) && anim_equal(p[0].scene[0].name,anim_named("made-scene")) && p[0].voice[0].seed==7;
+}
+#test "staged project failures never mark a partial project ready" #steps 200000000 {
+ b:[32768]u8;n:=project_test_bytes(b[..]);p:[1]SceneProject;for part:0..<5 {n=project_test_bytes(b[..]);at:=cast(int)anim_word(b[..],20+part*8);b[at]='!';#assert !project_load(b[0..<n],p[..]) && !p[0].ready && p[0].error!=0;}
+ n=project_test_bytes(b[..]);b[0]^=1;#assert !project_load(b[0..<n],p[..]) && !p[0].ready && p[0].error==ANIM_RANGE;
+}
+
+#test "project stages preserve an earlier refusal through every later stage" {
+ p:[1]SceneProject;p[0].error=ANIM_REFERENCE;#assert !project_library(p[..],0) && !project_performance(p[..],0) && !project_scene(p[..]) && !project_cut(p[..]) && !project_voice(p[..],0) && !project_finish(p[..]) && p[0].error==ANIM_REFERENCE;
+ b:[32768]u8;n:=project_test_bytes(b[..]);#assert !project_begin(b[0..<n],p[0..<0]);
+}
+#test "project missing performance rigs and mismatched voice counts refuse by reference" #steps 200000000 {
+ b:[32768]u8;n:=project_test_bytes(b[..]);part:=project_part(b[0..<n],1);text:[4096]u8;nn:=anim_test_replace(cast(string)part,"made-rig","lost-rig",text[..]);#assert nn==part.count;for k:0..<nn {part[k]=text[k];}p:[1]SceneProject;#assert !project_load(b[0..<n],p[..]) && p[0].error==ANIM_REFERENCE;
+ n=project_test_bytes(b[..]);#assert project_load(b[0..<n],p[..]);p[0].ready=false;p[0].scene[0].sounds=0;#assert !project_finish(p[..]) && p[0].error==ANIM_REFERENCE;
+}
+project_test_repeat :: (out:[]u8,library:bool)->int {
+ source:[32768]u8;n:=project_test_bytes(source[..]);cursor:=68;
+ for k:0..<6 {index:=ifx k<=1 then (ifx library then 0 else k) else k-1;if !library && k==2 {index=1;}part:=project_part(source[0..<n],index);anim_bundle_put(out,20+k*8,cast(u32)cursor);anim_bundle_put(out,24+k*8,cast(u32)part.count);for c,j:part {out[cursor+j]=c;}cursor+=part.count;}
+ for word,k:[5]u32.[0x31504c41,cast(u32)cursor,ifx library then 2 else 1,ifx library then 1 else 2,1] {anim_bundle_put(out,k*4,word);}return cursor;
+}
+#test "project names are unique across both libraries and performances" #steps 200000000 {
+ b:[65536]u8;p:[1]SceneProject;n:=project_test_repeat(b[..],true);#assert !project_load(b[0..<n],p[..]) && p[0].error==ANIM_NAME;n=project_test_repeat(b[..],false);#assert !project_load(b[0..<n],p[..]) && p[0].error==ANIM_NAME;
+}
+
+#test "project render admission includes every cast and prop section at the 64-draw boundary" #steps 200000000 {
+ b:[32768]u8;n:=project_test_bytes(b[..]);p:[1]SceneProject;#assert project_load(b[0..<n],p[..]);p[0].scene[0].props=0;p[0].library[0].rig[0].sections=62;#assert project_draw_count(p[..])==64 && project_finish(p[..]);p[0].ready=false;p[0].library[0].rig[0].sections=63;#assert !project_finish(p[..]) && p[0].error==ANIM_LIMIT;
+ p[0].error=0;p[0].scene[0].cast_count=0;p[0].scene[0].props=1;p[0].library[0].rig[0].sections=62;#assert project_draw_count(p[..])==64;
+}
+
+#test "individual project stages refuse their own malformed payload before later checks" #steps 300000000 {
+ bytes:[65536]u8;p:[1]SceneProject;
+ for part:0..<5 {n:=project_test_bytes(bytes[..]);#assert project_begin(bytes[0..<n],p[..]);if part>0 {#assert project_library(p[..],0);}if part>1 {#assert project_performance(p[..],0);}if part>2 {#assert project_scene(p[..]);}if part>3 {#assert project_cut(p[..]);}at:=cast(int)anim_word(bytes[..],20+part*8);bytes[at]='!';ok:=ifx part==0 then project_library(p[..],0) else ifx part==1 then project_performance(p[..],0) else ifx part==2 then project_scene(p[..]) else ifx part==3 then project_cut(p[..]) else project_voice(p[..],0);#assert !ok && p[0].error!=0 && !p[0].ready;}
+ n:=project_test_bytes(bytes[..]);#assert project_load(bytes[0..<n],p[..]);bytes[0]='!';#assert !project_begin(bytes[0..<n],p[..]) && !p[0].ready && p[0].error==ANIM_RANGE;
+ n=project_test_repeat(bytes[..],true);#assert project_begin(bytes[0..<n],p[..]) && project_library(p[..],0) && !project_library(p[..],1) && p[0].error==ANIM_NAME;
+ n=project_test_repeat(bytes[..],false);#assert project_begin(bytes[0..<n],p[..]) && project_library(p[..],0) && project_performance(p[..],0) && !project_performance(p[..],1) && p[0].error==ANIM_NAME;
+}
+#test "project resolves a performance against the second immutable library" #steps 200000000 {
+ b:[65536]u8;n:=project_test_repeat(b[..],true);part:=project_part(b[0..<n],0);changed:[16384]u8;for replacement:0..<2 {nn:=anim_test_replace(cast(string)part,"made-rig","next-rig",changed[..]);#assert nn==part.count;for k:0..<nn {part[k]=changed[k];}}p:[1]SceneProject;#assert project_load(b[0..<n],p[..]) && p[0].libraries==2 && p[0].scene[0].actors[0].rig==1;
+}
+
+#test "performance stage refuses missing rigs and typed missing clip references directly" #steps 200000000 {
+ b:[32768]u8;changed:[8192]u8;p:[1]SceneProject;for field:0..<2 {n:=project_test_bytes(b[..]);part:=project_part(b[0..<n],1);nn:=anim_test_replace(cast(string)part,ifx field==0 then "made-rig" else "made-wave",ifx field==0 then "lost-rig" else "lost-wave",changed[..]);#assert nn==part.count;for k:0..<nn {part[k]=changed[k];}#assert project_begin(b[0..<n],p[..]) && project_library(p[..],0) && !project_performance(p[..],0) && p[0].error==ANIM_REFERENCE;}
+}
+project_test_audio :: (out:[]u8)->int {
+ original:[32768]u8;n:=project_test_bytes(original[..]);sat:[256]u8;sn:=voice_source_fixture(sat[..]);sat2:[256]u8;for k:0..<sn {sat2[k]=sat[k];}sat2[23]='8';
+ scene:[8192]u8;nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],AS_TEST,nodes[..]);row:=jv_raw(d[0],jv_at(d[0],jv_get(d[0],0,"sounds"),0));renamed:[4096]u8;rn:=anim_test_replace(row,"line","next",renamed[..]);list:[8192]u8;o:[1]Jo;jo_start(o[..],list[..]);jo_arr(o[..]);jo_raw(o[..],row);jo_raw(o[..],cast(string)renamed[0..<rn]);jo_end(o[..]);scene_n:=anim_test_set(AS_TEST,"sounds",jo_text(o[..]),scene[..]);parts:=[6]string.[cast(string)project_part(original[0..<n],0),cast(string)project_part(original[0..<n],1),cast(string)scene[0..<scene_n],cast(string)project_part(original[0..<n],3),cast(string)sat[0..<sn],cast(string)sat2[0..<sn]];cursor:=68;
+ for part,k:parts {anim_bundle_put(out,20+k*8,cast(u32)cursor);anim_bundle_put(out,24+k*8,cast(u32)part.count);for c,j:part {out[cursor+j]=c;}cursor+=part.count;}for word,k:[5]u32.[0x31504c41,cast(u32)cursor,1,1,2] {anim_bundle_put(out,k*4,word);}return cursor;
+}
+#test "project retains two distinct speak tracks and their exact canonical waveform spans" #steps 300000000 {
+ b:[32768]u8;n:=project_test_audio(b[..]);p:[1]SceneProject;#assert project_load(b[0..<n],p[..]) && p[0].voice[0].seed==7 && p[0].voice[1].seed==8 && p[0].voices==2;
+ for k:0..<2 {part:=project_part(b[0..<n],4+k);source:=voice_source(part);#assert p[0].wave_at[k]==cast(int)anim_word(b[..],20+(4+k)*8)+source.wave_at && p[0].wave_n[k]==52 && apw_plan(p[0].bytes[p[0].wave_at[k]..<p[0].wave_at[k]+p[0].wave_n[k]]).valid;}
+}
+
+#test "voice admission reports envelope parse and semantic failures at their own stage" #steps 200000000 {
+ b:[32768]u8;p:[1]SceneProject;n:=project_test_audio(b[..]);#assert project_load(b[0..<n],p[..]);part:=project_part(b[0..<n],4);anim_bundle_put(part,4,0);p[0].error=0;#assert !project_voice(p[..],0) && p[0].error==ANIM_FORMAT;
+ n=project_test_bytes(b[..]);#assert project_load(b[0..<n],p[..]);part=project_part(b[0..<n],4);part[0]='!';#assert !project_voice(p[..],0) && p[0].error==ANIM_FORMAT;
+ n=project_test_bytes(b[..]);#assert project_load(b[0..<n],p[..]);part=project_part(b[0..<n],4);for k:0..<part.count {if part[k]=='1' {part[k]='0';break;}}#assert !project_voice(p[..],0) && p[0].error==ANIM_FORMAT;
+}
+#test "project render profile refuses unavailable canyon and image crossfade explicitly" #steps 200000000 {
+ b:[32768]u8;n:=project_test_bytes(b[..]);p:[1]SceneProject;#assert project_load(b[0..<n],p[..]);p[0].scene[0].place=2;#assert !project_finish(p[..]) && p[0].error==ANIM_FORMAT;p[0].scene[0].place=0;p[0].error=0;p[0].cut[0].shot[0].transition=2;#assert !project_finish(p[..]) && p[0].error==ANIM_FORMAT;
+}
+#test "project admits two distinct performances without conflating their records" #steps 200000000 {
+ b:[65536]u8;n:=project_test_repeat(b[..],false);part:=project_part(b[0..<n],2);changed:[8192]u8;nn:=anim_test_replace(cast(string)part,"made-performance","next-performance",changed[..]);#assert nn==part.count;for k:0..<nn {part[k]=changed[k];}p:[1]SceneProject;#assert project_load(b[0..<n],p[..]) && p[0].performances==2 && anim_equal(p[0].performance[1].name,anim_named("next-performance"));
+}
+project_test_scene :: (out:[]u8,scene:string)->int {
+ original:[32768]u8;n:=project_test_bytes(original[..]);cursor:=60;for k:0..<5 {part:=ifx k==2 then scene else cast(string)project_part(original[0..<n],k);anim_bundle_put(out,20+k*8,cast(u32)cursor);anim_bundle_put(out,24+k*8,cast(u32)part.count);for c,j:part {out[cursor+j]=c;}cursor+=part.count;}for value,k:[5]u32.[0x31504c41,cast(u32)cursor,1,1,1] {anim_bundle_put(out,k*4,value);}return cursor;
+}
+#test "scene stage resolves audio source pack spans using the copied library pack inventory" #steps 200000000 {
+ b:[32768]u8;n:=project_test_bytes(b[..]);p:[1]SceneProject;#assert project_load(b[0..<n],p[..]);part:[512]u8;pn:=anim_test_part_text(part[..],p[0].library[0].packs[0],0,1,4,4);sounds:[2048]u8;o:[1]Jo;jo_start(o[..],sounds[..]);jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],"music");jo_key(o[..],"kind");jo_str(o[..],"music");jo_key(o[..],"start");jo_int(o[..],0);jo_key(o[..],"end");jo_int(o[..],5);jo_key(o[..],"gain");jo_int(o[..],1);jo_key(o[..],"source");jo_raw(o[..],cast(string)part[0..<pn]);jo_end(o[..]);jo_end(o[..]);scene:[8192]u8;sn:=anim_test_set(AS_TEST,"sounds",jo_text(o[..]),scene[..]);n=project_test_scene(b[..],cast(string)scene[0..<sn]);#assert project_begin(b[0..<n],p[..]) && project_library(p[..],0) && project_performance(p[..],0) && project_scene(p[..]) && p[0].scene[0].sound[0].source.pack==0 && p[0].scene[0].sound[0].source.width==4;
+}
+
+#test "project sound admission binds music and effects to complete canonical WAVs" #steps 200000000 {
+ bytes:[32768]u8;n:=project_test_bytes(bytes[..]);p:[1]SceneProject;#assert project_load(bytes[0..<n],p[..]) && project_sound_audio(p[..]);sat:[256]u8;sn:=voice_source_fixture(sat[..]);source:=voice_source(sat[0..<sn]);p[0].library[0].packs[0].bytes=source.wave;p[0].voices=0;
+ for kind:1..<3 {p[0].scene[0].sound[0].kind=kind;p[0].scene[0].sound[0].source=AnimPart.{pack=0,count=1,width=52,stride=52};#assert project_sound_audio(p[..]) && project_finish(p[..]);p[0].scene[0].sound[0].source.width=51;#assert !project_sound_audio(p[..]) && !project_finish(p[..]) && p[0].error==ANIM_FORMAT;p[0].error=0;}
+}
+
+project_test_capacity :: (out:[]u8,voices:bool)->int {
+ source:[32768]u8;n:=project_test_bytes(source[..]);perfs:=ifx voices then 1 else 16;vc:=ifx voices then 32 else 1;count:=1+perfs+2+vc;cursor:=20+count*8;for k:0..<count {index:=ifx k==0 then 0 else ifx k<=perfs then 1 else ifx k==perfs+1 then 2 else ifx k==perfs+2 then 3 else 4;part:=project_part(source[0..<n],index);anim_bundle_put(out,20+k*8,cast(u32)cursor);anim_bundle_put(out,24+k*8,cast(u32)part.count);for value,j:part {out[cursor+j]=value;}cursor+=part.count;}for value,k:[5]u32.[0x31504c41,cast(u32)cursor,1,cast(u32)perfs,cast(u32)vc] {anim_bundle_put(out,k*4,value);}return cursor;
+}
+#test "staged writers admit exactly the last performance and voice slots" #steps 300000000 {
+ b:[131072]u8;p:[1]SceneProject;n:=project_test_capacity(b[..],false);#assert project_begin(b[0..<n],p[..]) && project_library(p[..],0) && project_performance(p[..],15) && anim_equal(p[0].performance[15].name,anim_named("made-performance"));
+ #assert project_find_library(p[..],anim_named("made-rig"))==0 && project_find_library(p[..],anim_named("missing"))== -1;
+ n=project_test_capacity(b[..],true);#assert project_begin(b[0..<n],p[..]) && project_voice(p[..],31) && p[0].voice[31].seed==7;
+}

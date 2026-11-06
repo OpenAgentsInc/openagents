@@ -1,0 +1,21 @@
+// SAT1 binds an authored speak track to canonical PCM WAV bytes inside ALP1.
+// A raw speak track remains a silent stand-in, explicitly reported by checks.
+#load "bundle-policy.coax";
+#load "../audio/host-wav.coax";
+#load "../audio/wav.coax";
+#load "../speak.coax";
+#load "voice-source-checks.coax";
+#authority;
+VoiceSource :: struct {valid:bool;track:string;wave:[]u8;wave_at:int;}
+voice_text_size :: (n:int)->bool #effects(all) {return n>=1 && n<=ANIM_DOCUMENT_BYTES;}
+voice_header_fits :: (n:int)->bool #effects(all) {return n>=12;}
+voice_parts_fit :: (text:int,wave:int,total:int)->bool #effects(all) {return voice_text_size(text) && wave>=1 && 12+text+wave==total;}
+voice_vis_count :: (n:int)->bool #effects(all) {return n>=0 && n<=SPK_VIS_MAX;}
+voice_source :: (b:[]u8)->VoiceSource #effects(all) {
+ s:VoiceSource;if b.count<4 || anim_word(b,0)!=0x31544153 {if !voice_text_size(b.count) {return s;}s.valid=true;s.track=cast(string)b;return s;}if !voice_header_fits(b.count) {return s;}text:=cast(int)anim_word(b,4);wave:=cast(int)anim_word(b,8);if !voice_parts_fit(text,wave,b.count) {return s;}audio:=b[12+text..<b.count];if !apw_plan(audio).valid {return s;}s.valid=true;s.track=cast(string)b[12..<12+text];s.wave=audio;s.wave_at=12+text;return s;
+}
+
+voice_track_valid :: (track:[]SpkTrack)->bool #effects(all) {
+ if track.count<1 {return false;}t:=track[0];if t.mood<0 || t.mood>=SPK_MOODS || t.seed<0 || t.seed>2147483647 || !(t.length>0 && t.length<=600) || !(t.lead>=0 && t.lead<=t.length) || !voice_vis_count(t.n) {return false;}
+ for k:0..<t.n {v:=t.vis[k];if !(v.t0>=0 && v.t1>v.t0 && v.t1<=t.length && v.w>=0 && v.w<=1) || v.v<0 || v.v>=SPK_VISEMES {return false;}}return true;
+}

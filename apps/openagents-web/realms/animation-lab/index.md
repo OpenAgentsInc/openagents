@@ -24,7 +24,13 @@ Echo and the Slay face clips load from the owner's private animation bundle.
   cycle peak in centimetres with fixes off and on; it turns red above 1 cm.
   Seeking resets the meter. The built-in studio wave has stationary feet.
 
-Drag the model to orbit. Scroll to zoom. On a phone, the same controls are
+- `#scene`: play an admitted scene through its first authored camera.
+  **N** selects Scene. Drag its timeline to seek; tap **PLAY** to run.
+- `#cut`: play the edit's cameras and scene ranges. **X** selects Cut.
+  The shot label follows the edit. Space pauses; comma/period step.
+  These stations require a private scene project, described below.
+
+In the inspection stations, drag the model to orbit. Scroll to zoom. On a phone, the same controls are
 at the top and bottom of the stage. M selects the mannequin, E selects the loaded private rig;
 J/K select joints, U/I shapes, V switches joint/curve plots, S toggles the
 skeleton. Space or P toggles playback; comma and period step. Escape returns
@@ -76,10 +82,33 @@ Aethyr samples admitted tracks and applies eight-influence GPU skinning and
 sparse morphs. This inspection stage uses neutral colours and weight heat,
 with a 64 MiB GPU mesh budget and a 64 MiB private document bundle budget.
 It does not reproduce a source material or source lighting. Ghosts are
-skeletons so inspection remains usable on smaller devices. The frame budget
+skeletons so inspection remains usable on smaller devices. The inspection frame budget
 is 33.3 ms on desktop and phone; physical phone qualification is recorded
 separately from a headless phone viewport.
 
 In `#layers`, the numbered row selects individual layers. Tap **<** or **>**,
 then its **ON/OFF** label. Keyboard: **-**, **=**, then **Enter**. The five
 group buttons remain shortcuts for all layers of the same kind.
+
+
+## Scenes and films
+
+`openagents labs anim play FILE PRIVATE_DIR/film.mp4` renders a performance,
+scene or cut with headless muted Chrome and muxes audio after the Verse
+frames. `openagents labs anim check FILE` reports continuity, face ranges,
+joint/capsule screening, planted-foot travel and determinism as JSON.
+JSON inputs use an adjacent `project.json`; an ALP1 bundle carries the whole
+admitted project. See the [A5 scene profile](/docs/verse/anim-scenes-v1.md)
+and the original Guardian staging recipe in `verse/animlab/guardian/`.
+
+For local playback, expose an ALP1 file as `TOKEN.bundle` in the private web
+folder, then open `?project=TOKEN#scene` or `?project=TOKEN#cut`.
+Tokens contain 1–64 lowercase letters, digits or hyphens. The CLI uses the
+full project SHA-256 as its token. It preserves the Echo inspection alias.
+Add `?card=1` within the hash for captures, for example
+`?project=TOKEN#cut?card=1`.
+
+This is a blocking renderer with keyed lights and procedural effects.
+Studio and courtyard, cuts and incoming fades are supported. Canyon and
+image crossfades are refused. Finished render styles and depth of field
+belong to A6. Licensed study films and their frames stay owner-local.

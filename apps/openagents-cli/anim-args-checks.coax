@@ -43,3 +43,10 @@ an_test_error :: (tokens:[]string,expected:string) {
  a[0]=Args.{};for token:[8]string.["labs","anim","retarget","source","--to","target","--rate","30"] {#assert args_add(a[..],token);}#assert an_parse(a[..]).err=="import options require labs anim import";
  a[0]=Args.{};for token:[8]string.["labs","anim","retarget","source","--to","target","--rig","other"] {#assert args_add(a[..],token);}#assert an_parse(a[..]).err=="import options require labs anim import";
 }
+
+#test "animation film commands accept literal operands and refuse unrelated mode flags" {
+ a:[1]Args;for token:[5]string.["labs","anim","play","scene.json","out.mp4"] {#assert args_add(a[..],token);}r:=an_parse(a[..]);#assert r.err=="" && r.verb=="play" && r.clip=="scene.json" && r.out=="out.mp4";#assert args_add(a[..],"extra") && an_parse(a[..]).err!="";
+ a[0]=Args.{};for token:[4]string.["labs","anim","check","scene.json"] {#assert args_add(a[..],token);}r=an_parse(a[..]);#assert r.err=="" && r.verb=="check" && r.out=="";#assert args_add(a[..],"out.json") && an_parse(a[..]).err!="";
+ for flag:[4]string.["--rig","--rate","--to","--source-rig"] {a[0]=Args.{};for token:[6]string.["labs","anim","check","scene.json",flag,"30"] {#assert args_add(a[..],token);}#assert an_parse(a[..]).err!="";}
+ a[0]=Args.{};for token:[4]string.["labs","anim","play","scene.json"] {#assert args_add(a[..],token);}#assert an_parse(a[..]).err!="";
+}

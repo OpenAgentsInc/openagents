@@ -1,0 +1,31 @@
+// Stateless scene sampling: the same admitted records and scene time produce
+// the same poses, paths, keys and event envelopes, including reverse seeks.
+#load "../../aethyr/anim/scene-document.coax";
+#load "../../aethyr/anim/fixup.coax";
+#load "../../aethyr/anim/library.coax";
+#load "../../aethyr/speak.coax";
+#load "project.coax";
+#load "scene-checks.coax";
+ScenePathNow :: struct {position:Point;yaw:f32;}
+SceneLightNow :: struct {position:Point;colour:Point;intensity:f32;}
+scene_path :: (p:AnimPath,time:f32)->ScenePathNow {
+ if p.count==0 {return ScenePathNow.{};}if time<=p.time[0] {return ScenePathNow.{position=p.point[0],yaw=p.yaw[0]};}for k:1..<p.count {if time<=p.time[k] {u:=(time-p.time[k-1])/(p.time[k]-p.time[k-1]);return ScenePathNow.{position=mix(p.point[k-1],p.point[k],u),yaw=lerp(p.yaw[k-1],p.yaw[k],u)};}}return ScenePathNow.{position=p.point[p.count-1],yaw=p.yaw[p.count-1]};
+}
+scene_light :: (l:AnimSceneLight,time:f32)->SceneLightNow {
+ if l.count==0 {return SceneLightNow.{};}a:=0;b:=0;u:f32=0;for k:1..<l.count {a=k-1;b=k;u=clamp01((time-l.time[a])/(l.time[b]-l.time[a]));if time<=l.time[k] {break;}}return SceneLightNow.{position=mix(l.position[a],l.position[b],u),colour=mix(l.colour[a],l.colour[b],u),intensity=lerp(l.intensity[a],l.intensity[b],u)};
+}
+scene_effect :: (effect:AnimSceneEffect,time:f32)->f32 {return layer_fades(time-effect.start,effect.end-time,lo(0.5,(effect.end-effect.start)/2),lo(0.5,(effect.end-effect.start)/2),1);}
+scene_transform :: (rig:[]AnimRig,sample:[]AnimSample,position:Point,yaw:f32) {
+ q:=Quat.{y=sin(yaw/2),w=cos(yaw/2)};for j:0..<rig[0].joints {sample[0].position[j]=add(position,quat_rotate(q,sample[0].position[j]));sample[0].rotation[j]=quat_mul(q,sample[0].rotation[j]);pose_palette(sample[0].rotation[j],sample[0].position[j],rig[0].bind[..],j,sample[0].palette[..]);}
+}
+scene_actor :: (scene:[]AnimScene,actor:int,lib:[]AnimLibrary,performances:[]AnimPerformance,time:f32,sample:[]AnimSample,report:[]FixupReport) {
+ row:=scene[0].actors[actor];performance:=performances[row.performance];layer_evaluate(lib[0].rig[..],performance,lib[0].clips[0..<lib[0].count],lib[0].packs[..],time,0,sample);report[0]=fixup_evaluate(lib[0].rig[..],performance,lib[0].clips[0..<lib[0].count],time,0,sample);path:=scene_path(row.path,time);scene_transform(lib[0].rig[..],sample,path.position,path.yaw);
+}
+
+scene_camera_contains :: (camera:AnimSceneCamera,time:f32,point:Point,aspect:f32)->bool {
+ shot:=fl_flown(camera.flight,time);forward:=unit_or(sub(shot.at,shot.eye),v3(0,0,-1));right:=unit_or(cross(forward,v3(0,1,0)),v3(1,0,0));up:=cross(right,forward);relative:=sub(point,shot.eye);z:=dot(relative,forward);half:=z*tan(camera.fov/2);return z>0.01 && abs(dot(relative,right))<half*aspect && abs(dot(relative,up))<half;
+}
+
+scene_voice_face :: (p:[]SceneProject,actor:int,time:f32,sample:[]AnimSample) {
+ voice:=0;rig:=p[0].scene[0].actors[actor].rig;for k:0..<p[0].scene[0].sounds {cue:=p[0].scene[0].sound[k];if cue.kind==0 {if cue.who==actor && time>=cue.start && time<cue.end {face:=spk_perform(p[0].voice[voice..<voice+1],time-cue.start);opening:f32=0;for viseme:2..<SPK_VISEMES {opening=hi(opening,face.vis[viseme]);}for shape:0..<p[0].library[rig].rig[0].shape_count {if anim_equal(p[0].library[rig].rig[0].shapes[shape],anim_named("jawOpen")) {sample[0].weights[shape]=clamp01(hi(sample[0].weights[shape],opening));}}}voice+=1;}}
+}

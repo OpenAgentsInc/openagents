@@ -298,6 +298,8 @@ stack_bytes=1048576
 memory_pages="$(cd "$repo" && coax/web/tool.sh aethyr/render/page-render.coax --memory "$name")"
 max_memory=$((memory_pages * 65536))
 [[ "$memory_pages" == 1024 ]] || stack_bytes=4194304
+# Scene project admission nests a bounded JSON arena and an ALB1 reader.
+[[ "$name" != animationlab ]] || stack_bytes=8388608
 link=(--target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -mexec-model=reactor
       -Wl,--import-memory,--max-memory="$max_memory",-z,stack-size="$stack_bytes",--export=__heap_base,--gc-sections,--strip-debug)
 [[ -z "${COAX_FAST_EDIT:-}" || "${COAX_FAST_EDIT_ORACLE:-0}" == 1 ]] || link+=(-Wl,--export=fe_publish_offer)

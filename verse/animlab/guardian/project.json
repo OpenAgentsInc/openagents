@@ -1,0 +1,16 @@
+{
+  "schema": "anim.project.v1",
+  "libraries": [
+    "guardian.bundle",
+    "wand.bundle"
+  ],
+  "performances": [
+    "guardian.performance.json",
+    "extras.performance.json"
+  ],
+  "scene": "guardian.scene.json",
+  "cut": "guardian.cut.json",
+  "voices": [
+    "leave-now.sat"
+  ]
+}

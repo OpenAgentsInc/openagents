@@ -72,5 +72,15 @@ html:not(.gpu) #coaxial-load .la,#coaxial-load[data-state=fail] .la{display:inli
   local:/private/animation-lab.bundle
   local:/private/animation-lab.performance.json
   local:/private/animation-lab.contact.clip.json"></script>
+
+<script>
+// Firm reason: 1 (bind an owner-local project asset before the browser host starts).
+const project = new URLSearchParams(location.search).get("project");
+if (project && /^[a-z0-9-]{1,64}$/.test(project)) {
+  const entry = document.querySelector("script[data-app=animationlab]");
+  entry.dataset.assets = entry.dataset.assets.replace("/private/animation-lab.bundle", "/private/" + project + ".bundle");
+}
+</script>
+
 </body>
 </html>

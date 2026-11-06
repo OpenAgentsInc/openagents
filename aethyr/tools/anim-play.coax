@@ -1,0 +1,5 @@
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "anim-scene-play.coax";
+tool_main :: ()->int #export_c #effects(all) {a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}why:[4096]u8;error:=scene_play_file(args_at(a[..],0),args_at(a[..],1),why[..]);if error!="" {print("animation play: %\n",error);return 1;}return 0;}

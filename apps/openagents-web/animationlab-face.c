@@ -30,18 +30,20 @@ static void (*volatile prepare_library)(coax_v_t_AlState)=al_library_ready;
 static bool (*volatile ingest_document)(coax_v_t_AlState,int64_t,coax_v_u8)=al_layers_ingest;
 static void (*volatile parse_clip)(coax_v_t_AlState)=al_layers_parse_clip;
 static void (*volatile parse_performance)(coax_v_t_AlState)=al_layers_parse_performance;
+static bool (*volatile project_start)(coax_v_t_AlState,coax_v_u8)=al_project_begin;
+static bool (*volatile project_stage)(coax_v_t_AlState,int64_t,int64_t)=al_project_stage;
 EXPORT("coaxial_asset_ready") void loaded(uint32_t p,int32_t i,uint32_t n){
- if(i==0&&n<=sizeof bundle[0]){if(load_bundle(view(p),(coax_v_u8){bundle[active_bundle^1u],n})){active_bundle^=1u;prepare_library(view(p));}}
+ if(i==0&&n<=sizeof bundle[0]){coax_v_u8 bytes={bundle[active_bundle^1u],n};if(al_asset_kind(bytes)==2){bool ok=project_start(view(p),bytes);for(int kind=0;ok&&kind<5;kind++){int count=(kind==0||kind==1||kind==4)?(int)al_project_count(view(p),kind==4?2:kind):1;for(int row=0;ok&&row<count;row++)ok=project_stage(view(p),kind,row);}if(ok&&project_stage(view(p),5,0)){active_bundle^=1u;al_audio_bank(view(p),(int64_t)(uintptr_t)bundle[active_bundle]);}return;}if(load_bundle(view(p),(coax_v_u8){bundle[active_bundle^1u],n})){active_bundle^=1u;prepare_library(view(p));}}
  else if(i>=1&&i<=2&&n<=sizeof documents[0])ingest_document(view(p),i,(coax_v_u8){documents[i-1],n});
  else return;
  parse_clip(view(p));parse_performance(view(p));
 }
-EXPORT("coaxial_draws") uint32_t draws(uint32_t p){return (uint32_t)(uintptr_t)state(p)->draws.e;}
-EXPORT("coaxial_draw_count") uint32_t count(uint32_t p){return state(p)->mesh_words>0?(uint32_t)state(p)->draw_count:0;}
+EXPORT("coaxial_draws") uint32_t draws(uint32_t p){return (uint32_t)(uintptr_t)(state(p)->station>=4?state(p)->movie.e[0].draws.e:state(p)->draws.e);}
+EXPORT("coaxial_draw_count") uint32_t count(uint32_t p){return state(p)->station>=4?(state(p)->movie.e[0].built?(uint32_t)state(p)->movie.e[0].count:0):(state(p)->mesh_words>0?(uint32_t)state(p)->draw_count:0);}
 EXPORT("coaxial_stores") uint32_t stores(void){return 2;}
-EXPORT("coaxial_store") uint32_t store(uint32_t p,uint32_t i){return i==0?(uint32_t)(uintptr_t)geometry:(uint32_t)(uintptr_t)state(p)->gpu.e;}
-EXPORT("coaxial_store_bytes") uint32_t bytes(uint32_t p,uint32_t i){return i==0?(state(p)->mesh_words>0?(uint32_t)state(p)->mesh_words*4:16):sizeof state(p)->gpu.e;}
-EXPORT("coaxial_store_cap") uint32_t cap(uint32_t i){return i==0?sizeof geometry:12800*4;}
+EXPORT("coaxial_store") uint32_t store(uint32_t p,uint32_t i){return i==0?(uint32_t)(uintptr_t)geometry:(uint32_t)(uintptr_t)(state(p)->station>=4?state(p)->movie.e[0].gpu.e:state(p)->gpu.e);}
+EXPORT("coaxial_store_bytes") uint32_t bytes(uint32_t p,uint32_t i){return i==0?(state(p)->station>=4?(state(p)->movie.e[0].built?(uint32_t)state(p)->movie.e[0].words*4:16):(state(p)->mesh_words>0?(uint32_t)state(p)->mesh_words*4:16)):(state(p)->station>=4?sizeof state(p)->movie.e[0].gpu.e:sizeof state(p)->gpu.e);}
+EXPORT("coaxial_store_cap") uint32_t cap(uint32_t i){return i==0?sizeof geometry:525128*4;}
 EXPORT("coaxial_store_version") uint32_t version(uint32_t p,uint32_t i){return i==0?(uint32_t)state(p)->mesh_version:(uint32_t)state(p)->revision;}
 EXPORT("coaxial_inbox") uint32_t input(uint32_t p){(void)p;return (uint32_t)(uintptr_t)inbox;}
 EXPORT("coaxial_inbox_cap") uint32_t input_cap(void){return sizeof inbox;}
@@ -53,3 +55,8 @@ EXPORT("coaxial_action_done") void done(uint32_t p){state(p)->action=0;state(p)-
 EXPORT("coaxial_guard_probe") int32_t probe(uint32_t p,int32_t f){return (int32_t)al_probe(view(p),f);}
 
 EXPORT("coaxial_message") void message(uint32_t p,int32_t kind,uint32_t n){if(n<=sizeof inbox)al_message(view(p),kind,(coax_string){(const char *)inbox,n});}
+
+EXPORT("coaxial_sound_bank") uint32_t sound_bank(uint32_t p){return (uint32_t)(uintptr_t)state(p)->sound_bank.e;}
+EXPORT("coaxial_sound_bank_len") uint32_t sound_bank_len(uint32_t p){return (uint32_t)state(p)->sound_bank_n;}
+EXPORT("coaxial_sounds") uint32_t sounds(uint32_t p){return (uint32_t)(uintptr_t)state(p)->sound.e;}
+EXPORT("coaxial_sounds_len") uint32_t sounds_len(uint32_t p){return (uint32_t)state(p)->sound_n;}

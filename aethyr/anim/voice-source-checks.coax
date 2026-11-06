@@ -1,0 +1,26 @@
+voice_source_fixture :: (out:[]u8)->int {
+ text:="speak,calm,7,0,1~0,0.2,aa,1";pcm:=[4]int.[0,100,-100,0];wave:[52]u8;wn:=wav_write(pcm[..],1,48000,wave[..]);#assert wn==52;anim_bundle_put(out,0,0x31544153);anim_bundle_put(out,4,cast(u32)text.count);anim_bundle_put(out,8,52);for c,k:text {out[12+k]=c;}for c,k:wave {out[12+text.count+k]=c;}return 12+text.count+wn;
+}
+#test "voice source retains raw stand-in tracks or a bounded SAT1 track and canonical wave" {
+ b:[256]u8;n:=voice_source_fixture(b[..]);s:=voice_source(b[0..<n]);#assert s.valid && s.track=="speak,calm,7,0,1~0,0.2,aa,1" && s.wave.count==52 && s.wave_at==12+s.track.count;
+ t:="speak,calm,7,0,1";for c,k:t {b[k]=c;}s=voice_source(b[0..<t.count]);#assert s.valid && s.track==t && s.wave.count==0;
+}
+#test "voice source refuses truncated SAT1 sizes invalid waves and empty tracks" {
+ b:[256]u8;n:=voice_source_fixture(b[..]);for size:4..<n {#assert !voice_source(b[0..<size]).valid;}#assert !voice_source(b[0..<0]).valid;
+ for value,k:[5]int.[0,262145,1,53,0] {n=voice_source_fixture(b[..]);offset:=ifx k<2 then 4 else 8;anim_bundle_put(b[..],offset,cast(u32)value);#assert !voice_source(b[0..<n]).valid;}
+ n=voice_source_fixture(b[..]);s:=voice_source(b[0..<n]);b[s.wave_at]='!';#assert !voice_source(b[0..<n]).valid;
+}
+
+#test "voice tracks bound every timestamp weight viseme mood seed and stored span" {
+ t:[1]SpkTrack;#assert spk_track_parse("speak,calm,7,0,1~0,0.2,aa,1",t[..]) && voice_track_valid(t[..]);t[0].vis[0].t0=0.2;#assert !voice_track_valid(t[..]);t[0].vis[0].t0=0;t[0].vis[0].t1=1;#assert voice_track_valid(t[..]);t[0].vis[0].w= -0.1;#assert !voice_track_valid(t[..]);t[0].vis[0].w=1.1;#assert !voice_track_valid(t[..]);t[0].vis[0].w=0;t[0].vis[0].v=14;#assert !voice_track_valid(t[..]);t[0].vis[0].v= -1;#assert !voice_track_valid(t[..]);t[0].vis[0].v=0;t[0].length=0;#assert !voice_track_valid(t[..]);t[0].length=601;#assert !voice_track_valid(t[..]);t[0].length=600;t[0].lead=600;t[0].seed=2147483647;t[0].mood=5;#assert voice_track_valid(t[..]);t[0].mood=6;#assert !voice_track_valid(t[..]);t[0].mood=0;t[0].seed=2147483648;#assert !voice_track_valid(t[..]);t[0].seed= -1;#assert !voice_track_valid(t[..]);t[0].seed=0;t[0].lead=601;#assert !voice_track_valid(t[..]);t[0].lead= -1;#assert !voice_track_valid(t[..]);t[0].lead=0;t[0].n= -1;#assert !voice_track_valid(t[..]);t[0].n=257;#assert !voice_track_valid(t[..]);t[0].n=0;#assert voice_track_valid(t[..]) && !voice_track_valid(t[0..<0]);
+}
+
+#test "voice envelope bounds are independent of waveform admission" {
+ #assert voice_header_fits(12) && !voice_header_fits(11);#assert voice_text_size(1) && voice_text_size(262144) && !voice_text_size(0) && !voice_text_size(262145);
+ #assert voice_parts_fit(1,1,14) && !voice_parts_fit(0,1,13) && !voice_parts_fit(262145,1,262158) && voice_parts_fit(262144,1,262157) && !voice_parts_fit(1,0,13) && !voice_parts_fit(1,1,15);
+ #assert voice_vis_count(0) && voice_vis_count(256) && !voice_vis_count(-1) && !voice_vis_count(257);
+ b:[262145]u8;b[0]='s';#assert voice_source(b[0..<1]).valid && voice_source(b[0..<262144]).valid && !voice_source(b[..]).valid;
+ t:[1]SpkTrack;t[0].length=1;t[0].lead=1;#assert voice_track_valid(t[..]);t[0].lead=1.0001;#assert !voice_track_valid(t[..]);
+}
+
+#test "zero-length empty voice cannot become valid at the length boundary" {t:[1]SpkTrack;#assert !voice_track_valid(t[..]);t[0].length=0.001;#assert voice_track_valid(t[..]);}

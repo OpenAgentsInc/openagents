@@ -1,0 +1,6 @@
+#test "scene geometry converts original courtyard vertices into bounded rigid skin records" {
+ source:[18]u32;for v:0..<3 {source[v*6]=f32_bits(cast(f32)v);source[v*6+3]=0x0080ff80;source[v*6+4]=0x03112233;}out:[100]u32;n:=scene_draw_source(source[..],3,out[..],4,false);#assert n==85 && out[4]==f32_bits(0) && out[30]==f32_bits(1) && out[4+8]==0x03112233 && out[4+9]==0 && out[4+13]==255 && out[82]==0 && out[84]==2;#assert scene_draw_source(source[..],3,out[0..<84],4,false)== -1;
+}
+#test "scene prop matrices retain uniform scale rotation and translation independently" {
+ sample:[1]AnimSample;sample[0].palette[0]=1;sample[0].palette[5]=1;sample[0].palette[10]=1;p:=AnimSceneProp.{scale=2,position=v3(1,2,3),rotation=Quat.{z=0.70710677,w=0.70710677}};scene_prop_transform(sample[..],1,p);#assert abs(sample[0].palette[0])<0.00001 && abs(sample[0].palette[1]+2)<0.00001 && abs(sample[0].palette[4]-2)<0.00001 && sample[0].palette[3]==1 && sample[0].palette[7]==2 && sample[0].palette[10]==2 && sample[0].palette[11]==3;
+}

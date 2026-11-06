@@ -1,0 +1,12 @@
+// ALP1 retains whole ALB1 libraries, admitted document text and voice tracks
+// in one immutable owner-local bank. Offsets never escape that bank.
+#load "bundle-policy.coax";
+#load "project-policy-checks.coax";
+#authority;
+project_parts :: (b:[]u8)->int #effects(all) {return cast(int)anim_word(b,8)+cast(int)anim_word(b,12)+cast(int)anim_word(b,16)+2;}
+project_table_fits :: (size:int,count:int)->bool #effects(all) {return 20+count*8<=size;}
+project_valid :: (b:[]u8)->bool #effects(all) {
+ if !anim_bundle_size(b.count) {return false;}if anim_word(b,0)!=0x31504c41 || cast(int)anim_word(b,4)!=b.count {return false;}libs:=cast(int)anim_word(b,8);performances:=cast(int)anim_word(b,12);voices:=cast(int)anim_word(b,16);if libs<1 || libs>2 || performances<1 || performances>16 || voices>32 {return false;}
+ count:=project_parts(b);cursor:=20+count*8;if !project_table_fits(b.count,count) {return false;}for k:0..<count {first:=cast(int)anim_word(b,20+k*8);size:=cast(int)anim_word(b,24+k*8);if first!=cursor || size<1 {return false;}cursor+=size;}return cursor==b.count;
+}
+project_part :: (b:[]u8,index:int)->[]u8 #effects(all) {first:=cast(int)anim_word(b,20+index*8);size:=cast(int)anim_word(b,24+index*8);return b[first..<first+size];}

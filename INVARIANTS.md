@@ -5852,7 +5852,7 @@ records, with a 64 MiB GPU upload budget. It is an explicitly tracked
 renderer for `animation-lab` / `animationlab`, not a shared-renderer adoption
 claim. Its Coax-owned 4,096-page (256 MiB) memory declaration is used by both
 the Wasm linker and the browser page; ordinary pages retain 1,024 pages
-(64 MiB). The inspector uses a 4 MiB stack inside that ceiling. The selected
+(64 MiB). A5 uses an 8 MiB stack inside that ceiling for staged project admission. The selected
 rig, clip and held frame survive device replacement with equal frame hashes.
 
 Checks: `bundle-policy.coax` kills 66 mutants; the exact renderer/memory
@@ -5962,8 +5962,8 @@ publishes only after all records pass admission. The browser retains pending
 JSON in fixed host buffers. Clip/performance parsing uses separate ABI calls;
 a staged derived clip is restored if performance admission fails. One spare
 clip slot supports the performance without changing source clip enumeration.
-Rig views and bounded parser scratch keep the 4 MiB Wasm stack and 256 MiB
-inspector memory limit. Headless checks exercise the actual asset ABI,
+Rig views and bounded parser scratch kept A3 inside its 4 MiB Wasm stack;
+A5 increases the stack to 8 MiB within the same 256 MiB memory limit. Headless checks exercise the actual asset ABI,
 malformed replacement, GPU recovery and fixed frames.
 
 A3 authority gates kill 30 envelope/pose, 82 mask, 88 layer, 84 anchor and
@@ -5989,3 +5989,28 @@ The frozen A0 Echo/Slay conversions remain qualified: regenerated Unreal
 body samples fail exact equality, and A4 does not substitute them in Valley.
 The failed qualification, profile limits and verification are recorded in
 `docs/verification/animation-lab-a4-2026-11-06/README.md`.
+
+
+## Scene projects publish complete immutable banks and sample authored clocks
+
+ALP1 validates the complete contiguous table before making payload views.
+Libraries, performances, scene, cut and speech entries are admitted in an
+inactive bank. Only a successful final stage publishes that bank. Failure
+cannot replace bytes under the active project. Draw budgets, supported
+stage/transition profiles and complete canonical sound spans gate final
+admission. Source and geometry buffers remain bounded to 64 MiB each.
+
+Scene paths, light keys, effects, pose layers, fix-ups and speech faces are
+stateless functions of admitted records and scene time. Edit playback maps
+its clock onto camera/scene ranges. Headless captures seek an authored frame
+index and hash actual GPU bytes. Audio samples use that same edit clock and
+are muxed after capture. No Unreal or Blender renderer supplies frames.
+
+Canyon and image crossfades are refused in A5. Static focus/weather metadata,
+heuristic canonical hinge limits and character-root capsules are explicit
+model boundaries; a JSON diagnostic is not a claim of full collision or
+anatomical validation. Licensed study payloads and captures remain private.
+
+A5's five authority gates kill 701 mutants with zero survivors. Admission,
+station checks, two complete film hash lists and rendering cost are recorded
+in `docs/verification/animation-lab-a5-2026-11-06/README.md`.

@@ -1,0 +1,21 @@
+cut_play_fixture :: ()->AnimCut {
+ c:AnimCut;c.ready=true;c.length=9;c.shots=3;c.shot[0]=AnimCutShot.{camera=1,from=2,to=5};c.shot[1]=AnimCutShot.{camera=2,from=10,to=12,transition=2,blend=0.5};c.shot[2]=AnimCutShot.{camera=3,from=20,to=24,transition=1,blend=1};return c;
+}
+#test "cut playback selects every shot boundary and the inclusive film endpoint" {
+ c:=[1]AnimCut.[cut_play_fixture()];
+ for t,k:[7]f32.[0,2.9,3,4.9,5,8.9,9] {m:=cut_play(c[..],t);#assert m.ready && m.shot==[7]int.[0,0,1,1,2,2,2][k];#assert abs(m.time-[7]f32.[2,4.9,10,11.9,12,23.9,24][k])<0.00001;}
+ #assert !cut_play(c[..],-0.01).ready && !cut_play(c[..],9.01).ready;c[0].ready=false;#assert !cut_play(c[..],0).ready;
+}
+#test "cut playback exposes crossfade source clocks and a two-sided fade through black" {
+ c:=[1]AnimCut.[cut_play_fixture()];a:=cut_play(c[..],3);#assert a.camera==2 && a.previous==1 && a.previous_time==5 && a.weight==0 && a.opacity==1;
+ a=cut_play(c[..],3.25);#assert a.camera==2 && a.time==10.25 && a.previous_time==5.25 && a.weight==0.5;
+ a=cut_play(c[..],3.5);#assert a.previous== -1 && a.weight==1 && a.time==10.5;
+ a=cut_play(c[..],5.25);#assert a.camera==2 && a.time==12.25 && a.opacity==0.5 && a.previous== -1;
+ a=cut_play(c[..],5.5);#assert a.camera==3 && a.time==20.5 && a.opacity==0;
+ a=cut_play(c[..],5.75);#assert a.camera==3 && a.time==20.75 && a.opacity==0.5;
+ a=cut_play(c[..],6);#assert a.camera==3 && a.time==21 && a.opacity==1;
+}
+
+#test "a first shot transition fades from black without an outgoing camera" {
+ c:=[1]AnimCut.[cut_play_fixture()];c[0].shot[0].transition=1;c[0].shot[0].blend=1;m:=cut_play(c[..],0);#assert m.ready && m.camera==1 && m.opacity==0 && m.previous== -1;m=cut_play(c[..],0.5);#assert m.opacity==0.5 && m.time==2.5;m=cut_play(c[..],1);#assert m.opacity==1;
+}

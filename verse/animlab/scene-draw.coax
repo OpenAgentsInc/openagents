@@ -1,0 +1,53 @@
+// Skyreach's original geometry and admitted skinned performances share the
+// inspection renderer. Geometry is retained; each model has its own palette.
+#load "project.coax";
+#load "scene.coax";
+#load "../../aethyr/anim/cut-playback.coax";
+#load "../../aethyr/anim/inspect-mesh.coax";
+#load "courtyard.coax" as court;
+#load "scene-draw-checks.coax";
+SCENE_BANK :: 6404;
+SceneDraw :: struct {
+ source:[900000]u32;gpu:[525128]f32;draws:[256]u32;count:int;words:int;built:bool;version:int;
+ samples:[16]AnimSample;fixes:[16]FixupReport;scratch:[1]AnimSample;
+ library_at:[2]int;library_draws:[512]u32;fx_at:int;fx_indices:int;fx_vertices:int;fx_count:int;
+}
+scene_draw_row :: (draw:[]SceneDraw,first:int,count:int,model:int) {
+ at:=draw[0].count*4;draw[0].draws[at]=cast(u32)first;draw[0].draws[at+1]=cast(u32)count;draw[0].draws[at+2]=0x80000000+cast(u32)(model*256);draw[0].draws[at+3]=1;draw[0].count+=1;
+}
+scene_draw_source :: (source:[]u32,count:int,out:[]u32,first:int,skin_objects:bool)->int {
+ index_at:=first+count*26;end:=index_at+count;if end>out.count {return -1;}for k:first..<end {out[k]=0;}
+ for v:0..<count {a:=v*6;b:=first+v*26;for axis:0..<3 {out[b+axis]=source[a+axis];value:=cast(f32)((source[a+3]>>cast(u32)(axis*8))&255)/255*2-1;out[b+3+axis]=f32_bits(value);}out[b+8]=source[a+4];if skin_objects {out[b+9]=source[a+3]>>24;}out[b+13]=255;out[index_at+v]=cast(u32)v;}return end;
+}
+scene_draw_prepare :: (p:[]SceneProject,d:[]SceneDraw,geometry:[]u32)->bool {
+ d[0].built=false;d[0].count=0;pen:[1]court.Pen;if p[0].scene[0].place==1 {court.build_world(d[0].source[..],pen[..]);}else {court.pen_set(pen[..],0,court.MAT_FLOOR,0.35,0.38,0.44);court.quad(d[0].source[..],pen[..],court.v3(-40,0,-40),court.v3(-40,0,40),court.v3(40,0,40),court.v3(40,0,-40));}if pen[0].over {return false;}end:=scene_draw_source(d[0].source[..],pen[0].n,geometry,256,false);if end<0 {return false;}geometry[0]=256;scene_draw_row(d,256+pen[0].n*26,pen[0].n,0);
+ for k:0..<p[0].libraries {at:=end;td:=d[0].library_draws[k*256..<k*256+256];n:=anim_inspect_mesh(p[0].library[k].rig[0],p[0].library[k].packs[..],geometry[at..<geometry.count],td);if n<0 {return false;}d[0].library_at[k]=at;end+=n;}
+ for k:0..<p[0].scene[0].cast_count {rig:=p[0].scene[0].actors[k].rig;model:=k+1;geometry[model]=cast(u32)d[0].library_at[rig]+16;for section:0..<p[0].library[rig].rig[0].sections {at:=rig*256+section*4;scene_draw_row(d,d[0].library_at[rig]+cast(int)d[0].library_draws[at],cast(int)d[0].library_draws[at+1],model);}}
+ for k:0..<p[0].scene[0].props {rig:=p[0].scene[0].prop[k].rig;model:=k+17;geometry[model]=cast(u32)d[0].library_at[rig]+16;for section:0..<p[0].library[rig].rig[0].sections {at:=rig*256+section*4;scene_draw_row(d,d[0].library_at[rig]+cast(int)d[0].library_draws[at],cast(int)d[0].library_draws[at+1],model);}}
+ pen[0]=court.Pen.{};scene_fx_geometry(p,d[0].source[..],pen[..]);d[0].fx_vertices=pen[0].n;geometry[81]=cast(u32)end;fx_end:=scene_draw_source(d[0].source[..],pen[0].n,geometry,end,true);if fx_end<0 || pen[0].over {return false;}if pen[0].n>0 {scene_draw_row(d,end+pen[0].n*26,pen[0].n,81);}end=fx_end;d[0].words=end;d[0].version+=1;d[0].built=true;return true;
+}
+scene_draw_palette :: (d:[]SceneDraw,model:int,sample:[]AnimSample,colour:Point) {
+ bank:=model*SCENE_BANK;for k:0..<6144 {d[0].gpu[bank+k]=sample[0].palette[k];}for k:0..<256 {d[0].gpu[bank+6144+k]=sample[0].weights[k];}d[0].gpu[bank+6400]=colour.x;d[0].gpu[bank+6401]=colour.y;d[0].gpu[bank+6402]=colour.z;
+}
+scene_prop_transform :: (sample:[]AnimSample,joints:int,prop:AnimSceneProp) {
+ x:=quat_rotate(prop.rotation,v3(1,0,0));y:=quat_rotate(prop.rotation,v3(0,1,0));z:=quat_rotate(prop.rotation,v3(0,0,1));
+ for j:0..<joints {at:=j*12;for col:0..<4 {v:=v3(sample[0].palette[at+col],sample[0].palette[at+4+col],sample[0].palette[at+8+col]);v=times(add(add(times(x,v.x),times(y,v.y)),times(z,v.z)),prop.scale);if col==3 {v=add(v,prop.position);}sample[0].palette[at+col]=v.x;sample[0].palette[at+4+col]=v.y;sample[0].palette[at+8+col]=v.z;}}
+}
+scene_draw_sample :: (p:[]SceneProject,d:[]SceneDraw,time:f32,camera:int,u:[]f32,width:f32,height:f32,opacity:f32) {
+ for k:0..<12 {d[0].gpu[k]=ifx k==0 || k==5 || k==10 then 1 else 0;}d[0].gpu[6400]=1;d[0].gpu[6401]=1;d[0].gpu[6402]=1;
+ for k:0..<p[0].scene[0].cast_count {rig:=p[0].scene[0].actors[k].rig;scene_actor(p[0].scene[..],k,p[0].library[rig..<rig+1],p[0].performance[0..<p[0].performances],time,d[0].samples[k..<k+1],d[0].fixes[k..<k+1]);scene_voice_face(p,k,time,d[0].samples[k..<k+1]);look:=p[0].scene[0].actors[k].look;colour:=ifx look==1 then v3(0.38,0.23,0.58) else v3(0.12,0.15,0.22);scene_draw_palette(d,k+1,d[0].samples[k..<k+1],colour);}
+ for k:0..<p[0].scene[0].props {prop:=p[0].scene[0].prop[k];rig:=prop.rig;empty:AnimClip;anim_sample(p[0].library[rig].rig[0],empty,p[0].library[rig].packs[..],0,d[0].scratch[..]);scene_prop_transform(d[0].scratch[..],p[0].library[rig].rig[0].joints,prop);scene_draw_palette(d,k+17,d[0].scratch[..],v3(0.5,0.3,0.12));}
+ scene_fx_palette(p,d,time);cam:=p[0].scene[0].camera[camera];shot:=fl_flown(cam.flight,time);forward:=unit_or(sub(shot.at,shot.eye),v3(0,0,-1));right:=unit_or(cross(forward,v3(0,1,0)),v3(1,0,0));up:=cross(right,forward);for k:0..<u.count {u[k]=0;}u[0]=width;u[1]=height;u[3]=1;for point,k:[4]Point.[shot.eye,right,up,forward] {u[8+k*4]=point.x;u[9+k*4]=point.y;u[10+k*4]=point.z;}u[28]=height/(2*tan(cam.fov/2));u[31]=height*0.5;u[33]=1;u[39]=opacity;
+ colour:=v3(0.7,0.75,1);direction:=unit_or(v3(-0.5,1,0.8),v3(0,1,0));if p[0].scene[0].lights>0 {colour=v3(0,0,0);direction=v3(0,0,0);for k:0..<p[0].scene[0].lights {light:=scene_light(p[0].scene[0].light[k],time);colour=add(colour,times(light.colour,light.intensity));direction=add(direction,times(unit_or(light.position,v3(0,1,0)),light.intensity));}direction=unit_or(direction,v3(0,1,0));}u[34]=colour.x;u[35]=colour.y;u[36]=colour.z;u[40]=direction.x;u[41]=direction.y;u[42]=direction.z;
+}
+
+scene_fx_geometry :: (p:[]SceneProject,out:[]u32,pen:[]court.Pen) {
+ for k:0..<p[0].scene[0].effects {fx:=p[0].scene[0].effect[k];court.pen_set(pen,k*4,court.MAT_GLOW,0.2,0.65,1);if fx.kind==0 {
+  court.ellipsoid(out,pen,court.frame_at(court.v3(0,0,0),0),0.28,0.48,0.22,12,6,0);court.ball(out,pen,court.v3(0,0.5,0.15),0.19,10);
+  for wing:0..<2 {side:=ifx wing==0 then -1.0f32 else 1.0f32;court.pen_set(pen,k*4+wing+1,court.MAT_GLOW,0.3,0.75,1);court.quad(out,pen,court.v3(side*0.2,0.2,0),court.v3(side*2.2,1.1,-0.2),court.v3(side*1.5,0.1,-0.7),court.v3(side*0.4,-0.1,-0.25));for feather:0..<5 {x:=0.8+cast(f32)feather*0.25;court.limb(out,pen,court.v3(side*x,0.35,-0.3),court.v3(side*(x+0.3),-0.25,-0.8),0.07,0.01,court.v3(0,0,1),6);}}
+ }else {court.ball(out,pen,court.v3(0,0,0),0.2,10);}}
+}
+scene_fx_palette :: (p:[]SceneProject,d:[]SceneDraw,time:f32) {
+ for k:0..<p[0].scene[0].effects {fx:=p[0].scene[0].effect[k];envelope:=scene_effect(fx,time);size:=fx.size*envelope;phase:=time-fx.start+cast(f32)(fx.seed%997)/997;for part:0..<4 {angle:=ifx part==1 then sin(phase*3)*0.4 else ifx part==2 then -sin(phase*3)*0.4 else 0.0f32;q:=Quat.{z=sin(angle/2),w=cos(angle/2)};x:=times(quat_rotate(q,v3(1,0,0)),size);y:=times(quat_rotate(q,v3(0,1,0)),size);z:=times(quat_rotate(q,v3(0,0,1)),size);at:=81*SCENE_BANK+(k*4+part)*12;position:=add(fx.position,v3(0,ifx fx.kind==0 then sin(phase*1.5)*0.12 else 0,0));for axis:0..<3 {d[0].gpu[at+axis*4]=[3]f32.[x.x,x.y,x.z][axis];d[0].gpu[at+axis*4+1]=[3]f32.[y.x,y.y,y.z][axis];d[0].gpu[at+axis*4+2]=[3]f32.[z.x,z.y,z.z][axis];d[0].gpu[at+axis*4+3]=[3]f32.[position.x,position.y,position.z][axis];}}}
+ d[0].gpu[81*SCENE_BANK+6400]=0.2;d[0].gpu[81*SCENE_BANK+6401]=0.65;d[0].gpu[81*SCENE_BANK+6402]=1;
+}

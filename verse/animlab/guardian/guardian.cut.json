@@ -1,0 +1,56 @@
+{
+  "schema": "anim.cut.v1",
+  "name": "the-guardian-study",
+  "scene": "the-guardian-study",
+  "fps": 24,
+  "shots": [
+    {
+      "name": "S1",
+      "camera": "S1",
+      "from": 0,
+      "to": 5,
+      "transition": "cut",
+      "blend": 0
+    },
+    {
+      "name": "S2",
+      "camera": "S2",
+      "from": 5,
+      "to": 9,
+      "transition": "cut",
+      "blend": 0
+    },
+    {
+      "name": "S3",
+      "camera": "S3",
+      "from": 9,
+      "to": 12,
+      "transition": "cut",
+      "blend": 0
+    },
+    {
+      "name": "S4",
+      "camera": "S4",
+      "from": 12,
+      "to": 18,
+      "transition": "cut",
+      "blend": 0
+    },
+    {
+      "name": "S5",
+      "camera": "S5",
+      "from": 18,
+      "to": 25,
+      "transition": "cut",
+      "blend": 0
+    },
+    {
+      "name": "S6",
+      "camera": "S6",
+      "from": 25,
+      "to": 30,
+      "transition": "cut",
+      "blend": 0
+    }
+  ]
+}

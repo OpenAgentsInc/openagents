@@ -2,7 +2,8 @@
 
 Written 2026-11-06. Status: A0 documents, A1 rig/clip stations, A2 retargeting and A3 layers/fix-ups are implemented.
 A4 imports are implemented within the [v1 profile](anim-imports-v1.md); the exact
-Echo/Slay re-import qualification remains open in [#12983](https://github.com/OpenAgentsInc/openagents/issues/12983). A5–A8 are pending.
+Echo/Slay re-import qualification remains open in [#12983](https://github.com/OpenAgentsInc/openagents/issues/12983). A5 scenes/cuts and the private Guardian study are implemented within the
+[scene profile](anim-scenes-v1.md). A6–A8 are pending.
 
 Animation Lab is an unlisted realm and a set of `openagents labs` commands
 where you take any character's animation apart, change it and put it back
@@ -31,6 +32,7 @@ Draconia, The Guardian").
 | Retargeting (A2) | `aethyr/anim/retarget*.coax`, `#retarget`, `labs anim retarget` | Rest-corrected anchor rotations, leg-scaled root motion, private exports and paired views; [verification](../verification/animation-lab-a2-2026-11-06/README.md) |
 | Layers and fix-ups (A3) | `aethyr/anim/layers.coax`, `fixup.coax`, `#layers` | Base, masked override, additive and facial layers; planted feet, head/eye aims and hand targets; [verification](../verification/animation-lab-a3-2026-11-06/README.md) |
 | Imports (A4) | `aethyr/anim/import-*.coax`, `gltf-*.coax`, `labs anim import` | glTF/FBX, BVH, ARKit CSV and bounded Unreal body imports; [limits](anim-imports-v1.md) and [verification](../verification/animation-lab-a4-2026-11-06/README.md) |
+| Scenes and cuts (A5) | `verse/animlab/scene.coax`, `cut.coax`, `#scene`, `#cut`, `labs anim play/check` | Staged projects, authored cameras, light/effect keys, speech-driven stand-in faces, headless films and JSON checks; [profile](anim-scenes-v1.md) and [verification](../verification/animation-lab-a5-2026-11-06/README.md) |
 | Pose math | `aethyr/anim/pose.coax` | Quaternions, local poses, blending, the joint chain and the skinning palette |
 | Blend shapes | `aethyr/anim/morph.coax`, `morph-gpu.coax` | Sampled curves; sparse morph deltas applied on the GPU before skinning |
 | Face playback | `aethyr/anim/face.coax`, `face-pack.coax` | Plays face clips as morph weights plus face-bone overlays on a body pose; the EFC1 face pack format and its checks |
@@ -431,7 +433,8 @@ source clips. Rig/clip inspection retains the 64-clip bound. Pending JSON
 views refer to fixed host-owned buffers; admitted names and values are owned.
 Each JSON admission uses one bounded scratch arena and a separate ABI entry.
 Rig views avoid copying whole skeletons into the frame stack. These choices
-keep the existing 256 MiB memory and 4 MiB stack declarations.
+kept A3 inside the existing 256 MiB memory and 4 MiB stack declarations.
+A5 raises the stack to 8 MiB for staged project admission.
 
 ## A4 import decisions
 
@@ -447,3 +450,39 @@ body samples fail exact A0 equality. Keep the frozen A0 conversions as the
 qualified source. Do not substitute regenerated clips in Valley Lab. This
 unmet A4 qualification is recorded in the verification record and #12969;
 #12962 remains open for its separate exact-render work.
+
+## A5 scene and cut decisions
+
+A5 uses retained ALP1 projects: whole admitted libraries, performance
+records, a scene, a cut and optional SAT1 speech/audio entries. Staging
+occurs in the inactive source bank; publication follows complete admission.
+The realm and CLI sample the same scene clock. No solved frame feeds the
+next one. Held-frame messages use authored frame numbers rather than wall
+time, so frame hashes can be compared across complete renders.
+
+Keep the initial renderer bounded: studio/courtyard, two libraries, 16
+performances, 32 voice cues and 64 draw commands. Canyon and image crossfades
+are refused. Hard cuts and incoming fades are implemented. The headless
+profile captures 960 × 540 at the edit rate, up to 60 seconds per invocation;
+this keeps capture and PCM memory bounded. Native audio is mixed from edit
+clocks, then muxed after the Verse frames have been captured. Live seeks are
+silent rather than restarting a cue at an incorrect offset.
+
+The Guardian is an internal blocking study. It uses the qualified Valley
+walk on the original mannequin, original arm/recoil keys, a hand-bound wand,
+original props and bird geometry, and an offline stock voice with
+speech-aligned jaw motion. Stage weather/time and camera focus remain
+metadata until the finished A6 rendering work. The study is not the A8
+publishable scene. The [scene profile](anim-scenes-v1.md) records these
+limits and the [recipe](../../verse/animlab/guardian/README.md) reproduces it.
+
+JSON diagnostics name their models: canonical elbow/knee angle screening
+and upright character capsules. Rig v1 does not declare per-joint limits,
+self-collision or prop collision shapes. Reports include these boundaries,
+raw face ranges, every cut's pose/camera jumps, planted-foot travel and
+CPU determinism. GPU determinism is recorded by complete film captures.
+
+Staged JSON and library readers need an 8 MiB Wasm stack. Retained project
+banks and GPU palettes remain inside the existing 256 MiB memory ceiling;
+source and geometry windows stay at 64 MiB. A5 changes no Valley Lab source
+or behavior, and leaves #12962 and the A4 qualification issue #12983 open.

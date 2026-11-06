@@ -1,0 +1,10 @@
+// An existing canonical WAV and words -> speak-aligned SAT1. No network,
+// voice service or paid model is invoked by this packer.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../anim/voice-source.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=3 {return 2;}wave:[4000044]u8;n:=fs_read(args_at(a[..],0),wave[..]);if n<1 {return 1;}plan:=apw_plan(wave[0..<n]);if !plan.valid {return 1;}env:[4096]f32;count:=plan.frames*100/plan.rate;if count>4096 {return 1;}for k:0..<count {peak:f32=0;for frame:k*plan.rate/100..<(k+1)*plan.rate/100 {v:=apw_u16(wave[..],44+frame*plan.channels*2);signed:=ifx v>=32768 then v-65536 else v;peak=hi(peak,abs(cast(f32)signed)/32768);}env[k]=peak;}
+ words:[SPK_WORDS_MAX]SpkWord;nw:=spk_words(args_at(a[..],1),words[..]);tr:[1]SpkTrack;tr[0].length=cast(f32)plan.frames/cast(f32)plan.rate;tr[0].seed=7;for k:0..<nw {words[k].t0=tr[0].length*cast(f32)k/cast(f32)nw;words[k].t1=tr[0].length*cast(f32)(k+1)/cast(f32)nw;}tr[0].n=spk_align(words[..],nw,args_at(a[..],1),env[..],count,0.01,0,tr[0].vis[..]);text:[262144]u8;tn:=spk_track_text(tr[..],true,text[..]);out:[4262200]u8;anim_bundle_put(out[..],0,0x31544153);anim_bundle_put(out[..],4,cast(u32)tn);anim_bundle_put(out[..],8,cast(u32)n);for k:0..<tn {out[12+k]=text[k];}for k:0..<n {out[12+tn+k]=wave[k];}#assert voice_source(out[0..<12+tn+n]).valid && voice_track_valid(tr[..]);if !fs_write(args_at(a[..],2),cast(string)out[0..<12+tn+n]) {return 1;}print("voice seconds=% visemes=% bytes=%\n",tr[0].length,tr[0].n,12+tn+n);return 0;
+}

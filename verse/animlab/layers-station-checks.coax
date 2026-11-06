@@ -31,3 +31,13 @@
  s[0].width=390;s[0].height=844;#assert al_key(s[..],77) && s[0].rig==0;#assert al_pointer(s[..],300,28,0) && s[0].rig==1;
  part:=s[0].libraries[1].rig[0].meshes[0].vertices;anim_bundle_put(s[0].made[..],part.offset,f32_bits(100));s[0].libraries[1].packs[0].id=asset_id(cast(string)s[0].libraries[1].packs[0].bytes);al_bounds(s[..]);#assert s[0].center.x>40 && s[0].radius>50;
 }
+
+#test "scene project publication preserves the active bank on refusal and holds authored frames" #steps 300000000 #traversal 400000000 {
+ s:[1]AlState;al_state_defaults(s[..]);bytes:[32768]u8;n:=project_test_bytes(bytes[..]);#assert al_project_begin(s[..],bytes[0..<n]) && al_project_count(s[..],0)==1 && al_project_count(s[..],1)==1 && al_project_count(s[..],2)==1;for kind:0..<6 {#assert al_project_stage(s[..],kind,0);}active:=s[0].project_active;#assert al_probe(s[..],30)==1 && !s[0].project_loading;
+ #assert al_key(s[..],78) && s[0].station==4;al_hash(s[..],"cut?card=1");#assert s[0].station==5 && s[0].movie_card;al_message(s[..],700,"60");#assert al_frame_index(s[..])==60 && s[0].time==2 && !s[0].playing;
+ damaged:[32768]u8;nn:=project_test_bytes(damaged[..]);damaged[0]='!';#assert !al_project_begin(s[..],damaged[0..<nn]) && s[0].project_active==active && al_probe(s[..],30)==1;al_message(s[..],700,"144001");#assert al_frame_index(s[..])==60;
+}
+
+#test "inspection and film stations invalidate their shared geometry when crossing modes" {
+ s:[1]AlState;s[0].station=4;s[0].movie[0].built=true;al_station(s[..],5);#assert s[0].movie[0].built;al_station(s[..],1);#assert !s[0].movie[0].built && s[0].mesh_dirty;s[0].movie[0].built=true;al_station(s[..],4);#assert !s[0].movie[0].built;
+}

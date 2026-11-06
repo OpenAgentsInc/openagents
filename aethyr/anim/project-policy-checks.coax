@@ -1,0 +1,18 @@
+project_fixture :: (out:[]u8,libs:int,performances:int,voices:int)->int {
+ count:=libs+performances+voices+2;cursor:=20+count*8;size:=cursor+count;for word,k:[5]u32.[0x31504c41,cast(u32)size,cast(u32)libs,cast(u32)performances,cast(u32)voices] {anim_bundle_put(out,k*4,word);}for k:0..<count {anim_bundle_put(out,20+k*8,cast(u32)(cursor+k));anim_bundle_put(out,24+k*8,1);out[cursor+k]='x';}return size;
+}
+#test "project envelope admits its minimum and full counts with contiguous immutable parts" {
+ b:[1024]u8;for row:[2]int.[0,1] {n:=project_fixture(b[..],ifx row==0 then 1 else 2,ifx row==0 then 1 else 16,ifx row==0 then 0 else 32);#assert project_valid(b[0..<n]) && project_parts(b[0..<n])==(ifx row==0 then 4 else 52);part:=project_part(b[0..<n],project_parts(b[0..<n])-1);#assert part.count==1 && part[0]=='x';}
+}
+#test "project envelope refuses counts truncation overlap gaps trailing bytes and wrong identity" {
+ b:[1024]u8;n:=project_fixture(b[..],1,1,0);for count:0..<n {#assert !project_valid(b[0..<count]);}b[0]^=1;#assert !project_valid(b[0..<n]);n=project_fixture(b[..],1,1,0);b[n]=0;#assert !project_valid(b[0..<n+1]);
+ for pair,k:[6]int.[0,3,0,17,33,1] {n=project_fixture(b[..],1,1,0);offset:=[6]int.[8,8,12,12,16,4][k];anim_bundle_put(b[..],offset,cast(u32)pair);#assert !project_valid(b[0..<n]);}
+ for word:[5]int.[0,1,51,53,1000] {n=project_fixture(b[..],1,1,0);anim_bundle_put(b[..],20,cast(u32)word);#assert !project_valid(b[0..<n]);}
+ for word:[3]int.[0,2,1000] {n=project_fixture(b[..],1,1,0);anim_bundle_put(b[..],24,cast(u32)word);#assert !project_valid(b[0..<n]);}
+}
+
+#test "project count refusals do not depend on a coincidental short header" {
+ b:[1024]u8;for row,k:[5]int.[3,17,33,0,0] {libs:=ifx k==0 then row else ifx k==3 then 0 else 2;perfs:=ifx k==1 then row else ifx k==4 then 0 else 2;voices:=ifx k==2 then row else 0;n:=project_fixture(b[..],libs,perfs,voices);#assert !project_valid(b[0..<n]);}
+ n:=project_fixture(b[..],2,16,32);anim_bundle_put(b[..],4,56);#assert !project_valid(b[0..<56]);
+ #assert project_table_fits(52,4) && !project_table_fits(51,4) && project_table_fits(436,52) && !project_table_fits(435,52);
+}

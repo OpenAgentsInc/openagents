@@ -1,0 +1,443 @@
+{
+  "schema": "anim.scene.v1",
+  "name": "the-guardian-study",
+  "length": 30,
+  "style": "realistic",
+  "stage": {
+    "realm": "animation-lab",
+    "place": "courtyard",
+    "time": 0.9,
+    "weather": "wind"
+  },
+  "cast": [
+    {
+      "name": "Draconia",
+      "rig": "mannequin",
+      "look": "heroine",
+      "performance": "guardian-performance",
+      "path": [
+        {
+          "at": 0,
+          "position": [
+            0,
+            0,
+            -3
+          ],
+          "yaw": 0
+        }
+      ]
+    },
+    {
+      "name": "figure-left",
+      "rig": "mannequin",
+      "look": "hooded",
+      "performance": "guardian-extras",
+      "path": [
+        {
+          "at": 0,
+          "position": [
+            -3,
+            0,
+            -7
+          ],
+          "yaw": 0
+        }
+      ]
+    },
+    {
+      "name": "figure-right",
+      "rig": "mannequin",
+      "look": "hooded",
+      "performance": "guardian-extras",
+      "path": [
+        {
+          "at": 0,
+          "position": [
+            3,
+            0,
+            -7
+          ],
+          "yaw": 0
+        }
+      ]
+    }
+  ],
+  "props": [
+    {
+      "name": "gate-post",
+      "rig": "guardian-wand",
+      "position": [
+        1,
+        0.45,
+        -7
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": 1
+    }
+  ],
+  "effects": [
+    {
+      "name": "guardian",
+      "kind": "guardian",
+      "start": 18,
+      "end": 28,
+      "position": [
+        0,
+        3,
+        -2
+      ],
+      "size": 1.5,
+      "seed": 7
+    },
+    {
+      "name": "wand-light",
+      "kind": "flare",
+      "start": 15,
+      "end": 26,
+      "position": [
+        0.5,
+        1.8,
+        -3
+      ],
+      "size": 0.3,
+      "seed": 11
+    }
+  ],
+  "lights": [
+    {
+      "name": "moon",
+      "keys": [
+        {
+          "at": 0,
+          "position": [
+            -4,
+            8,
+            2
+          ],
+          "colour": [
+            0.25,
+            0.35,
+            0.7
+          ],
+          "intensity": 0.8
+        },
+        {
+          "at": 30,
+          "position": [
+            -4,
+            8,
+            2
+          ],
+          "colour": [
+            0.25,
+            0.35,
+            0.7
+          ],
+          "intensity": 0.8
+        }
+      ]
+    },
+    {
+      "name": "wand",
+      "keys": [
+        {
+          "at": 0,
+          "position": [
+            0,
+            2,
+            -3
+          ],
+          "colour": [
+            0.2,
+            0.6,
+            1
+          ],
+          "intensity": 0
+        },
+        {
+          "at": 15,
+          "position": [
+            0,
+            2,
+            -3
+          ],
+          "colour": [
+            0.2,
+            0.6,
+            1
+          ],
+          "intensity": 0
+        },
+        {
+          "at": 18,
+          "position": [
+            0,
+            2,
+            -3
+          ],
+          "colour": [
+            0.2,
+            0.6,
+            1
+          ],
+          "intensity": 0.7
+        },
+        {
+          "at": 28,
+          "position": [
+            0,
+            2,
+            -3
+          ],
+          "colour": [
+            0.2,
+            0.6,
+            1
+          ],
+          "intensity": 0.3
+        }
+      ]
+    }
+  ],
+  "cameras": [
+    {
+      "name": "S1",
+      "fov": 0.65,
+      "focus": 3,
+      "keys": [
+        {
+          "at": 0,
+          "eye": [
+            4,
+            8,
+            7
+          ],
+          "look": [
+            0,
+            1,
+            -3
+          ],
+          "cut": true,
+          "ease": 1
+        },
+        {
+          "at": 5,
+          "eye": [
+            2,
+            3,
+            4
+          ],
+          "look": [
+            0,
+            1,
+            -3
+          ],
+          "cut": false,
+          "ease": 1
+        }
+      ]
+    },
+    {
+      "name": "S2",
+      "fov": 0.65,
+      "focus": 3,
+      "keys": [
+        {
+          "at": 5,
+          "eye": [
+            2,
+            2,
+            2
+          ],
+          "look": [
+            0,
+            1.3,
+            -3
+          ],
+          "cut": false,
+          "ease": 1
+        },
+        {
+          "at": 9,
+          "eye": [
+            1.5,
+            1.8,
+            1
+          ],
+          "look": [
+            0,
+            1.3,
+            -3
+          ],
+          "cut": false,
+          "ease": 1
+        }
+      ]
+    },
+    {
+      "name": "S3",
+      "fov": 0.45,
+      "focus": 3,
+      "keys": [
+        {
+          "at": 9,
+          "eye": [
+            0.7,
+            1.65,
+            -1.5
+          ],
+          "look": [
+            0,
+            1.6,
+            -3
+          ],
+          "cut": false,
+          "ease": 1
+        },
+        {
+          "at": 12,
+          "eye": [
+            0.6,
+            1.65,
+            -1.7
+          ],
+          "look": [
+            0,
+            1.6,
+            -3
+          ],
+          "cut": false,
+          "ease": 1
+        }
+      ]
+    },
+    {
+      "name": "S4",
+      "fov": 0.65,
+      "focus": 3,
+      "keys": [
+        {
+          "at": 12,
+          "eye": [
+            1,
+            0.5,
+            -1
+          ],
+          "look": [
+            0.4,
+            1.3,
+            -3
+          ],
+          "cut": false,
+          "ease": 1
+        },
+        {
+          "at": 18,
+          "eye": [
+            1,
+            1,
+            -0.5
+          ],
+          "look": [
+            0.4,
+            1.3,
+            -3
+          ],
+          "cut": false,
+          "ease": 1
+        }
+      ]
+    },
+    {
+      "name": "S5",
+      "fov": 0.65,
+      "focus": 3,
+      "keys": [
+        {
+          "at": 18,
+          "eye": [
+            8,
+            4,
+            5
+          ],
+          "look": [
+            0,
+            2,
+            -3
+          ],
+          "cut": false,
+          "ease": 1
+        },
+        {
+          "at": 25,
+          "eye": [
+            -6,
+            3,
+            4
+          ],
+          "look": [
+            0,
+            2,
+            -3
+          ],
+          "cut": false,
+          "ease": 1
+        }
+      ]
+    },
+    {
+      "name": "S6",
+      "fov": 0.45,
+      "focus": 3,
+      "keys": [
+        {
+          "at": 25,
+          "eye": [
+            0.7,
+            1.65,
+            -1.5
+          ],
+          "look": [
+            0,
+            1.6,
+            -3
+          ],
+          "cut": false,
+          "ease": 1
+        },
+        {
+          "at": 30,
+          "eye": [
+            0.6,
+            1.65,
+            -1.7
+          ],
+          "look": [
+            0,
+            1.6,
+            -3
+          ],
+          "cut": false,
+          "ease": 1
+        }
+      ]
+    }
+  ],
+  "sounds": [
+    {
+      "name": "leave-now",
+      "kind": "voice",
+      "start": 9.4,
+      "end": 11.6,
+      "gain": 1,
+      "cast": "Draconia",
+      "voice": "offline-stock",
+      "words": "Leave. Now."
+    }
+  ]
+}

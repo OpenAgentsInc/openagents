@@ -1,0 +1,10 @@
+// Original files exercise manifest packing and performance/scene/cut selection.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "anim-scene-io.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}root:=args_at(a[..],0);if fs_kind(root)!=FS_DIR && !fs_mkdir(root) {return 1;}b:[131072]u8;n:=project_test_bytes(b[..]);path:[4096]u8;names:=[5]string.["library.bundle","performance.json","scene.json","cut.json","voice.track"];for name,k:names {#assert fs_write(fs_join(root,name,path[..]),cast(string)project_part(b[0..<n],k));}#assert fs_write(fs_join(root,"project.json",path[..]),"{\"schema\":\"anim.project.v1\",\"libraries\":[\"library.bundle\"],\"performances\":[\"performance.json\"],\"scene\":\"scene.json\",\"cut\":\"cut.json\",\"voices\":[\"voice.track\"]}");
+ p:[1]SceneProject;for name,k:[4]string.["performance.json","scene.json","cut.json","project.json"] {n=ap_file(fs_join(root,name,path[..]),b[..]);ok:=n>0 && project_load(b[0..<n],p[..]);print("selection=% bytes=% ready=% error=% seconds=% fps=% voices=%\n",k,n,ok,p[0].error,p[0].cut[0].length,p[0].cut[0].fps,p[0].voices);#assert ok;#assert p[0].cut[0].length==(ifx k==0 then 6.0f32 else 5.0f32);#assert p[0].scene[0].cast_count==1 && p[0].cut[0].shots==1;if k==0 {#assert p[0].voices==0 && p[0].scene[0].props==0 && p[0].scene[0].sounds==0 && p[0].cut[0].fps==24;}if k==1 {#assert p[0].cut[0].fps==24 && p[0].voices==1;}if k>=2 {#assert p[0].cut[0].fps==30;}}
+ print("original file selections: performance scene cut project admitted\n");return 0;
+}

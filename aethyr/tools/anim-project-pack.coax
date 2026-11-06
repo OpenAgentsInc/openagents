@@ -1,0 +1,5 @@
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "anim-scene-io.coax";
+tool_main :: ()->int #export_c #effects(all) {a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}b:[67108864]u8;n:=ap_file(args_at(a[..],0),b[..]);p:[1]SceneProject;if n<1 || !project_load(b[0..<n],p[..]) {print("project refused\n");return 1;}if !fs_write(args_at(a[..],1),cast(string)b[0..<n]) {return 1;}hash:[64]u8;#assert asset_hex(asset_id(cast(string)b[0..<n]),hash[..]);print("project bytes=% shots=% seconds=% sha256=%\n",n,p[0].cut[0].shots,p[0].cut[0].length,cast(string)hash[..]);return 0;}

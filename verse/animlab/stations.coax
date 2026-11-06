@@ -1,5 +1,6 @@
 // Animation Lab's rig and clip stations. All visible controls are Coax.
 #load "mannequin.coax";
+#load "scene-draw.coax";
 #load "../../aethyr/anim/fixup.coax";
 #load "layers-station-checks.coax";
 #load "../../aethyr/anim/retarget.coax";
@@ -9,6 +10,8 @@
 #load "../../apps/openagents-web/font.coax";
 #load "../../verse/tools/humans/ph_num.coax";
 AlState :: struct {
+ sound_bank:[4096]u8;sound_bank_n:int;sound:[4096]u8;sound_n:int;sound_time:f32;
+ projects:[2]SceneProject;project_active:int;project_staging:int;project_loading:bool;movie:[1]SceneDraw;movie_card:bool;movie_shot:int;movie_camera:int;movie_error:int;
  libraries:[2]AnimLibrary;made:[262144]u8;live:[1]AnimSample;ghost:[1]AnimSample;gpu:[12800]f32;retarget:[1]AnimSample;plan:RtPlan;target_rig:int;target_origin:Point;wanted_target:AnimName;draw_count:int;
  performances:[2]AnimPerformance;layer_texts:[2]string;layer_sizes:[2]int;layer_error:int;layer_selected:int;layer_pending:[1]AnimClip;layer_clip_current:bool;layer_disabled:u32;layer_previous_disabled:u32;layer_report:FixupReport;layer_before:f32;layer_after:f32;layer_last_time:f32;plot_station:int= -1;
  plot:[384]f32;plot_rig:int= -1;plot_clip:int= -1;plot_joint:int= -1;plot_shape:int= -1;plot_curve:bool;
@@ -32,7 +35,7 @@ AlState :: struct {
 }
 al_library :: (s:[]AlState)->[]AnimLibrary {return s[0].libraries[s[0].rig..<s[0].rig+1];}
 al_clip :: (s:[]AlState)->AnimClip {lib:=al_library(s);if s[0].station==3 && s[0].performances[s[0].rig].ready {return lib[0].clips[s[0].performances[s[0].rig].layers[0].clip];}return lib[0].clips[s[0].clip];}
-al_frame_index :: (s:[]AlState)->int {c:=al_clip(s);return cast(int)floor(lo(anim_sample_time(c,s[0].time)*c.rate+0.0001,cast(f32)(c.frames-1)));}
+al_frame_index :: (s:[]AlState)->int {if s[0].station>=4 && s[0].projects[s[0].project_active].ready {return cast(int)floor(s[0].time*cast(f32)s[0].projects[s[0].project_active].cut[0].fps+0.0001);}c:=al_clip(s);return cast(int)floor(lo(anim_sample_time(c,s[0].time)*c.rate+0.0001,cast(f32)(c.frames-1)));}
 al_init :: (s:[]AlState) #export_c #effects(all) {if s[0].initialized {return;}al_mannequin(s[0].libraries[0..<1],s[0].made[..]);s[0].initialized=true;s[0].wanted_rig=anim_named("mannequin");al_bounds(s);al_layers_default(s);}
 al_bounds :: (s:[]AlState) {
  lib:=al_library(s);r:=lib[0].rig[0];empty:AnimClip;anim_sample(r,empty,lib[0].packs[..],0,s[0].live[..]);low:=s[0].live[0].position[0];high:=low;
@@ -52,16 +55,16 @@ al_resolve :: (s:[]AlState) {
  al_retarget(s);
 }
 al_hash :: (s:[]AlState,text:string) #export_c #effects(all) {
- al_init(s);end:=text.count;for c,k:text {if c=='?' {end=k;break;}}station:=text[0..<end];al_station(s,ifx station=="rig" then 0 else ifx station=="retarget" then 2 else ifx station=="layers" then 3 else 1);
- if end<text.count {first:=end+1;for k:first..<text.count+1 {if k==text.count || text[k]=='&' {part:=text[first..<k];eq:= -1;for c,j:part {if c=='=' {eq=j;break;}}if eq>=0 {key:=part[0..<eq];value:=part[eq+1..<part.count];if key=="rig" {name:=anim_named(value);if !anim_equal(name,s[0].wanted_rig) {s[0].wanted_clip=AnimName.{};}s[0].wanted_rig=name;}if key=="clip" {s[0].wanted_clip=anim_named(value);}if key=="to" {s[0].wanted_target=anim_named(value);}}first=k+1;}}}al_resolve(s);
+ al_init(s);end:=text.count;for c,k:text {if c=='?' {end=k;break;}}station:=text[0..<end];al_station(s,ifx station=="scene" then 4 else ifx station=="cut" then 5 else ifx station=="rig" then 0 else ifx station=="retarget" then 2 else ifx station=="layers" then 3 else 1);
+ if end<text.count {first:=end+1;for k:first..<text.count+1 {if k==text.count || text[k]=='&' {part:=text[first..<k];eq:= -1;for c,j:part {if c=='=' {eq=j;break;}}if eq>=0 {key:=part[0..<eq];value:=part[eq+1..<part.count];if key=="card" {s[0].movie_card=value=="1";}if key=="rig" {name:=anim_named(value);if !anim_equal(name,s[0].wanted_rig) {s[0].wanted_clip=AnimName.{};}s[0].wanted_rig=name;}if key=="clip" {s[0].wanted_clip=anim_named(value);}if key=="to" {s[0].wanted_target=anim_named(value);}}first=k+1;}}}al_resolve(s);
 }
 al_bundle_ingest :: (s:[]AlState,b:[]u8)->bool #export_c #effects(all) {
- if b.count==0 {return false;}e:=anim_bundle_load(b,s[0].libraries[1..<2]);s[0].error=e;if e==0 {s[0].private_loaded=true;s[0].performances[1].ready=false;s[0].layer_clip_current=false;}return e==0;
+ if b.count==0 {return false;}e:=anim_bundle_load(b,s[0].libraries[1..<2]);s[0].error=e;if e==0 {s[0].private_loaded=true;s[0].projects[s[0].project_active].ready=false;s[0].performances[1].ready=false;s[0].layer_clip_current=false;}return e==0;
 }
 al_library_ready :: (s:[]AlState) #export_c #effects(all) {al_init(s);if s[0].private_loaded {al_resolve(s);if s[0].rig==1 {s[0].mesh_dirty=true;}}}
 al_loaded :: (s:[]AlState,b:[]u8)->bool #export_c #effects(all) {al_init(s);accepted:=al_bundle_ingest(s,b);if accepted {al_library_ready(s);}return accepted;}
 
-al_seek :: (s:[]AlState,frame:int) {s[0].layer_before=0;s[0].layer_after=0;c:=al_clip(s);s[0].playing=false;s[0].time=cast(f32)(ifx frame<0 then 0 else ifx frame>=c.frames then c.frames-1 else frame)/c.rate;}
+al_seek :: (s:[]AlState,frame:int) {if s[0].station>=4 && s[0].projects[s[0].project_active].ready {p:=s[0].projects[s[0].project_active..<s[0].project_active+1];duration:=ifx s[0].station==5 then p[0].cut[0].length else p[0].scene[0].length;s[0].time=clampf(cast(f32)frame/cast(f32)p[0].cut[0].fps,0,duration);s[0].playing=false;return;}s[0].layer_before=0;s[0].layer_after=0;c:=al_clip(s);s[0].playing=false;s[0].time=cast(f32)(ifx frame<0 then 0 else ifx frame>=c.frames then c.frames-1 else frame)/c.rate;}
 al_key :: (s:[]AlState,key:int)->bool #export_c #effects(all) {
  al_init(s);lib:=al_library(s);r:=lib[0].rig[0];
  if s[0].station==3 && (key==45 || key==61 || key== -2) {return al_layer_select(s,key);}
@@ -69,7 +72,7 @@ al_key :: (s:[]AlState,key:int)->bool #export_c #effects(all) {
  if key== -1 {s[0].action=1;url:="/worlds";s[0].out_n=url.count;for c,k:url {s[0].outbox[k]=c;}return true;}
  if key==32 || key==80 {s[0].playing=!s[0].playing;return true;}
  if key==46 || key== -5 {al_seek(s,al_frame_index(s)+1);return true;}if key==44 || key== -4 {al_seek(s,al_frame_index(s)-1);return true;}
- if key==82 || key==67 || key==84 || key==76 {al_station(s,ifx key==82 then 0 else ifx key==84 then 2 else ifx key==76 then 3 else 1);al_retarget(s);return true;}
+ if key==78 || key==88 {al_station(s,ifx key==78 then 4 else 5);s[0].time=0;return true;}if key==82 || key==67 || key==84 || key==76 {al_station(s,ifx key==82 then 0 else ifx key==84 then 2 else ifx key==76 then 3 else 1);al_retarget(s);return true;}
  if key==77 || key==69 {s[0].wanted_rig=ifx key==69 && s[0].private_loaded then s[0].libraries[1].rig[0].name else anim_named(ifx key==77 then "mannequin" else "echo");s[0].wanted_clip=AnimName.{};al_resolve(s);return true;}
  if key==91 || key==93 {s[0].clip=(s[0].clip+lib[0].count+(ifx key==91 then -1 else 1))%lib[0].count;s[0].time=0;s[0].wanted_clip=lib[0].clips[s[0].clip].name;s[0].curve=lib[0].clips[s[0].clip].curve_count>0;if s[0].curve {s[0].shape=lib[0].clips[s[0].clip].curves[0];}return true;}
  if key==74 || key==75 {s[0].curve=false;s[0].joint=(s[0].joint+r.joints+(ifx key==74 then -1 else 1))%r.joints;return true;}
@@ -81,6 +84,7 @@ al_tick :: (s:[]AlState,dt:f32,still:bool) {
 }
 al_pointer :: (s:[]AlState,px:f32,py:f32,phase:int)->bool #export_c #effects(all) {
  x:=px/s[0].dpr;y:=py/s[0].dpr;w:=s[0].width;h:=s[0].height;
+ if s[0].station>=4 {return al_movie_pointer(s,x,y,phase);}
  if phase==2 {s[0].drag=false;s[0].seek=false;s[0].slider=false;return true;}
  if phase==0 {
   if y<48 {if x<90 {return al_key(s,82);}if x<170 {return al_key(s,67);}if x<270 {return al_key(s,77);}return al_key(s,69);}
@@ -113,7 +117,7 @@ al_skeleton :: (s:[]AlState,out:[]f32,n:int,sample:[]AnimSample,fade:f32)->int {
  at:=n;lib:=al_library(s);for j:0..<lib[0].rig[0].joints {parent:=lib[0].rig[0].parents[j];if parent<0 {continue;}a:=al_project(s,sample[0].position[parent]);b:=al_project(s,sample[0].position[j]);if a.z>0.01 && b.z>0.01 {colour:=ifx j==s[0].joint then v3(0.95,0.35,0.6) else v3(0.1*fade,0.75*fade,fade);at=al_line(out,at,a,b,colour);}}return at;
 }
 al_draw :: (s:[]AlState,out:[]f32,u:[]f32,geometry:[]u32,width:f32,height:f32,d:f32,dt:f32,still:bool)->int #export_c #effects(all) {
- al_tick(s,dt,still);if s[0].station==3 && s[0].playing && s[0].performances[s[0].rig].ready {length:=s[0].performances[s[0].rig].length;s[0].time-=length*floor(s[0].time/length);}w:=width/d;h:=height/d;s[0].width=w;s[0].height=h;s[0].dpr=d;lib:=al_library(s);r:=lib[0].rig[0];c:=al_clip(s);
+ al_tick(s,dt,still);if s[0].station>=4 {return al_movie_draw(s,out,u,geometry,width/d,height/d);}if s[0].station==3 && s[0].playing && s[0].performances[s[0].rig].ready {length:=s[0].performances[s[0].rig].length;s[0].time-=length*floor(s[0].time/length);}w:=width/d;h:=height/d;s[0].width=w;s[0].height=h;s[0].dpr=d;lib:=al_library(s);r:=lib[0].rig[0];c:=al_clip(s);
  if s[0].mesh_dirty {
   s[0].mesh_words=anim_inspect_mesh(r,lib[0].packs[..],geometry,s[0].draws[..]);s[0].draw_count=ifx s[0].mesh_words>0 then r.sections else 0;
   if s[0].station==2 && s[0].error==0 && s[0].mesh_words>0 {
@@ -160,9 +164,9 @@ clampf :: (x:f32,low:f32,high:f32)->f32 {return lo(hi(x,low),high);}
 
 al_wheel :: (s:[]AlState,delta:f32) #export_c #effects(all) {s[0].distance=clampf(s[0].distance+delta*0.001,0.25,4);}
 al_probe :: (s:[]AlState,field:int)->int #export_c #effects(all) {
- if field==0 {return ifx s[0].ready then 1 else 0;}if field==1 {return s[0].rig;}if field==2 {return s[0].clip;}if field==3 {return al_frame_index(s);}if field==4 {return al_library(s)[0].count;}if field==5 {return s[0].shape;}if field==6 {return s[0].joint;}if field==7 {return s[0].station;}if field==8 {return s[0].error;}if field==9 {return ifx s[0].private_loaded then 1 else 0;}if field==10 {return s[0].ghost_step;}if field==11 {return s[0].mesh_words;}if field==12 {return s[0].clock.ticks;}if field==14 {return al_library(s)[0].rig[0].joints;}if field==15 {return al_clip(s).face_joint_count;}if field==16 {return al_clip(s).curve_count;}if field==17 {return s[0].plan.paired;}if field==18 {return s[0].target_rig;}if field==19 {return s[0].draw_count;}if field==20 {return ifx s[0].station==2 then al_frame_index(s) else -1;}if field==21 {return ifx s[0].performances[s[0].rig].ready then 1 else 0;}if field==22 {return s[0].performances[s[0].rig].count;}if field==23 {return cast(int)s[0].layer_disabled;}if field==24 {return cast(int)(s[0].layer_before*1000);}if field==25 {return cast(int)(s[0].layer_after*1000);}if field==26 {return s[0].layer_report.feet;}if field==27 {return al_clip(s).frames;}return -1;
+ if field==30 {return ifx s[0].projects[s[0].project_active].ready then 1 else 0;}if field==31 {return s[0].movie_shot;}if field==32 {return s[0].movie_camera;}if field==33 {return s[0].projects[s[0].project_active].cut[0].shots;}if field==34 {return s[0].projects[s[0].project_active].scene[0].cast_count;}if field==35 {return s[0].movie_error;}if field==0 {return ifx s[0].ready then 1 else 0;}if field==1 {return s[0].rig;}if field==2 {return s[0].clip;}if field==3 {return al_frame_index(s);}if field==4 {return al_library(s)[0].count;}if field==5 {return s[0].shape;}if field==6 {return s[0].joint;}if field==7 {return s[0].station;}if field==8 {return s[0].error;}if field==9 {return ifx s[0].private_loaded then 1 else 0;}if field==10 {return s[0].ghost_step;}if field==11 {return s[0].mesh_words;}if field==12 {return s[0].clock.ticks;}if field==14 {return al_library(s)[0].rig[0].joints;}if field==15 {return al_clip(s).face_joint_count;}if field==16 {return al_clip(s).curve_count;}if field==17 {return s[0].plan.paired;}if field==18 {return s[0].target_rig;}if field==19 {return s[0].draw_count;}if field==20 {return ifx s[0].station==2 then al_frame_index(s) else -1;}if field==21 {return ifx s[0].performances[s[0].rig].ready then 1 else 0;}if field==22 {return s[0].performances[s[0].rig].count;}if field==23 {return cast(int)s[0].layer_disabled;}if field==24 {return cast(int)(s[0].layer_before*1000);}if field==25 {return cast(int)(s[0].layer_after*1000);}if field==26 {return s[0].layer_report.feet;}if field==27 {return al_clip(s).frames;}return -1;
 }
-al_message :: (s:[]AlState,kind:int,text:string) #export_c #effects(all) {if kind==700 {n:=anim_decimal(text);if n.ok && n.value>=0 && n.value<2000 {al_seek(s,cast(int)n.value);}}}
+al_message :: (s:[]AlState,kind:int,text:string) #export_c #effects(all) {if kind==700 {n:=anim_decimal(text);if n.ok && n.value>=0 && n.value<144001 {al_seek(s,cast(int)n.value);}}}
 
 #test "retarget station uses one source clock and independent mapped target pose" #steps 300000000 {
  s:[1]AlState;al_hash(s[..],"retarget?rig=mannequin&clip=studio-wave&to=mannequin");
@@ -177,7 +181,7 @@ al_message :: (s:[]AlState,kind:int,text:string) #export_c #effects(all) {if kin
  a:=al_project_model(s[..],v3(0,0,0),0);b:=al_project_model(s[..],v3(0,0,0),1);#assert a.x==390.0f32*0.27f32 && b.x==390.0f32*0.73f32;
 }
 
-al_station :: (s:[]AlState,station:int) {if s[0].station!=station {s[0].station=station;s[0].mesh_dirty=true;}}
+al_station :: (s:[]AlState,station:int) {if s[0].station!=station {if s[0].station<4 || station<4 {s[0].movie[0].built=false;}s[0].station=station;s[0].mesh_dirty=true;}}
 al_retarget :: (s:[]AlState) {
  if s[0].station!=2 {return;}target:=ifx s[0].rig==0 && s[0].private_loaded then 1 else 0;
  if s[0].wanted_target.n>0 {target= -1;for k:0..<2 {if s[0].libraries[k].rig[0].ready && anim_equal(s[0].libraries[k].rig[0].name,s[0].wanted_target) {target=k;}}}
@@ -237,4 +241,32 @@ al_layers_controls :: (s:[]AlState,out:[]f32,n:int)->int {
 al_state_defaults :: (s:[]AlState) #export_c #effects(all) {
  s[0].station=1;s[0].skeleton=true;s[0].ghost_step=8;s[0].yaw=0.3;s[0].pitch=0.08;s[0].distance=1;s[0].radius=1;s[0].dpr=1;s[0].mesh_dirty=true;
  s[0].plot_rig= -1;s[0].plot_clip= -1;s[0].plot_joint= -1;s[0].plot_shape= -1;s[0].plot_station= -1;s[0].clock=clock.FrameClock.{};
+}
+
+al_movie_project :: (s:[]AlState)->[]SceneProject {return s[0].projects[s[0].project_active..<s[0].project_active+1];}
+al_asset_kind :: (b:[]u8)->int #export_c #effects(all) {if b.count>=4 && anim_word(b,0)==0x31504c41 {return 2;}return 1;}
+al_project_begin :: (s:[]AlState,b:[]u8)->bool #export_c #effects(all) {al_init(s);s[0].project_staging=1-s[0].project_active;s[0].project_loading=project_begin(b,s[0].projects[s[0].project_staging..<s[0].project_staging+1]);return s[0].project_loading;}
+al_project_count :: (s:[]AlState,kind:int)->int #export_c #effects(all) {p:=s[0].projects[s[0].project_staging..<s[0].project_staging+1];return ifx kind==0 then p[0].libraries else ifx kind==1 then p[0].performances else p[0].voices;}
+al_project_stage :: (s:[]AlState,kind:int,index:int)->bool #export_c #effects(all) {
+ p:=s[0].projects[s[0].project_staging..<s[0].project_staging+1];ok:=false;if kind==0 {ok=project_library(p,index);}if kind==1 {ok=project_performance(p,index);}if kind==2 {ok=project_scene(p);}if kind==3 {ok=project_cut(p);}if kind==4 {ok=project_voice(p,index);}if kind==5 {ok=project_finish(p);}if !ok {s[0].movie_error=p[0].error;s[0].project_loading=false;return false;}if kind==5 {s[0].project_active=s[0].project_staging;s[0].project_loading=false;s[0].movie[0].built=false;s[0].movie_error=0;s[0].time=0;s[0].playing=false;s[0].private_loaded=false;s[0].libraries[1].rig[0].ready=false;s[0].rig=0;}return true;
+}
+al_movie_draw :: (s:[]AlState,out:[]f32,u:[]f32,geometry:[]u32,width:f32,height:f32)->int {
+ s[0].width=width;s[0].height=height;p:=al_movie_project(s);if !p[0].ready {s[0].ready=false;return al_text(out,0,"LOAD AN ANIMATION SCENE PROJECT",16,40,10);}duration:=ifx s[0].station==5 then p[0].cut[0].length else p[0].scene[0].length;if s[0].time>=duration {s[0].time=duration;s[0].playing=false;}
+ if !s[0].movie[0].built {if !scene_draw_prepare(p,s[0].movie[..],geometry) {s[0].movie_error=ANIM_CAPACITY;s[0].ready=false;return al_text(out,0,"SCENE EXCEEDS GEOMETRY BUDGET",16,40,10);}s[0].mesh_version+=1;}
+ moment:=cut_play(p[0].cut[..],s[0].time);if s[0].station==4 {moment=CutMoment.{ready=true,camera=0,time=s[0].time};}s[0].movie_shot=moment.shot;s[0].movie_camera=moment.camera;al_audio_cues(s,moment);scene_draw_sample(p,s[0].movie[..],moment.time,moment.camera,u,width,height,moment.opacity);s[0].revision+=1;s[0].ready=true;
+ if s[0].movie_card {return 0;}n:=al_text(out,0,"SCENE [N]       CUT [X]",16,28,10);name:=[1]AnimName.[ifx s[0].station==5 then p[0].cut[0].shot[moment.shot].name else p[0].scene[0].name];n=al_text(out,n,anim_text(name[..],0),16,52,10);y:=height-54;n=al_line(out,n,v3(16,y,0),v3(width-16,y,0),v3(0.2,0.4,0.5));x:=16+(width-32)*s[0].time/duration;n=al_line(out,n,v3(x,y-12,0),v3(x,y+12,0),v3(0.8,0.4,0.9));n=al_text(out,n,ifx s[0].playing then "PAUSE" else "PLAY",16,height-18,10);return n;
+}
+al_movie_pointer :: (s:[]AlState,x:f32,y:f32,phase:int)->bool {
+ if phase==2 {s[0].seek=false;return true;}if phase==0 && y<60 {return al_key(s,ifx x<s[0].width/2 then 78 else 88);}if phase==0 && y>s[0].height-35 {return al_key(s,32);}if phase==0 && y>s[0].height-80 {s[0].seek=true;}p:=al_movie_project(s);if s[0].seek && p[0].ready {duration:=ifx s[0].station==5 then p[0].cut[0].length else p[0].scene[0].length;al_seek(s,cast(int)floor(clamp01((x-16)/(s[0].width-32))*duration*cast(f32)p[0].cut[0].fps));}return true;
+}
+
+// Canonical WAVs are retained in the active immutable project bank. All cue
+// selection stays in Coax; the C face supplies only that bank's address.
+al_audio_bank :: (s:[]AlState,base:int) #export_c #effects(all) {
+ s[0].sound_bank_n=0;p:=al_movie_project(s);if !p[0].ready {return;}o:[1]PnOut;o[0].buf=s[0].sound_bank[..];voice:=0;
+ for k:0..<p[0].scene[0].sounds {cue:=p[0].scene[0].sound[k];offset:=0;size:=0;if cue.kind==0 {offset=p[0].wave_at[voice];size=p[0].wave_n[voice];voice+=1;}else {part:=project_part(p[0].bytes,cue.source.pack);library_at:=cast(int)anim_word(p[0].bytes,20+cue.source.pack*8);offset=library_at+cast(int)anim_word(part,12)+cue.source.offset;size=cue.source.width;}if size>0 {pn_put(o[..],"scene-");pn_putint(o[..],k);pn_put(o[..]," ");pn_putint(o[..],base+offset);pn_put(o[..]," ");pn_putint(o[..],size);pn_put(o[..],"\n");}}
+ s[0].sound_bank_n=o[0].n;
+}
+al_audio_cues :: (s:[]AlState,moment:CutMoment) {
+ s[0].sound_n=0;o:[1]PnOut;o[0].buf=s[0].sound[..];p:=al_movie_project(s);if s[0].playing && moment.time>=s[0].sound_time {for k:0..<p[0].scene[0].sounds {cue:=p[0].scene[0].sound[k];if cue.start>s[0].sound_time && cue.start<=moment.time {pn_put(o[..],"scene-");pn_putint(o[..],k);pn_put(o[..]," ");pn_fixed(o[..],cast(f64)cue.gain,3);pn_put(o[..]," 0\n");}}}s[0].sound_n=o[0].n;s[0].sound_time=moment.time;
 }
