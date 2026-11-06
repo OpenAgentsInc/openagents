@@ -112,8 +112,10 @@ final class ForgeMetalWorld: NSView, @preconcurrency NSTextInputClient {
         let code = mf_action(h)
         if code != 0 {
             var n = 0
-            let p = mf_outbox(h, &n), text = p.map { String(decoding: UnsafeBufferPointer(start: $0, count: n), as: UTF8.self) } ?? ""
+            let p = mf_outbox(h, &n), admitted = mf_outbox_admitted(h)
+            let text = admitted ? (p.map { String(decoding: UnsafeBufferPointer(start: $0, count: n), as: UTF8.self) } ?? "") : ""
             mf_action_done(h)
+            if !admitted { return }
             if code == 6 { quality = text; try? Data(text.utf8).write(to: storage.appendingPathComponent("metal-quality.txt"), options: .atomic) }
             else if [4, 11, 12].contains(code) { try? Data(text.utf8).write(to: storage.appendingPathComponent("metal-keep-\(code).txt"), options: .atomic) }
             else if code == 2 { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string) }

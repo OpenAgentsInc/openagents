@@ -1,0 +1,61 @@
+// CPU encoding of an SDK-read, already-sized UNORM display. The same shared
+// HTTP image descriptor owns dimensions/quality; no renderer or gameplay here.
+#module "aethyr.host.frame.jpeg";
+#load "http-image.coax";
+#load "../../coax/lib/image/jpeg_enc.coax";
+#load "../../coax/lib/text/base64.coax";
+#authority;
+HOST_FRAME_JPEG_BYTES :: 1048576;
+#test "frame JPEG accepts only a complete already-sized UNORM image and projects channel order" {
+ source:=[8]u8.[9,17,33,255,44,55,66,255];work:[8]u8;jpeg:[2048]u8;
+ n:=hfj_encode(source[..],2,1,false,work[..],jpeg[..]);#assert n>600&&jpeg[0]==255&&jpeg[1]==216&&jpeg[n-2]==255&&jpeg[n-1]==217&&jpeg[25]==8;for c,i:source {#assert work[i]==c;}
+ #assert hfj_encode(source[..],2,1,true,work[..],jpeg[..])>0;for c,i:[8]u8.[33,17,9,255,66,55,44,255] {#assert work[i]==c;}
+ #assert hfj_encode(source[..],1,2,false,work[..],jpeg[..])>600;
+ for extent:[6][2]int.[[2]int.[0,1],[2]int.[1,0],[2]int.[-1,1],[2]int.[1025,1],[2]int.[1,16385],[2]int.[9223372036854775807,9223372036854775807]] {work[0]=91;#assert hfj_encode(source[..],extent[0],extent[1],false,work[..],jpeg[..])== -1&&work[0]==91;}
+ work[0]=91;#assert hfj_encode(source[0..<7],2,1,false,work[..],jpeg[..])== -1&&work[0]==91;
+ #assert hfj_encode(source[..],2,1,false,work[0..<7],jpeg[..])== -1&&work[0]==91;
+ #assert hfj_encode(source[..],2,1,false,work[..],jpeg[0..<1])==JPE_SMALL;
+ wide:[4100]u8;wide_work:[4100]u8;wide_work[0]=91;#assert hfj_encode(wide[..],1025,1,false,wide_work[..],jpeg[..])== -1&&wide_work[0]==91;
+ #assert hfj_encode(source[0..<0],0,1,false,work[..],jpeg[..])== -1;
+}
+#test "frame JPEG base64 publishes the exact complete bytes and refuses capacity without a prefix" {
+ bytes:=[3]u8.[255,216,255];out:[4]u8;#assert hfj_base64(bytes[..],out[..])==4&&cast(string)out[..]=="/9j/";
+ out[0]=91;#assert hfj_base64(bytes[..],out[0..<3])== -1&&out[0]==91;#assert hfj_base64(bytes[0..<0],out[..])== -1;
+ #assert hfj_jpeg_bytes(1)&&hfj_jpeg_bytes(HOST_FRAME_JPEG_BYTES)&&!hfj_jpeg_bytes(0)&&!hfj_jpeg_bytes(HOST_FRAME_JPEG_BYTES+1);
+ #assert hfj_capacity()==1048576&&hfj_base64_bytes(1)==4&&hfj_base64_bytes(2)==4&&hfj_base64_bytes(3)==4&&hfj_base64_bytes(4)==8&&hfj_base64_bytes(1048576)==1398104;
+ #assert hfj_base64_bytes(0)== -1&&hfj_base64_bytes(1048577)== -1;
+}
+#test "frame attachment preserves the authorization line and existing HTTP method behavior" {
+ out:[512]u8;n:=hfj_attach(49,"Nostr abc\n{\"question\":\"é🙂\",\"image\":\"old\"}","YWJj",out[..]);
+ #assert n>0&&cast(string)out[0..<n]=="Nostr abc\n{\"question\":\"é🙂\",\"image\":\"YWJj\"}";
+ n=hfj_attach(33,"{}","YWJj",out[..]);#assert n==16&&cast(string)out[0..<n]=="{\"image\":\"YWJj\"}";
+ for flags:[2]int.[0,32] {n=hfj_attach(flags,"{}","YWJj",out[..]);#assert n==2&&cast(string)out[0..<n]=="{}";}
+ #assert hfj_attach(49,"bad","YWJj",out[..])== -1;
+ #assert hfj_attach(49,"x{}","YWJj",out[..])== -1;
+ #assert hfj_attach(33,"{","YWJj",out[..])== -1;
+ n=hfj_attach(33,"{}","a",out[..]);#assert n==13&&cast(string)out[0..<n]=="{\"image\":\"a\"}";
+ n=hfj_attach(49,"\n{}","YWJj",out[..]);#assert n==17&&cast(string)out[0..<n]=="\n{\"image\":\"YWJj\"}";
+ #assert hfj_attach(49,"Nostr abc\n{","YWJj",out[..])== -1;
+ #assert hfj_attach(49,"Nostr abc\n{}","YWJj",out[0..<26])==26;
+ #assert hfj_attach(49,"Nostr abc\n{}","YWJj",out[0..<25])== -1;
+ #assert hfj_attach(49,"Nostr abc\n{}","YWJj",out[0..<4])== -1;
+ n=hfj_attach(49,"Nostr abc\n{}","",out[..]);#assert n==12&&cast(string)out[0..<n]=="Nostr abc\n{}";
+ #assert hfj_attach(33,"{}","YWJj",out[0..<15])== -1;
+ #assert hfj_attach(33,"","YWJj",out[..])==0;
+}
+hfj_encode :: (pixels:[]u8,width:int,height:int,bgra:bool,work:[]u8,jpeg:[]u8)->int #export_c {
+ extent:=hpi_extent(width,height);if extent.width!=width||width<1 {return -1;}
+ bytes:=width*height*4;if pixels.count!=bytes||work.count<bytes {return -1;}
+ for i:0..<width*height {at:=i*4;work[at]=pixels[at+(ifx bgra then 2 else 0)];work[at+1]=pixels[at+1];work[at+2]=pixels[at+(ifx bgra then 0 else 2)];work[at+3]=pixels[at+3];}
+ return jpe_encode(work[0..<bytes],width,height,4,int(extent.quality*100),false,false,jpeg);
+}
+hfj_jpeg_bytes :: (bytes:int)->bool #export_c {return bytes>0&&bytes<=HOST_FRAME_JPEG_BYTES;}
+hfj_capacity :: ()->int #export_c {return HOST_FRAME_JPEG_BYTES;}
+hfj_base64_bytes :: (bytes:int)->int #export_c {return ifx hfj_jpeg_bytes(bytes) then b64_encoded_size(bytes) else -1;}
+hfj_base64 :: (jpeg:[]u8,out:[]u8)->int #export_c {if !hfj_jpeg_bytes(jpeg.count) {return -1;}return b64_encode(cast(string)jpeg,out);}
+hfj_attach :: (flags:int,body:string,image:string,out:[]u8)->int #export_c {
+ if (flags&1)==0||body.count==0||image.count==0 {return hpi_copy(body,out);}
+ start:=0;if (flags&16)!=0 {line:=-1;for c,i:body {if c=='\n' {line=i;break;}}if line<0 {return -1;}start=line+1;}
+ n:=hpi_attach(body[start..<body.count],image,out);if n== -1 {return -1;}if start>out.count-n {return -1;}
+ at:=n;while at>0 {at-=1;out[start+at]=out[at];}for i:0..<start {out[i]=body[i];}return start+n;
+}

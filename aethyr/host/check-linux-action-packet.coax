@@ -1,0 +1,26 @@
+// Coax authors the complete hostile metadata workload; the SDK only calls
+// the ordinary dispatcher and reads the recording producer's observations.
+#import "Basic";
+#load "../render/tests/qualification-files.coax";
+#load "../../coax/lib/sys/args.coax";
+hlac_open::(mode:int) #foreign;
+hlac_trigger::() #foreign;
+hlac_poll::() #foreign;
+hlac_frame::() #foreign;
+hlac_probe::(field:int)->int #foreign;
+hlac_observe::(event:int,field:int)->int #foreign;
+hlac_effect::()->int #foreign;
+hlac_close::() #foreign;
+tool_main::()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])!=2 {return 2;}
+ missing:=args_at(a[..],1)=="missing";if !missing&&args_at(a[..],1)!="normal" {return 2;}
+ modes:=[10]int.[0,1,2,3,4,5,6,7,8,99];rows:[110]int;count:=0;
+ for mode,index:modes {if (index==9)!=missing {continue;}
+  hlac_open(mode);hlac_trigger();hlac_poll();before:=hlac_observe(-1,4);hlac_frame();
+  values:[11]int;values[0]=mode;for i:0..<3 {values[2+i]=hlac_probe(i);}
+  ack:=-1;error:=-1;for event:0..<hlac_observe(-1,2) {kind:=hlac_observe(event,0);if kind==8 {values[5]+=1;values[6]=hlac_observe(event,1);ack=event;}if kind==4&&hlac_observe(event,1)==604 {values[7]+=1;error=event;}}
+  values[8]=ifx error<0||ack>=0&&ack<error then 1 else 0;values[9]=hlac_effect();values[10]=ifx hlac_observe(-1,4)>before then 1 else 0;
+  for value:values {rows[count]=value;count+=1;}hlac_close();
+ }
+ bytes:[8192]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_arr(o[..]);for i:0..<count {jo_int(o[..],rows[i]);}jo_end(o[..]);return ifx !o[0].bad&&fs_write(args_at(a[..],0),jo_text(o[..])) then 0 else 1;
+}

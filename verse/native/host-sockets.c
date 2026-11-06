@@ -19,6 +19,13 @@ extern int64_t coaxial_host_delivery(int32_t);
 extern uint32_t coaxial_host_transport_reset(void);
 extern int64_t htr_http_target(coax_string,coax_v_u8) __attribute__((weak));
 extern int64_t htr_local_target(coax_string,coax_string,coax_v_u8) __attribute__((weak));
+extern int64_t hfj_attach(int64_t,coax_string,coax_string,coax_v_u8) __attribute__((weak));
+extern bool hap_span(uint64_t,uint64_t,uint64_t,uint64_t,bool) __attribute__((weak));
+int rhn_action_span(uint64_t address,uint64_t capacity,uint64_t bytes,uint64_t limit,int present){return hap_span&&hap_span(address,capacity,bytes,limit,present!=0);}
+int64_t rhn_http_image_body(int32_t flags,const char *body,size_t bytes,const uint8_t *image,size_t image_bytes,uint8_t *out,size_t capacity){
+ if(!hfj_attach||bytes>INT64_MAX||image_bytes>INT64_MAX||capacity>INT64_MAX)return -1;
+ return hfj_attach(flags,(coax_string){body,(int64_t)bytes},(coax_string){(const char*)image,(int64_t)image_bytes},(coax_v_u8){out,(int64_t)capacity});
+}
 static void *context;
 static struct {MNSocketOwner owner;int active;} owners[4];
 int rhn_http_path(const char *bytes,size_t n){uint8_t target[12288];return n<=INT64_MAX&&htr_http_target&&htr_http_target((coax_string){bytes,(int64_t)n},(coax_v_u8){target,sizeof target})>=0;}

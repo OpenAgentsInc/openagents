@@ -389,3 +389,22 @@ void vks_copy_record(VkCommandBuffer cmd, VksImage *from, VksImage *to) {
   ImageCopy c = {from, to};
   record_image_copy(cmd, &c);
 }
+typedef struct {ImageCopy images;VkFilter filter;} ImageBlit;
+static void record_image_blit(VkCommandBuffer cmd,void *user){
+  ImageBlit *b=user;VksImage *from=b->images.from,*to=b->images.to;
+  copy_barrier(cmd,from,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_ACCESS_SHADER_READ_BIT|VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT|VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT);
+  copy_barrier(cmd,to,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,0,VK_ACCESS_TRANSFER_WRITE_BIT);
+  VkImageBlit region={.srcSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1},.dstSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1},
+    .srcOffsets={{0,0,0},{(int32_t)from->w,(int32_t)from->h,1}},.dstOffsets={{0,0,0},{(int32_t)to->w,(int32_t)to->h,1}}};
+  vkCmdBlitImage(cmd,from->image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,to->image,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&region,b->filter);
+  copy_barrier(cmd,from,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_READ_BIT,VK_ACCESS_SHADER_READ_BIT);
+  copy_barrier(cmd,to,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,VK_ACCESS_TRANSFER_WRITE_BIT,VK_ACCESS_SHADER_READ_BIT);
+}
+int vks_blit(Vkc *v,VksImage *from,VksImage *to,VkFilter filter){
+  if(from->format!=to->format||from->depth||to->depth||from->layers!=1||to->layers!=1)return 0;
+  VkFormatProperties properties;vkGetPhysicalDeviceFormatProperties(v->gpu,from->format,&properties);
+  VkFormatFeatureFlags wanted=VK_FORMAT_FEATURE_BLIT_SRC_BIT|VK_FORMAT_FEATURE_BLIT_DST_BIT;
+  if(filter==VK_FILTER_LINEAR)wanted|=VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+  if((properties.optimalTilingFeatures&wanted)!=wanted)return 0;
+  ImageBlit b={{from,to},filter};vks_submit(v,record_image_blit,&b);return 1;
+}

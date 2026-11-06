@@ -113,6 +113,9 @@ void vks_pipe_bind(const VksPipe *p,VkCommandBuffer cmd,const VksPass *pass);
 void vks_copy(Vkc *v, VksImage *from, VksImage *to);
 // The same, recorded into cmd (its sizes and formats checked as vks_copy checks them).
 void vks_copy_record(VkCommandBuffer cmd, VksImage *from, VksImage *to);
+// SDK resampling into an already admitted same-format single-layer target.
+// False when the physical format cannot execute the requested filter.
+int vks_blit(Vkc *v,VksImage *from,VksImage *to,VkFilter filter);
 // Records with `record` into a one-time command buffer, submits it and waits.
 void vks_submit(Vkc *v, void (*record)(VkCommandBuffer cmd, void *user), void *user);
 #endif

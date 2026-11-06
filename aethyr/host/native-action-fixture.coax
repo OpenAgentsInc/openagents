@@ -1,0 +1,3 @@
+// Native recording producer plus the same physical action-span authority.
+#load "action-fixture.coax";
+#load "action-packet.coax";

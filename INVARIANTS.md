@@ -1,5 +1,22 @@
 # Invariants
 
+Linux and Metal admit action outboxes with the same `hap_span` authority
+before publishing a nonempty view. Empty packets need no pointer/capacity
+read; native missing capacity refuses. Linux copies before acknowledgement,
+then executes the effect or reports604 on a later poll. Actual normal and
+ASan/UBSan/LSan Linux runs pass all110 common hostile-span/acknowledgement/
+continued-frame words. The Metal runtime gate is separate. See `docs/verification/host-contract-2026-11-05/linux-action-packets.md`.
+
+The typed Vulkan loop dispatches real input through the realm gesture/audio
+boundary and consumes the checked Wayland Unicode/modifier companion. Its
+next-completed-frame HTTP32 stage retains concrete asynchronous ownership
+before the JPEG capture and helper start. Coax owns JPEG/base64 and the
+Unicode JSON/authorization composition. Actual normal and fully instrumented
+producer/SDK physical requests preserve all13 peer facts under the unchanged
+five-second deadline; codec/observer root gates kill100/44 mutants. Scaling,
+ordinary window/input/room/audio composition and final default remain
+separate exits. See `docs/verification/host-contract-2026-11-05/linux-frame-services.md`.
+
 The ordinary Vulkan v1 adapter prepares the checked graph targets and actual
 UNORM display before advancing its producer. Device replacement preserves
 the producer, immutable original package identity, retained CPU buffers and

@@ -1,0 +1,6 @@
+vk-realm: step+render median 4567.35 ms, 99th 4624.19 ms, longest 4624.19 ms
+vk-realm: post-render median 0.00 ms, 99th 0.00 ms, longest 0.00 ms
+vk-realm: llvmpipe (LLVM 21.1.8, 256 bits), 320x180, 5 frames, 137 draws the last; it ended because it drew its frames
+vk-realm: validation: 0 errors, 0 warnings
+vk-realm: ledger: 29 objects, 21095403 words live at the last frame (epoch 6)
+vk-realm: ledger: 0 objects live after close

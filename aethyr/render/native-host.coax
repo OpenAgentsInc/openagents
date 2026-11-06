@@ -13,6 +13,8 @@
 #load "../host/buffers.coax";
 #load "../host/media-packet.coax";
 #load "../host/lifecycle.coax";
+#load "../host/frame-jpeg.coax";
+#load "../host/action-packet.coax";
 #authority;
 
 aethyr_native_resource_limit :: ()->int #export_c {return RENDER_RESOURCES;}

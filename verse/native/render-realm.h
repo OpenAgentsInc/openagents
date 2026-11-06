@@ -13,6 +13,8 @@ int rhgr_frame(RhgRealm *realm,uint32_t hud_vertices,uint32_t width,uint32_t hei
   coax_t_RenderTextureFormat screen_format,char *error,size_t error_bytes);
 VksImage *rhgr_screen(RhgRealm *realm);
 VksImage *rhgr_graph(RhgRealm *realm);
+// Owned base64 JPEG of the completed quantized display; caller frees it.
+uint8_t *rhgr_jpeg(RhgRealm *realm,size_t *bytes);
 // Complete deferred media notices only after the producer and encoder return.
 void rhgr_deliver_media(RhgRealm *realm);
 // The caller executes shared lifecycle loss/replacement actions. Destroy

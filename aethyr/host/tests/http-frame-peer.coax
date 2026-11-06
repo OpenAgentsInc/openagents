@@ -1,0 +1,55 @@
+// Private physical request observer. JPEG and JSON admission use the existing
+// shared codecs; no production request, browser or device is opened here.
+#load "http-redirect-peer.coax";
+#load "../frame-jpeg.coax";
+#load "../../../coax/lib/image/image.coax";
+#load "../http-frame-conformance.coax";
+#load "../../../coax/lib/net/http.coax";
+hfp_peer::(a:[]Args)->int {
+if args_count(a)!=3 {tool_errln("usage: http-frame-peer PORT_FILE REPORT JPEG_FILE");return 2;}
+ listener:=cxsock_listen(0);if listener<0 {return 1;}defer {closed:=cxsock_close(listener);}
+ port:[32]u8;p:[1]Jo;jo_start(p[..],port[..]);jo_int(p[..],cxsock_port(listener));if !fs_write(args_at(a,0),jo_text(p[..])) {return 1;}
+ request:[2097152]u8;h:=-1;n:=0;head:RtoHead;ignored:=0;until:=proc_now_ms()+30000;
+ while proc_now_ms()<until {h=cxsock_accept(listener,1000);if h<0 {continue;}n=rto_read_head(h,request[..]);if n>0 {head=rto_head(cast(string)request[0..<n]);}if head.valid&&head.path=="/api/host-contract/image" {break;}ignored+=1;sent_other:=hdr_send(h,404,"","application/json","{}");closed_other:=cxsock_close(h);h= -1;}
+ if h<0 {return 1;}defer {closed:=cxsock_close(h);}
+ if !head.valid||head.length>request.count-head.body_from {return 1;}
+ while n<head.body_from+head.length {k:=cxsock_read(h,5000);if k<1||k>request.count-n {return 1;}for i:0..<k {request[n+i]=u8(cxsock_byte(h,i));}n+=k;}
+ q:[13]int;q[0]=hfp_bit(head.method=="POST");q[1]=hfp_bit(head.path=="/api/host-contract/image");
+ q[2]=hfp_bit(http_header(cast(string)request[0..<head.body_from],"authorization")=="Nostr fixture");
+ q[3]=hfp_bit(n==head.body_from+head.length);
+ d:[1]Jv;nodes:[4096]JvNode;body:=cast(string)request[head.body_from..<n];q[4]=hfp_bit(jv_parse(d[..],body,nodes[..]));
+ if q[4]==1 {q[5]=hfp_bit(jv_raw_eq(jv_raw(d[0],jv_get(d[0],0,"question")),"é🙂"));encoded:[1398104]u8;en:=jv_str(d[0],jv_get(d[0],0,"image"),encoded[..]);jpeg:[1048576]u8;
+  count:=ifx en>0 then b64_decode(cast(string)encoded[0..<en],jpeg[..]) else -1;q[6]=hfp_bit(count>600&&count<=jpeg.count);
+  if count>600 {info:=img_info(jpeg[0..<count]);q[7]=info.w;q[8]=info.h;q[9]=int(jpeg[25]);q[10]=hfp_bit(jpeg[0]==255&&jpeg[1]==216&&jpeg[count-2]==255&&jpeg[count-1]==217);q[11]=hfp_bit(info.status==IMG_OK);q[12]=hfp_bit(fs_write(args_at(a,2),cast(string)jpeg[0..<count]));}
+ }
+ sent:=hdr_send(h,200,"","application/json","{\"ok\":true}");passed:=sent&&hfp_accept(q[..]);record:[8192]u8;o:[1]Jo;jo_start(o[..],record[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.http-frame-peer.v1");jo_key(o[..],"ignored_startup_requests");jo_int(o[..],ignored);jo_key(o[..],"observations");jo_arr(o[..]);for value:q {jo_int(o[..],value);}jo_end(o[..]);jo_key(o[..],"passed");jo_bool(o[..],passed);jo_end(o[..]);return ifx fs_write(args_at(a,1),jo_text(o[..]))&&passed then 0 else 1;
+}
+
+hfp_add :: (inputs:[]RtqInputs,path:string)->bool {for i:0..<inputs.count {if inputs[i].count<512 {return rtq_input_add(inputs[i..<i+1],path);}}return false;}
+hfp_tree :: (inputs:[]RtqInputs,dir:string,depth:int)->bool {
+ if depth>12 {return false;}listing:[1]FsList;n:=fs_list(dir,listing[..]);if n<0||listing[0].full {return false;}
+ for i:0..<n {path:[4096]u8;file:=fs_join(dir,fs_entry(listing[..],i),path[..]);kind:=fs_kind(file);if kind==FS_DIR {if !hfp_tree(inputs,file,depth+1) {return false;}}else if kind!=FS_FILE||!hfp_add(inputs,file) {tool_errln(file);return false;}}
+ return true;
+}
+
+tool_main::()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) {return 2;}
+ if args_count(a[..])==3 {return hfp_peer(a[..]);}
+ if args_count(a[..])!=4||args_at(a[..],0)!="--check" {tool_errln("usage: http-frame-peer --check WORLD_BUILD FACTS NEW_OUT");return 2;}
+ build:=args_at(a[..],1);facts:=args_at(a[..],2);out:=args_at(a[..],3);if !fs_mkdir(out) {return 1;}listing:[1]FsList;if fs_list(out,listing[..])!=0 {return 2;}
+ paths:[12][4096]u8;inputs:[3]RtqInputs;self:[4096]u8;image:=gp_self(self[..]);manifest:=fs_join(build,"build.json",paths[0][..]);json:[262144]u8;nodes:[8192]JvNode;d:[1]Jv;
+ if !rtq_json_file(manifest,json[..],nodes[..],d[..]) {return 1;}rows:=jv_get(d[0],0,"inputs");if jv_kind(d[0],rows)!=JV_OBJECT {return 1;}
+ for i:0..<jv_len(d[0],rows) {node:=jv_at(d[0],rows,i);file:=jv_key(d[0],node);hash:[64]u8;if !rtq_hash_file(file,hash[..])||cast(string)hash[..]!=jv_raw(d[0],node)||!hfp_add(inputs[..],file) {tool_errln(file);return 1;}}
+ bin:=fs_join(build,"vk-realm",paths[1][..]);for file:[5]string.[image,manifest,facts,bin,fs_join(build,"net",paths[2][..])] {if !hfp_add(inputs[..],file) {return 1;}}
+ if !hfp_tree(inputs[..],fs_join(build,"render",paths[3][..]),0)||!hfp_tree(inputs[..],fs_join(build,"render-assets",paths[4][..]),0) {return 1;}
+ portfile:=fs_join(out,"port",paths[5][..]);peerfile:=fs_join(out,"peer.json",paths[6][..]);jpeg:=fs_join(out,"frame.jpg",paths[7][..]);raw:=fs_join(out,"capture.i64",paths[8][..]);state:=fs_join(out,"state",paths[9][..]);if !fs_mkdir(state) {return 1;}
+ peer:=proc_new();if peer<0 {return 1;}defer {k:=proc_kill(peer,PROC_SIGTERM);w:=proc_wait(peer,1000);freed:=proc_release(peer);}
+ for arg:[4]string.[image,portfile,peerfile,jpeg] {if !proc_arg(peer,arg) {return 1;}}if proc_start(peer)!=0 {return 1;}
+ number:[32]u8;port:=-1;deadline:=proc_now_ms()+5000;while proc_now_ms()<deadline {n:=fs_read(portfile,number[..]);if n>0 {port=args_whole(cast(string)number[0..<n]);break;}proc_sleep(10);}if port<1024||port>65535 {return 1;}
+ origin:[128]u8;o:[1]Jo;jo_start(o[..],origin[..]);jo_put(o[..],"http://127.0.0.1:");jo_int(o[..],port);
+ argv:=[20]string.["nice","-n15",bin,build,"unused","--facts",facts,"--size","320x180","--golden","--headless","5","--net",state,"--origin",jo_text(o[..]),"--host-image-request",raw,"--mute-audio","--audio"];
+ env:=[1]string.["VERSE_NATIVE_CLOCK_MS=0"];stdout:[1048576]u8;stderr:[1048576]u8;r:=rtq_command(argv[..],env[..],proc_now_ms()+120000,out,"world",stdout[..],stderr[..]);peer_exit:=proc_wait(peer,5000);
+ bytes:[32]u8;q:[4]int;if fs_read(raw,bytes[..])!=bytes.count {return 1;}for i:0..<4 {value:u64;for lane:0..<8 {value|=cast(u64)bytes[i*8+lane]<<(lane*8);}q[i]=cast,trunc(int)value;}
+ peer_ok:=rtq_json_file(peerfile,json[..],nodes[..],d[..])&&jv_bool(d[0],jv_get(d[0],0,"passed"));stable:=true;for i:0..<inputs.count {stable=rtq_inputs_match(inputs[i..<i+1])&&stable;}
+ passed:=rtq_ok(r)&&peer_exit==0&&peer_ok&&hfp_capture(q[..])&&stable;report:[1048576]u8;jo_start(o[..],report[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"aethyr.host.http-frame.v1");jo_key(o[..],"passed");jo_bool(o[..],passed);jo_key(o[..],"capture");jo_arr(o[..]);for value:q {jo_int(o[..],value);}jo_end(o[..]);jo_key(o[..],"source_fence");jo_bool(o[..],stable);jo_key(o[..],"inputs");jo_arr(o[..]);for i:0..<inputs.count {rtq_inputs_json(o[..],inputs[i..<i+1],"");}jo_end(o[..]);jo_end(o[..]);return ifx !o[0].bad&&fs_write(fs_join(out,"receipt.json",paths[10][..]),jo_text(o[..]))&&passed then 0 else 1;
+}

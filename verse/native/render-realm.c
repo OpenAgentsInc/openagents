@@ -287,6 +287,25 @@ int rhgr_frame(RhgRealm *r,uint32_t hud_vertices,uint32_t width,uint32_t height,
 }
 VksImage *rhgr_screen(RhgRealm *r){return r->display?r->display:rhg_screen(r->renderer);}
 VksImage *rhgr_graph(RhgRealm *r){return rhg_screen(r->renderer);}
+uint8_t *rhgr_jpeg(RhgRealm *r,size_t *bytes){
+  *bytes=0;if(!r||!r->device)return NULL;VksImage *display=rhgr_screen(r);
+  if(!display||(display->format!=VK_FORMAT_R8G8B8A8_UNORM&&display->format!=VK_FORMAT_B8G8R8A8_UNORM))return NULL;
+  coax_t_HostImageExtent size=hpi_extent(display->w,display->h);if(size.width<1||size.height<1)return NULL;
+  VksImage scaled={0},*image=display;RhgHandle handle={0};uint8_t *raw=NULL,*work=NULL,*jpeg=NULL,*base64=NULL;
+  if(size.width!=display->w||size.height!=display->h){
+    int64_t words=aethyr_render_format_words(display->format==VK_FORMAT_R8G8B8A8_UNORM?COAX_RenderTextureFormat_rgba8:COAX_RenderTextureFormat_bgra8,size.width,size.height,1,1);
+    if(!rhg_ledger_acquire(RHG_COLOR,words,&handle))return NULL;
+    scaled=vks_image(r->device,(uint32_t)size.width,(uint32_t)size.height,1,0,display->format,VKS_TARGET);image=&scaled;
+    if(!vks_blit(r->device,display,image,VK_FILTER_LINEAR))goto done;
+  }
+  size_t count=(size_t)size.width*(size_t)size.height*4;raw=malloc(count);work=malloc(count);jpeg=malloc((size_t)hfj_capacity());if(!raw||!work||!jpeg)goto done;
+  vks_read(r->device,image,raw,count);
+  int64_t n=hfj_encode((coax_v_u8){raw,(int64_t)count},size.width,size.height,image->format==VK_FORMAT_B8G8R8A8_UNORM,(coax_v_u8){work,(int64_t)count},(coax_v_u8){jpeg,hfj_capacity()});
+  int64_t encoded=hfj_base64_bytes(n);if(encoded<1)goto done;base64=malloc((size_t)encoded);if(!base64)goto done;
+  if(hfj_base64((coax_v_u8){jpeg,n},(coax_v_u8){base64,encoded})!=encoded){free(base64);base64=NULL;goto done;}*bytes=(size_t)encoded;
+done:
+  free(raw);free(work);free(jpeg);if(scaled.image)vks_image_free(r->device,&scaled);rhg_ledger_release(&handle);return base64;
+}
 void rhgr_deliver_media(RhgRealm *r){if(!r||!r->media)return;size_t n=0;const uint8_t *packet=rhglm_notice(r->media,&n);if(n){rh_send(r->producer,(int)htn_kind(),(const char*)packet,n);rhglm_notice_done(r->media);r->notices++;}}
 uint64_t rhgr_draw_commands(const RhgRealm *r){return rhg_draw_commands(r->renderer);}
 void rhgr_drop_gpu(RhgRealm *r){

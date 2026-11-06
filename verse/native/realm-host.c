@@ -35,6 +35,9 @@ extern void rhn_socket_poll(RealmHost *) __attribute__((weak));
 extern void rhn_socket_shutdown(void) __attribute__((weak));
 extern int rhn_http_path(const char *,size_t) __attribute__((weak));
 extern int rhn_utf8(const char *,size_t) __attribute__((weak));
+extern int rhn_action_span(uint64_t,uint64_t,uint64_t,uint64_t,int) __attribute__((weak));
+extern uint32_t coaxial_outbox_capacity(cx_face_addr) __attribute__((weak));
+extern int64_t rhn_http_image_body(int32_t,const char *,size_t,const uint8_t *,size_t,uint8_t *,size_t) __attribute__((weak));
 extern int32_t coaxial_host_http_reserve(int32_t,int32_t,int64_t,int64_t,int64_t) __attribute__((weak));
 extern int64_t coaxial_host_owner(int32_t) __attribute__((weak));
 extern uint32_t coaxial_host_http_chunk(int32_t,int64_t,int64_t,int64_t) __attribute__((weak));
@@ -236,8 +239,8 @@ int rh_asset_data(RealmHost *h, int index, const void *bytes, size_t length) {
   coaxial_asset_ready(h->state,index,n);
   return n==length;
 }
-void rh_key(RealmHost *h,int key,int mods,int down) {
-  if(down){rh_audio_gesture(h);coaxial_key(h->state,key,mods);}else coaxial_key_up(h->state,key,mods);rh_after(h,0);
+uint32_t rh_key(RealmHost *h,int key,int mods,int down) {
+  uint32_t consumed=0;if(down){rh_audio_gesture(h);consumed=coaxial_key(h->state,key,mods);}else coaxial_key_up(h->state,key,mods);rh_after(h,0);return consumed;
 }
 void rh_pointer(RealmHost *h,float x,float y,int phase,int kind,int id) {if(phase==0)rh_audio_gesture(h);coaxial_pointer(h->state,x,y,phase,kind,id);rh_after(h,0);}
 void rh_blur(RealmHost *h) {coaxial_blur(h->state);rh_after(h,0);}
@@ -251,14 +254,22 @@ int rh_after(RealmHost *h, int say) {
   audio_after(h);
   int action = coaxial_action(h->state);
   if (!action) return 0;
-  uint32_t len = coaxial_outbox_len(h->state);
-  const char *text = (const char *)rh_ptr(coaxial_outbox(h->state));
-  if (say) printf("realm-host: action %d: %.*s\n", action, (int)(len > 200 ? 200 : len), text);
-  if (action == 1 && len < sizeof went) { memcpy(went, text, len); went_len = len; went_set = 1; }
-  keep(action, text, len);
+  uint32_t len=coaxial_outbox_len(h->state);cx_face_addr at=len?coaxial_outbox(h->state):0;
+  int valid=rh_host_version()!=1||(rhn_action_span&&rhn_action_span(at,len&&coaxial_outbox_capacity?coaxial_outbox_capacity(h->state):0,len,rh_address_limit(),coaxial_outbox_capacity!=NULL));
+  char *text=valid?malloc(len?len:1):NULL;
+  if(text&&len)memcpy(text,rh_ptr(at),len);
+  // No borrowed producer byte survives acknowledgement, even when the next
+  // input/message replaces its packet. Refused bytes are never viewed.
   coaxial_action_done(h->state);
-  return action;
+  if(!text){h->action_refused=1;return action;}
+  if(say)printf("realm-host: action %d: %.*s\n",action,(int)(len>200?200:len),text);
+  if(action==1&&len<sizeof went){memcpy(went,text,len);went_len=len;went_set=1;}
+  if(action==2&&(!h->clipboard||!h->clipboard(h->clipboard_user,text,len)))h->action_refused=1;
+  keep(action,text,len);if(action==3){free(h->location_hash);h->location_hash=text;h->location_hash_bytes=len;}else free(text);return action;
 }
+const char *rh_hash(RealmHost *h,size_t *bytes){*bytes=h->location_hash_bytes;return h->location_hash;}
+void rh_set_clipboard(RealmHost *h,int (*copy)(void *,const char *,size_t),void *user){h->clipboard=copy;h->clipboard_user=user;}
+
 
 void rh_page(RealmHost *h, int page) { coaxial_page(h->state, page); }
 
@@ -297,7 +308,7 @@ void rh_close(RealmHost *h) {
   rh_audio_close(h);
   munmap(h->arena, h->arena_size);
   free(h->entries);
-  free(h->pack);
+  free(h->pack);free(h->location_hash);h->location_hash=NULL;h->location_hash_bytes=0;
 }
 
 // ---- the network and what the realm keeps (rh_net_open)
@@ -306,7 +317,7 @@ void rh_close(RealmHost *h) {
 // ended. The slots, the same-site rule and the answers are coax/web/http-requests.js's.
 enum { RH_SLOTS = 8, RH_BEACONS = 16, RH_PLAYER = 5, RH_PLACE = 11, RH_BAR = 12, RH_ANSWER = 512,
        RH_UNBOUNDED_MS = 35000 };
-typedef struct { pid_t pid; int64_t deadline,generation,engine; int contract; char out[1100], body[1100]; } RhRequest;
+typedef struct { pid_t pid; int64_t deadline,generation,engine,timeout; int contract,pending,failed,flags; char out[1100], body[1100],path[4097]; } RhRequest;
 static struct { int on, port, log; char helper[1024], host[256], dir[1024], name[64]; } net;
 static RhRequest slots[RH_SLOTS], beacons[RH_BEACONS];
 static unsigned serial;
@@ -390,6 +401,16 @@ static void forget(RhRequest *r) {
   if (r->body[0]) unlink(r->body);
   memset(r, 0, sizeof *r);
 }
+static int spawn_request(RhRequest *r){
+  char port[16],flags[16],cap[16],timeout[24],key[256];
+  snprintf(port,sizeof port,"%d",net.port);snprintf(flags,sizeof flags,"%d",r->flags);snprintf(cap,sizeof cap,"%u",coaxial_inbox_cap());
+  int64_t left=r->timeout>=0?r->deadline-mono_ms():0;if(r->timeout>=0&&left<1)return 0;snprintf(timeout,sizeof timeout,"%lld",(long long)left);
+  if(r->flags&8)player_key(key,sizeof key);else key[0]=0;
+  char *argv[]={net.helper,r->out,net.host,port,flags,r->path,r->body[0]?r->body:"-",key[0]?key:"-",cap,timeout,r->contract?"--host-v1":NULL,NULL};
+  posix_spawn_file_actions_t fa;posix_spawn_file_actions_init(&fa);posix_spawn_file_actions_addopen(&fa,0,"/dev/null",O_RDONLY,0);posix_spawn_file_actions_addopen(&fa,1,"/dev/null",O_WRONLY,0);
+  pid_t pid;int e=posix_spawn(&pid,net.helper,&fa,NULL,argv,environ);posix_spawn_file_actions_destroy(&fa);if(e)return 0;r->pid=pid;r->pending=0;
+  if(net.log)fprintf(stderr,"realm-host: request: %s %s (flags %d)\n",r->flags&1?"POST":"GET",r->path,r->flags);return 1;
+}
 static int64_t request(cx_face_addr url, uint32_t url_len, cx_face_addr body, uint32_t body_len, int32_t flags, int64_t timeout) {
   if (!net.on) return -1;
   int contract=coaxial_host_contract_version&&coaxial_host_contract_version()==1;
@@ -399,45 +420,49 @@ static int64_t request(cx_face_addr url, uint32_t url_len, cx_face_addr body, ui
   int wanted = (flags & 4) != 0, beacon = (flags & 2) != 0;
   if (timeout >= 0 && (!wanted || beacon || timeout < 1 || timeout > 2147483647)) return -1;
   RhRequest *r = NULL;
-  int id = 0;
+  int id = 0;int64_t reserved_at=mono_ms();
   if (wanted) {
-    if(contract){id=coaxial_host_http_reserve(flags,timeout>=0,timeout,mono_ms(),coaxial_inbox_cap());if(id<0)return -1;}
-    else {for (id = 0; id < RH_SLOTS && slots[id].pid; id++) {}if (id == RH_SLOTS) return -1;}
+    if(contract){id=coaxial_host_http_reserve(flags,timeout>=0,timeout,reserved_at,coaxial_inbox_cap());if(id<0)return -1;}
+    else {for (id = 0; id < RH_SLOTS && (slots[id].pid||slots[id].pending); id++) {}if (id == RH_SLOTS) return -1;}
     r = &slots[id];
     if(contract){r->contract=1;r->generation=coaxial_host_owner(1);r->engine=coaxial_host_owner(2);}
   } else {
     rh_net_poll(NULL);   // reap the beacons that ended
-    for (int i = 0; i < RH_BEACONS && !r; i++) if (!beacons[i].pid) r = &beacons[i];
+    for (int i = 0; i < RH_BEACONS && !r; i++) if (!beacons[i].pid&&!beacons[i].pending) r = &beacons[i];
     if (!r) return -1;
   }
   unsigned k = serial++;
-  char path[4097], port[16], fl[16], cap[16], to[24], key[256];
-  memcpy(path, u, url_len);
-  path[url_len] = 0;
+  r->contract=contract;r->flags=flags;r->timeout=timeout;r->deadline=reserved_at+(timeout>=0?timeout:RH_UNBOUNDED_MS);
+  memcpy(r->path,u,url_len);r->path[url_len]=0;
   snprintf(r->out, sizeof r->out, "%s/.net-%d-%u.answer", net.dir, (int)getpid(), k);
   unlink(r->out);
   if (body_len) {
     snprintf(r->body, sizeof r->body, "%s/.net-%d-%u.body", net.dir, (int)getpid(), k);
     if (write_all(r->body, rh_ptr(body), body_len)) { if(r->contract)coaxial_host_http_cancel(id);forget(r); return -1; }
   }
-  snprintf(port, sizeof port, "%d", net.port);
-  snprintf(fl, sizeof fl, "%d", (int)flags);
-  snprintf(cap, sizeof cap, "%u", coaxial_inbox_cap());
-  snprintf(to, sizeof to, "%lld", (long long)(timeout >= 0 ? timeout : 0));
-  if (flags & 8) player_key(key, sizeof key); else key[0] = 0;
-  char *argv[] = {net.helper, r->out, net.host, port, fl, path, body_len ? r->body : "-", key[0] ? key : "-", cap, to, contract ? "--host-v1" : NULL, NULL};
-  posix_spawn_file_actions_t fa;
-  posix_spawn_file_actions_init(&fa);
-  posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
-  posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
-  pid_t pid;
-  int e = posix_spawn(&pid, net.helper, &fa, NULL, argv, environ);
-  posix_spawn_file_actions_destroy(&fa);
-  if (e) {if(r->contract)coaxial_host_http_cancel(id); forget(r); return -1; }
-  r->pid = pid;
-  r->deadline = mono_ms() + (timeout >= 0 ? timeout : RH_UNBOUNDED_MS);
-  if (net.log) fprintf(stderr, "realm-host: request %d: %s %s (flags %d)\n", wanted ? id : -1, flags & 1 ? "POST" : "GET", path, (int)flags);
+  if(contract&&(flags&32)&&(flags&1)&&body_len){r->pending=1;return wanted?id:0;}
+  if(!spawn_request(r)){if(r->contract&&wanted)coaxial_host_http_cancel(id);forget(r);return -1;}
   return wanted ? id : 0;
+}
+int rh_http_image_due(void){for(int i=0;i<RH_SLOTS;i++)if(slots[i].pending)return 1;for(int i=0;i<RH_BEACONS;i++)if(beacons[i].pending)return 1;return 0;}
+void rh_http_image_ready(const uint8_t *image,size_t bytes){
+  // These are actual fixed helper input/output allocations. Coax admits the
+  // completed JSON composition inside their measured capacities.
+  const size_t capacity=1114112;uint8_t *input=NULL,*output=NULL;
+  if(bytes){input=malloc(capacity);output=malloc(capacity);}
+  for(int i=0;i<RH_SLOTS+RH_BEACONS;i++){
+    RhRequest *r=i<RH_SLOTS?&slots[i]:&beacons[i-RH_SLOTS];if(!r->pending)continue;
+    if(i<RH_SLOTS&&!coaxial_host_http_chunk(i,r->generation,r->engine,0)){forget(r);continue;}
+    int ok=mono_ms()<r->deadline;
+    if(ok&&bytes){
+      FILE *f=fopen(r->body,"rb");struct stat st;size_t n=0;ok=f&&input&&output&&rhn_http_image_body&&!fstat(fileno(f),&st)&&S_ISREG(st.st_mode)&&st.st_size>=0&&(uint64_t)st.st_size<=capacity;
+      if(ok){n=(size_t)st.st_size;ok=fread(input,1,n,f)==n&&fgetc(f)==EOF&&!ferror(f);}if(f)fclose(f);
+      int64_t written=ok?rhn_http_image_body(r->flags,(const char*)input,n,image,bytes,output,capacity):-1;
+      ok=written>=0&&write_all(r->body,(const char*)output,(size_t)written)==0;
+    }
+    r->pending=0;if(!ok||!spawn_request(r)){if(i<RH_SLOTS)r->failed=1;else forget(r);}
+  }
+  free(input);free(output);
 }
 int rh_net_open(RealmHost *h, const char *helper, const char *host, int port, const char *dir, const char *name) {
   (void)h;
@@ -456,6 +481,7 @@ int rh_net_open(RealmHost *h, const char *helper, const char *host, int port, co
   return 0;
 }
 void rh_net_poll(RealmHost *h) {
+  if(h&&h->action_refused){h->action_refused=0;rh_send(h,604,"",0);}
   if(rhn_socket_poll)rhn_socket_poll(h);
   if (!net.on) return;
   for (int i = 0; i < RH_BEACONS; i++) {
@@ -466,9 +492,10 @@ void rh_net_poll(RealmHost *h) {
   int64_t now = mono_ms();
   for (int i = 0; i < RH_SLOTS; i++) {
     RhRequest *r = &slots[i];
-    if (!r->pid) continue;
+    if(r->pending&&now<r->deadline)continue;
+    if(!r->pid&&!r->pending&&!r->failed)continue;
     int st = 0;
-    pid_t w = waitpid(r->pid, &st, WNOHANG);
+    pid_t w=r->pid?waitpid(r->pid,&st,WNOHANG):-1;
     if (w == 0 && now < r->deadline) continue;
     if (w == 0) { kill(r->pid, SIGKILL); waitpid(r->pid, &st, 0); }
     size_t n = 0;
@@ -493,10 +520,9 @@ void rh_net_poll(RealmHost *h) {
   }
 }
 static int32_t cancel(int32_t id) {
-  if (id < 0 || id >= RH_SLOTS || !slots[id].pid) return 0;
+  if (id < 0 || id >= RH_SLOTS || (!slots[id].pid&&!slots[id].pending&&!slots[id].failed)) return 0;
   int admitted=slots[id].contract?coaxial_host_http_cancel(id):1;
-  kill(slots[id].pid, SIGKILL);
-  waitpid(slots[id].pid, NULL, 0);
+  if(slots[id].pid){kill(slots[id].pid,SIGKILL);waitpid(slots[id].pid,NULL,0);}
   forget(&slots[id]);
   return admitted;
 }
@@ -515,8 +541,9 @@ void rh_restore(RealmHost *h) {
 }
 void rh_net_close(void) {
   if(rhn_socket_shutdown)rhn_socket_shutdown();
-  for (int i = 0; i < RH_SLOTS; i++) if (slots[i].pid) cancel(i);
-  for (int i = 0; i < RH_BEACONS; i++) if (beacons[i].pid) { waitpid(beacons[i].pid, NULL, 0); forget(&beacons[i]); }
+  for(int i=0;i<RH_SLOTS;i++)if(slots[i].pid||slots[i].pending||slots[i].failed)cancel(i);
+  for(int i=0;i<RH_BEACONS;i++){if(beacons[i].pid)waitpid(beacons[i].pid,NULL,0);if(beacons[i].pid||beacons[i].pending)forget(&beacons[i]);}
+  net.on=0;
 }
 
 // The host's imports (coax/web/host.js imports.env), natively. Requests go out once

@@ -34,6 +34,7 @@ typedef struct {
   struct RhAudio *audio;
   struct RhAudioDevice *audio_device;
   int64_t audio_status,audio_command;
+  int (*clipboard)(void *user,const char *text,size_t length);void *clipboard_user;int action_refused;char *location_hash;size_t location_hash_bytes;
 } RealmHost;
 
 // Face addresses and the matching address of one of our measured allocations.
@@ -78,13 +79,17 @@ int64_t rh_audio_info(RealmHost *h,int field);
 int rh_asset_data(RealmHost *h, int index, const void *bytes, size_t length);
 // SDK dispatch of already normalized host inputs (device-pixel pointer
 // coordinates, CSS-pixel wheel delta and contract key/modifier values).
-void rh_key(RealmHost *h, int key, int mods, int down);
+uint32_t rh_key(RealmHost *h, int key, int mods, int down);
 void rh_pointer(RealmHost *h, float x, float y, int phase, int kind, int id);
 void rh_blur(RealmHost *h);
 void rh_wheel(RealmHost *h, float dy);
 // The realm's pending action, handled the way a host with no browser can:
 // it is printed (when `say`) and marked done. Returns the action, 0 for none.
 int rh_after(RealmHost *h, int say);
+// The SDK copies admitted text synchronously; unavailable/refused offers
+// acknowledge once and report604 on a later poll, outside producer dispatch.
+const char *rh_hash(RealmHost *h,size_t *bytes);
+void rh_set_clipboard(RealmHost *h,int (*copy)(void *,const char *,size_t),void *user);
 // The page to draw (host.js's data-page), before the page's facts.
 void rh_page(RealmHost *h, int page);
 // Travel: a navigation (action 1) since the last call, as the realm it opens in SLUG (cap bytes):
@@ -102,6 +107,9 @@ int rh_net_open(RealmHost *h, const char *helper, const char *host, int port, co
 // Answers that have come, as messages 512 + id ("STATUS\n" then the body; "0\n" for none or
 // past the deadline: a bounded request's own, 35 s otherwise). Call it between frames.
 void rh_net_poll(RealmHost *h);
+// Next-completed-frame image handoff, outside producer and GPU encoding.
+int rh_http_image_due(void);
+void rh_http_image_ready(const uint8_t *jpeg_base64,size_t bytes);
 // Gives the realm the place and bar it kept, before its first frame (not in golden mode).
 void rh_restore(RealmHost *h);
 // Stops what is still running.

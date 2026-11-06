@@ -81,6 +81,9 @@ static void vt_leave(int to) {
 }
 static RealmHost H;
 static uint64_t producer_calls;
+static const char *image_request_observer;
+extern int32_t guard_http(cx_face_addr,uint32_t,cx_face_addr,uint32_t,uint32_t,int64_t);
+static volatile int touched;
 #ifdef AETHYR_RENDER_TYPED
 static int64_t recovery_observed[23];
 #endif
@@ -92,6 +95,7 @@ __attribute__((weak)) void coaxial_close(cx_face_addr state);
 __attribute__((weak)) void coaxial_hover(cx_face_addr state,float x,float y);
 __attribute__((weak)) double coaxial_frame_parts(cx_face_addr state,int32_t field);
 __attribute__((weak)) int32_t coaxial_net_probe(cx_face_addr state,int32_t field);
+__attribute__((weak)) int32_t coaxial_wants_text(cx_face_addr state);
 static VkQueryPool benchmark_queries;
 static int benchmark_timestamps=1;
 static FILE *benchmark_file;
@@ -109,6 +113,9 @@ static double now_s(void) {
 }
 static int64_t now_us(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (int64_t)t.tv_sec*1000000+t.tv_nsec/1000;}
 static int to_focus(void *user,int focused){(void)user;if(rh_host_version()!=1)return 0;rh_lifecycle_event(&H,focused?2:3,now_us(),0);return 1;}
+static uint32_t to_realm_key(void *user,int key,int mods,int down){(void)user;touched = 1;return rh_key(&H,key,mods,down);}
+static void to_text(void *user,const char *bytes,size_t length){(void)user;rh_audio_gesture(&H);rh_send(&H,1,bytes,length);}
+static int to_wants_text(void *user){(void)user;return coaxial_wants_text?coaxial_wants_text(H.state):0;}
 static void to_shown(void *user,int shown){(void)user;rh_lifecycle_event(&H,shown?5:4,now_us(),0);rh_send(&H,shown?602:601,"",0);}
 
 // 16 random hex digits from the kernel.
@@ -156,7 +163,6 @@ static char *online_facts(char *text, size_t *n, const char *dir) {
 // the file's time is set to now at most once a second, so the session can tell how long the Verse
 // has been left alone (os/verse-pylon-policy.coax decides what that means).
 static const char *activity;
-static volatile int touched;
 static double touched_at;
 static void touch_activity(double now) {
   if (!activity || !touched || now - touched_at < 1) return;
@@ -187,8 +193,8 @@ static void agents_poll(double now) {
   free(text);
 }
 // evdev's keys (verse/kms/evdev.h) into the face; the codes are host.js's KEYS.
-bool realm_key(void *state, int key) { (void)state; touched = 1; coaxial_key(H.state, key, 0); return true; }
-bool realm_key_up(void *state, int key) { (void)state; touched = 1; coaxial_key_up(H.state, key, 0); return true; }
+bool realm_key(void *state, int key) { (void)state; touched = 1; rh_key(&H,key,0,1); return true; }
+bool realm_key_up(void *state, int key) { (void)state; touched = 1; rh_key(&H,key,0,0); return true; }
 
 // The spec's files that are the realm's: its uniforms, stores and particles (with their
 // capacities, so the buffers hold what they grow to) and the pack's indices.
@@ -220,8 +226,8 @@ static const void *file(void *user, const char *name, size_t *size, size_t *cap)
 // The pointer: the mice into the face, as host.js's pointer and wheel events, and drawn as a
 // dot after the frame's own vertices (fx_vs's 16 floats: the place in device pixels and the
 // place in the stroke, its shape, tint and bar; a stroke of length 0 is a round glow).
-static void to_pointer(void *user, float x, float y, int phase) { (void)user; touched = 1; coaxial_pointer(H.state, x, y, phase, 0, 1); }
-static void to_wheel(void *user, float dy) { (void)user; touched = 1; coaxial_wheel(H.state, dy); }
+static void to_pointer(void *user, float x, float y, int phase) { (void)user; touched = 1; rh_pointer(&H,x,y,phase,0,1); }
+static void to_wheel(void *user, float dy) { (void)user; touched = 1; rh_wheel(&H,dy); }
 static Mice mice;
 static int cursor;
 static Vkp *window_p;          // the window's presenter (--window): its size, to scale the pointer
@@ -404,7 +410,7 @@ static void press_keys(const char *keys, int frame) {
     int key = (int)strtol(p + 1, (char **)&p, 10);
     if (*p != ':') return;
     int down = (int)strtol(p + 1, (char **)&p, 10);
-    if (at == frame) { if (down) coaxial_key(H.state, key, 0); else coaxial_key_up(H.state, key, 0); }
+    if (at == frame) rh_key(&H,key,0,down);
     if (*p == ',') p++;
   }
 }
@@ -412,6 +418,7 @@ static void press_keys(const char *keys, int frame) {
 #ifdef AETHYR_RENDER_TYPED
 // Diagnostic physical effects only. The Coax observer admits these raw facts;
 // it also verifies the complete SDK/product source fence outside this process.
+static void frame_image(RhgRealm *s){if(!rh_http_image_due())return;size_t bytes=0;uint8_t *image=rhgr_jpeg(s,&bytes);rh_http_image_ready(image,bytes);if(image_request_observer){FILE *f=fopen(image_request_observer,"wb");int64_t row[4]={(int64_t)producer_calls,(int64_t)bytes,rh_http_image_due(),image!=NULL};if(f){fwrite(row,sizeof row,1,f);fclose(f);}}free(image);}
 static int world_replacement(RhgRealm *s,Vkc *v,uint32_t w,uint32_t h,float scale,char *error,size_t error_bytes){
   VksImage *graph=rhgr_graph(s),*display=rhgr_screen(s);
   if(!graph||!display||graph->format!=VK_FORMAT_R16G16B16A16_SFLOAT||display->format!=VK_FORMAT_R8G8B8A8_UNORM)return 0;
@@ -450,7 +457,7 @@ int main(int argc, char **argv) {
   double seconds = 60, shot_at = 4;
   float scale = 1;
   uint32_t w = 0, h = 0;
-  int golden = 0, headless = 0, demo = 0, windowed = 0, fullscreen = 0, leave_to = 0, facts_once = 0;
+  int golden = 0, headless = 0, demo = 0, windowed = 0, fullscreen = 0, leave_to = 0, facts_once = 0,audio_muted=0,headless_audio=0;
   const char *desk_dir = NULL, *desk_size = NULL, *desk_mode = NULL, *hands_path = NULL;
   const char *net_dir = NULL, *origin = "openagents.com", *name = "everglade", *go = NULL, *keys = "";
   const char *replay_path=NULL,*benchmark_path=NULL,*host_recovery=NULL;
@@ -463,6 +470,8 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--window")) windowed = 1;
     else if (!strcmp(a, "--fullscreen")) windowed = fullscreen = 1;
     else if (!strcmp(a,"--benchmark-no-timestamps")) benchmark_timestamps=0;
+    else if (!strcmp(a,"--mute-audio")) audio_muted=1;
+    else if (!strcmp(a,"--audio")) headless_audio=1;
     else if (!val) { fprintf(stderr, "vk-realm: %s wants a value\n", a); return 2; }
     else if (!strcmp(a, "--facts")) facts = val, i++;
     else if (!strcmp(a, "--facts-once")) facts = val, facts_once = 1, i++;   // read, then removed: facts that must not stay on disk
@@ -492,6 +501,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(a,"--replay")) replay_path=val,i++;
     else if (!strcmp(a,"--benchmark")) benchmark_path=val,i++;
     else if (!strcmp(a,"--host-recovery")) host_recovery=val,i++;
+    else if (!strcmp(a,"--host-image-request")) image_request_observer=val,i++;
     else { fprintf(stderr, "vk-realm: unknown argument %s\n", a); return 2; }
   }
   signal(SIGINT, on_signal);
@@ -527,7 +537,8 @@ int main(int argc, char **argv) {
     char host[256];
     snprintf(host, sizeof host, "%s", origin);
     int port = 443;
-    char *colon = strchr(host, ':');
+    char *colon = strrchr(host, ':');
+    if(colon&&colon[1]=='/')colon=NULL;
     if (colon) { *colon = 0; port = atoi(colon + 1); }
     char helper[1100];
     snprintf(helper, sizeof helper, "%s/net", dir);
@@ -536,7 +547,7 @@ int main(int argc, char **argv) {
     if (!full || rh_net_open(&H, full, host, port, net_dir, name)) return 1;
     fprintf(stderr, "vk-realm: online: %s:%d through %s, kept in %s\n", host, port, full, net_dir);
     free(full);
-    rh_restore(&H);
+    if(rh_host_version()!=1)rh_restore(&H);
   }
   uint32_t sizes[8];
   int nextra = 0;
@@ -550,6 +561,8 @@ int main(int argc, char **argv) {
 #else
   rh_deliver(&H, nextra, sizes);
 #endif
+  if(net_dir&&rh_host_version()==1)rh_restore(&H);
+  if(rh_host_version()==1&&(!headless||headless_audio)&&rh_audio_enable(&H,audio_muted)<0)fprintf(stderr,"vk-realm: audio device or bank admission unavailable\n");
   // one frame so the stores exist at their sizes before the spec's buffers are made
   if(rh_host_version()!=1)hud_vertices = produce_frame(320,180,scale,1.0f/60);
 #ifndef AETHYR_RENDER_TYPED
@@ -563,7 +576,7 @@ int main(int argc, char **argv) {
   if (headless) vkc_open(&v);
   else if (windowed) {
     // the window's size, or the draw size, or 1600x900; the realm draws at the window's first size
-    VkwTo wto = {to_pointer_window, to_wheel, NULL, to_moved, vkdesk_key,to_extra_button,to_focus,to_shown};
+    VkwTo wto = {.pointer=to_pointer_window,.wheel=to_wheel,.moved=to_moved,.key=vkdesk_key,.button=to_extra_button,.focus=to_focus,.shown=to_shown,.realm_key=to_realm_key,.text=to_text,.wants_text=to_wants_text};
     vkw_open(&v, &win, coaxial_window_title?coaxial_window_title():"Verse", w ? w : 1600, h ? h : 900, fullscreen, wto);
     if(coaxial_window_app_id)xdg_toplevel_set_app_id(win.toplevel,coaxial_window_app_id());
     screen.period = win.period;
@@ -613,6 +626,11 @@ int main(int argc, char **argv) {
   int frames = 0;
   uint64_t live_frames = 0;
   const char *why = "its time was up";
+  if(image_request_observer){
+    const char *path="/api/host-contract/image",*body="Nostr fixture\n{\"question\":\"é🙂\",\"image\":\"old\"}";
+    int id=guard_http(rh_off(path),(uint32_t)strlen(path),rh_off(body),(uint32_t)strlen(body),53,5000);
+    if(id<0||!rh_http_image_due()){fprintf(stderr,"vk-realm: image request was not reserved before rendering\n");return 1;}
+  }
   if (headless) {
     // every frame drawn and waited for: the realm's step, then the GPU's
     // the frame before the spec was opened is the first of them
@@ -625,7 +643,7 @@ int main(int argc, char **argv) {
 #endif
       hud_vertices = produce_frame((float)w,(float)h,scale,1.0f/60);
 #ifdef AETHYR_RENDER_TYPED
-      if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_graph(s);rhgr_deliver_media(s);
+      if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_graph(s);frame_image(s);rhgr_deliver_media(s);
 #else
       update(s);
 #endif
@@ -723,7 +741,7 @@ int main(int argc, char **argv) {
         int phase = (int)((t - start) / 3) % 3;
         static int held;
         int want = phase == 0 ? 'w' : phase == 1 ? 'd' : 'w';
-        if (held != want) { if (held) coaxial_key_up(H.state, held, 0); coaxial_key(H.state, want, 0); held = want; }
+        if (held != want) { if (held) rh_key(&H,held,0,0);rh_key(&H,want,0,1); held = want; }
       }
       // Platform/network work continues even when the compositor has no
       // image or the preceding submission still owns the mutable buffers.
@@ -747,16 +765,16 @@ int main(int argc, char **argv) {
       double replay_s=rh_replay_seconds(),input_started=0;
       static double next_input=40,release_input;
       if(benchmark_file){
-        if(coaxial_net_probe&&coaxial_net_probe(H.state,0)!=2){coaxial_key(H.state,-2,0);coaxial_key_up(H.state,-2,0);}
-        if(replay_s>=next_input&&replay_s<70){input_started=now_s();coaxial_key(H.state,'w',0);release_input=replay_s+.04;next_input+=5;}
-        if(release_input>0&&replay_s>=release_input){coaxial_key_up(H.state,'w',0);release_input=0;}
+        if(coaxial_net_probe&&coaxial_net_probe(H.state,0)!=2){rh_key(&H,-2,0,1);rh_key(&H,-2,0,0);}
+        if(replay_s>=next_input&&replay_s<70){input_started=now_s();rh_key(&H,'w',0,1);release_input=replay_s+.04;next_input+=5;}
+        if(release_input>0&&replay_s>=release_input){rh_key(&H,'w',0,0);release_input=0;}
       }
       uint32_t requested=0;int offer=rh_frame_at(&H,(float)w,(float)h,scale,now_us(),0,0,&requested);
       if(!offer){struct timespec nap={0,2000000};nanosleep(&nap,NULL);continue;}
       if(offer>0)producer_calls++;
       hud_vertices = with_cursor(offer<0?produce_frame((float)w,(float)h,scale,(float)dt):requested);
 #ifdef AETHYR_RENDER_TYPED
-      if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_screen(s);rhgr_deliver_media(s);
+      if(!rhgr_frame(s,hud_vertices,w,h,0,COAX_RenderTextureFormat_rgba16f,render_error,sizeof render_error)){fprintf(stderr,"vk-realm: %s\n",render_error);return 1;}last[0]=rhgr_screen(s);frame_image(s);rhgr_deliver_media(s);
 #else
       update(s);
 #endif

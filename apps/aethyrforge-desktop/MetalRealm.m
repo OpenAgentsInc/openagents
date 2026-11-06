@@ -11,6 +11,7 @@
 #include "metal-sockets.h"
 #include "MetalRender.h"
 #include "RenderTexture.h"
+extern bool hap_span(uint64_t,uint64_t,uint64_t,uint64_t,bool);
 #include "../../verse/native/render-images.c"
 #include "../../aethyr/render/tests/frame-input.h"
 
@@ -42,7 +43,7 @@ typedef struct {int64_t slot,generation;} MFHandle;
  NSMutableArray<MFBuffer*> *buffers;id<MTLBuffer> indices;MFHandle indexHandle;
  NSArray<id<MTLBuffer>> *hud;MFHandle hudHandles[2];NSData *packBytes,*packageBytes,*metalBytes;
  NSMutableDictionary<NSString*,MFMedia*> *mediaCache;RhgiImages *mediaCPU;NSData *mediaNotice,*lastMediaNotice;
- uint64_t mediaParserCalls;
+ uint64_t mediaParserCalls;BOOL actionPacketChecked,actionPacketValid;
  NSMutableArray<NSData*> *reflectionBytes;NSMutableDictionary<NSNumber*,id<MTLLibrary>> *libraries;
  NSMutableDictionary<NSNumber*,NSData*> *shaderSources;coax_t_HostLifecycle life;int64_t frameTime;
  coax_t_RenderHostPackageState packageState;coax_t_RenderHostEntryBank entryBank;
@@ -461,8 +462,11 @@ bool mf_pointer(void *host,float x,float y,int32_t phase,int32_t kind,int32_t id
 void mf_wheel(void *host,float dy){MFRealm *r=(__bridge MFRealm*)host;if(r->face.wheel)r->face.wheel(r->state,dy);}
 void mf_focus(void *host,bool focused){MFRealm *r=(__bridge MFRealm*)host;htl_event((coax_v_t_HostLifecycle){&r->life,1},focused?2:3,htl_tick((int64_t)(nanoseconds()/1000)),0);if(focused){if(r->face.focus)r->face.focus(r->state);}else if(r->face.blur)r->face.blur(r->state);}
 int32_t mf_action(void *host){MFRealm *r=(__bridge MFRealm*)host;return r->face.action?r->face.action(r->state):0;}
-const uint8_t *mf_outbox(void *host,size_t *n){MFRealm *r=(__bridge MFRealm*)host;*n=r->face.outbox_len?r->face.outbox_len(r->state):0;return r->face.outbox?(void*)r->face.outbox(r->state):NULL;}
-void mf_action_done(void *host){MFRealm *r=(__bridge MFRealm*)host;if(r->face.action_done)r->face.action_done(r->state);}
+const uint8_t *mf_outbox(void *host,size_t *n){MFRealm *r=(__bridge MFRealm*)host;size_t bytes=r->face.outbox_len?r->face.outbox_len(r->state):0;uintptr_t at=bytes&&r->face.outbox?r->face.outbox(r->state):0;
+ r->actionPacketChecked=YES;r->actionPacketValid=!(r->face.host_contract_version&&r->face.host_contract_version()==1)||hap_span(at,bytes&&r->face.outbox_capacity?r->face.outbox_capacity(r->state):0,bytes,UINTPTR_MAX,r->face.outbox_capacity!=NULL);
+ *n=r->actionPacketValid?bytes:0;return r->actionPacketValid?(const uint8_t*)at:NULL;}
+bool mf_outbox_admitted(void *host){MFRealm *r=(__bridge MFRealm*)host;return r->actionPacketChecked&&r->actionPacketValid;}
+void mf_action_done(void *host){MFRealm *r=(__bridge MFRealm*)host;BOOL refused=r->actionPacketChecked&&!r->actionPacketValid;r->actionPacketChecked=NO;if(r->face.action_done)r->face.action_done(r->state);if(refused)[r message:604 data:[NSData data]];}
 int32_t mf_probe(void *host,int32_t field){MFRealm *r=(__bridge MFRealm*)host;return r->face.field_probe?r->face.field_probe(r->state,field):-1;}
 int64_t mf_observe(void *host,int64_t event,int64_t field){MFRealm *r=(__bridge MFRealm*)host;int64_t(*probe)(uintptr_t,int32_t,int32_t)=dlsym(r->image,"coaxial_host_probe");return probe?probe(r->state,(int32_t)event,(int32_t)field):-1;}
 void mf_observe_reset(void *host){MFRealm *r=(__bridge MFRealm*)host;void(*reset)(uintptr_t)=dlsym(r->image,"coaxial_host_reset");if(reset)reset(r->state);}

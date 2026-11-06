@@ -33,6 +33,7 @@ float hmi_appkit_wheel(float delta,bool precise);
 void mf_focus(void *host,bool focused);
 int32_t mf_action(void *host);
 const uint8_t *mf_outbox(void *host,size_t *count);
+bool mf_outbox_admitted(void *host);
 void mf_action_done(void *host);
 int32_t mf_probe(void *host,int32_t field);
 int64_t mf_observe(void *host,int64_t event,int64_t field);
