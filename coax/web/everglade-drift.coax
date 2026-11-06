@@ -389,19 +389,32 @@ dr_hold :: (p: DrPair) {
 }
 
 dr_rg_margin :: (x: int, z: int, nx: int, nz: int) -> bool {
-  return dr_diff(DR_PLACE, x, nx * 10, z, nz * 10) <= 12000;
+  return dr_diff(DR_PLACE, x, nx * 10, z, nz * 10) <= 14740;
 }
 #test "the gravity rehearsal rejects a townsperson at the radius edge" {
   #assert !dr_rg_margin(-15530, -56700, -191, -6347);
   #assert dr_rg_margin(-11030, -56700, -191, -6347);
-  #assert dr_rg_margin(0, 0, 1200, 0) && !dr_rg_margin(0, 0, 1201, 0);
+  #assert dr_rg_margin(0, 0, 1474, 0) && !dr_rg_margin(0, 0, 1475, 0);
+}
+dr_rg_patrols :: (x: int, z: int) -> bool {
+  // Independent fixture points in cm: EG_SPOT[0..1] and VIA_BRAM/VIA_TILDA in routines.coax.
+  // A circle is convex, so containing every endpoint contains both complete straight-leg beats.
+  points := [14] int.[-450, -5950, -200, -6200, -150, -7050, 450, -5950, 220, -5920, 180, -5200, 180, -4500];
+  for i: 0..<7 { if !dr_rg_margin(x, z, points[i * 2], points[i * 2 + 1]) { return false; } }
+  return true;
+}
+#test "gravity placement contains both complete patrols, not only Bram's current point" {
+  #assert !dr_rg_patrols(-6300, -60450);   // Tilda's Inn Street endpoint leaves the cylinder
+  #assert !dr_rg_patrols(-15530, -56700);  // Bram's road endpoint leaves it
+  #assert dr_rg_patrols(-6300, -56700);
 }
 dr_rg_ready :: (c: [] Cdp) -> bool {
   x := dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,0)", -999999);
   z := dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,2)", -999999);
   nx := dr_int(c, "__dr.probe(600)", 999999); nz := dr_int(c, "__dr.probe(601)", 999999);
-  print("  gravity placement: you %,% mm, first townsperson %,% cm\n", x, z, nx, nz);
-  return dr_rg_margin(x, z, nx, nz);
+  tx := dr_int(c, "__dr.probe(603)", 999999); tz := dr_int(c, "__dr.probe(604)", 999999);
+  print("  gravity placement: you %,% mm, Bram %,% cm, Tilda %,% cm\n", x, z, nx, nz, tx, tz);
+  return dr_rg_patrols(x, z) && dr_rg_margin(x, z, nx, nz) && dr_rg_margin(x, z, tx, tz) && dr_int(c, "__dr.probe(700)===1 && __dr.probe(701)===1 ? 1:0", 0) == 1;
 }
 dr_script :: (p: DrPair, dir: string) -> bool {
   dr_mark(p, "start");
@@ -414,10 +427,9 @@ dr_script :: (p: DrPair, dir: string) -> bool {
   dr_mark(p, "walk"); proc_sleep(2500);
   dr_mark(p, "jump");
   dr_tap(p, " ", "Space", 32); proc_sleep(1800); dr_both_key(p, false, "w", "KeyW", 87); proc_sleep(1200);
-  // The palisade stop leaves the first townsperson on the 15.24 m radius. Move inward before
-  // comparing discrete landing conditions: centimetres of patrol phase can change an edge entry.
-  dr_both_key(p, true, "a", "KeyA", 65); proc_sleep(2000); dr_both_key(p, false, "a", "KeyA", 65); proc_sleep(300);
-  dr_both_key(p, true, "s", "KeyS", 83); proc_sleep(500); dr_both_key(p, false, "s", "KeyS", 83); proc_sleep(500);
+  // Walk to the closed gate's west edge: a physical stop contains both complete patrols.
+  // Backing south instead brought Tilda's Inn Street endpoint outside the cylinder.
+  dr_both_key(p, true, "a", "KeyA", 65); proc_sleep(2000); dr_both_key(p, false, "a", "KeyA", 65); proc_sleep(500);
   dr_mark(p, "rg");
   rg_ready := dr_rg_ready(p.a); rg_ready_b := dr_rg_ready(p.b);
   // a round (6 s) between casts: the rules' one action a round

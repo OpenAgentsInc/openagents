@@ -102,7 +102,7 @@
           const bits = []; for (let i = 0; i < 47; i++) bits.push(fp(100 + i));
           if (D.facts.length < 256) D.facts.push([t, r0, r1, bits]); else D.factsOverflow = true;
           if (D.conds.length < 2000) D.conds.push(t + " " + fcs + " you_mm=" + fp(0) + "," + fp(2)
-            + " npc0_cm=" + np(600) + "," + np(601) + " bot0_cm=" + np(8) + "," + np(9));
+            + " npc0_cm=" + np(600) + "," + np(601) + " npc1_cm=" + np(603) + "," + np(604) + " bot0_cm=" + np(8) + "," + np(9));
         }
         const p = text(ex, state, 0), s = text(ex, state, 1), b = np(49);
         if (p !== plate) { plate = p; D.texts.push([t, 0, p]); }
