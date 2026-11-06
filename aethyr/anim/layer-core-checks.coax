@@ -1,0 +1,27 @@
+#test "layer envelopes have exact inactive edges smooth fades and full plateaus" {
+ #assert layer_window(2,6,1,1,0.8,1.9)==0 && layer_window(2,6,1,1,0.8,6.1)==0;
+ #assert layer_window(2,6,1,1,0.8,2)==0 && layer_window(2,6,1,1,0.8,6)==0;
+ #assert layer_window(2,6,1,1,0.8,2.5)==0.4 && layer_window(2,6,1,1,0.8,5.5)==0.4;
+ #assert layer_window(2,6,1,1,0.8,4)==0.8;
+ #assert layer_window(2,6,0,0,0.8,1)==0 && layer_window(2,6,0,0,0.8,7)==0;
+ #assert layer_window(2,6,0,0,0.8,2)==0.8 && layer_window(2,6,0,0,0.8,6)==0.8;
+ #assert layer_fades(0.25,0.75,1,1,0.8)==0.125 && layer_fades(4,0.25,1,1,1)==0.15625;
+}
+#test "replace face and additive layers preserve distinct reference semantics" {
+ base:=SkinLocal.{t=v3(2,4,6),q=Quat.{}};rest:=SkinLocal.{t=v3(1,2,3),q=Quat.{z=0.38268343,w=0.92387953}};sample:=SkinLocal.{t=v3(5,8,11),q=Quat.{z=0.70710678,w=0.70710678}};
+ for kind:[3]int.[0,1,3] {p:=layer_mix(kind,base,rest,sample,0.25);#assert same(p.t,v3(2.75,5,7.25),0.000001) && near(p.q.z,0.19509032,0.00001);}
+ p:=layer_mix(2,base,rest,sample,0.5);#assert same(p.t,v3(4,7,10),0.000001) && near(p.q.z,0.19509032,0.00001);
+ p=layer_mix(1,base,rest,sample,0);#assert p.t.x==base.t.x && p.t.y==base.t.y && p.t.z==base.t.z && near(p.q.w,1,0.000001);
+}
+#test "shared ambient cycles retain the legacy eight second boundary and three segment order" {
+ state:LayerCycle;for k:0..<511 {next:=layer_cycle(state,1.0/64.0,8,3);#assert !next.due;state=next.state;}
+ next:=layer_cycle(state,1.0/64.0,8,3);#assert next.due && next.state.segment==1 && next.state.clock==0;
+ for dt:[3]f32.[-1,0.126,1] {#assert !layer_cycle(next.state,dt,8,3).due && layer_cycle(next.state,dt,8,3).state.segment==1 && layer_cycle(next.state,dt,8,3).state.clock==0;}
+ overdue:=layer_cycle(LayerCycle.{clock=8,segment=2},0,8,3);#assert overdue.due && overdue.state.segment==0 && overdue.state.clock==0;
+ state=next.state;for round:0..<2 {for k:0..<64 {n:=layer_cycle(state,0.125,8,3);#assert n.due==(k==63);state=n.state;}}#assert state.segment==0;
+}
+
+#test "additive deltas use every reference axis and compose after the current pose" {
+ base:=SkinLocal.{q=Quat.{x=0.70710678,w=0.70710678}};rest:=SkinLocal.{q=Quat.{x=0.5,y=0.5,z=0.5,w=0.5}};sample:=SkinLocal.{q=Quat.{x=0.5,y= -0.5,z=0.5,w=0.5}};p:=layer_mix(2,base,rest,sample,1);
+ #assert abs(p.q.x)<0.000001 && abs(p.q.y+0.70710678)<0.000001 && abs(p.q.z)<0.000001 && abs(p.q.w-0.70710678)<0.000001;
+}

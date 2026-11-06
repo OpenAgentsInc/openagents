@@ -1,5 +1,7 @@
 // Animation Lab's rig and clip stations. All visible controls are Coax.
 #load "mannequin.coax";
+#load "../../aethyr/anim/fixup.coax";
+#load "layers-station-checks.coax";
 #load "../../aethyr/anim/retarget.coax";
 #load "../../aethyr/anim/inspect-mesh.coax";
 #load "../../aethyr/loop.coax" as clock;
@@ -8,6 +10,7 @@
 #load "../../verse/tools/humans/ph_num.coax";
 AlState :: struct {
  libraries:[2]AnimLibrary;made:[262144]u8;live:[1]AnimSample;ghost:[1]AnimSample;gpu:[12800]f32;retarget:[1]AnimSample;plan:RtPlan;target_rig:int;target_origin:Point;wanted_target:AnimName;draw_count:int;
+ performances:[2]AnimPerformance;layer_texts:[2]string;layer_sizes:[2]int;layer_error:int;layer_selected:int;layer_pending:[1]AnimClip;layer_clip_current:bool;layer_disabled:u32;layer_previous_disabled:u32;layer_report:FixupReport;layer_before:f32;layer_after:f32;layer_last_time:f32;plot_station:int= -1;
  plot:[384]f32;plot_rig:int= -1;plot_clip:int= -1;plot_joint:int= -1;plot_shape:int= -1;plot_curve:bool;
  clock:clock.FrameClock;initialized:bool;ready:bool;station:int=1;rig:int;clip:int;joint:int;shape:int;curve:bool;playing:bool;skeleton:bool=true;ghost_step:int=8;
  time:f32;shape_weight:f32;yaw:f32=0.3;pitch:f32=0.08;distance:f32=1;center:Point;radius:f32=1;
@@ -28,9 +31,9 @@ AlState :: struct {
  s[0].width=390;s[0].height=844;#assert al_pointer(s[..],120,300,0) && al_pointer(s[..],160,310,1) && s[0].yaw>0.3;#assert al_pointer(s[..],160,310,2) && !s[0].drag;
 }
 al_library :: (s:[]AlState)->[]AnimLibrary {return s[0].libraries[s[0].rig..<s[0].rig+1];}
-al_clip :: (s:[]AlState)->AnimClip {lib:=al_library(s);return lib[0].clips[s[0].clip];}
+al_clip :: (s:[]AlState)->AnimClip {lib:=al_library(s);if s[0].station==3 && s[0].performances[s[0].rig].ready {return lib[0].clips[s[0].performances[s[0].rig].layers[0].clip];}return lib[0].clips[s[0].clip];}
 al_frame_index :: (s:[]AlState)->int {c:=al_clip(s);return cast(int)floor(lo(anim_sample_time(c,s[0].time)*c.rate+0.0001,cast(f32)(c.frames-1)));}
-al_init :: (s:[]AlState) #export_c #effects(all) {if s[0].initialized {return;}al_mannequin(s[0].libraries[0..<1],s[0].made[..]);s[0].initialized=true;s[0].wanted_rig=anim_named("mannequin");al_bounds(s);}
+al_init :: (s:[]AlState) #export_c #effects(all) {if s[0].initialized {return;}al_mannequin(s[0].libraries[0..<1],s[0].made[..]);s[0].initialized=true;s[0].wanted_rig=anim_named("mannequin");al_bounds(s);al_layers_default(s);}
 al_bounds :: (s:[]AlState) {
  lib:=al_library(s);r:=lib[0].rig[0];empty:AnimClip;anim_sample(r,empty,lib[0].packs[..],0,s[0].live[..]);low:=s[0].live[0].position[0];high:=low;
  for p:s[0].live[0].position[0..<r.joints] {low=v3(lo(low.x,p.x),lo(low.y,p.y),lo(low.z,p.z));high=v3(hi(high.x,p.x),hi(high.y,p.y),hi(high.z,p.z));}
@@ -44,19 +47,24 @@ al_resolve :: (s:[]AlState) {
  al_retarget(s);
 }
 al_hash :: (s:[]AlState,text:string) #export_c #effects(all) {
- al_init(s);end:=text.count;for c,k:text {if c=='?' {end=k;break;}}station:=text[0..<end];al_station(s,ifx station=="rig" then 0 else ifx station=="retarget" then 2 else 1);
+ al_init(s);end:=text.count;for c,k:text {if c=='?' {end=k;break;}}station:=text[0..<end];al_station(s,ifx station=="rig" then 0 else ifx station=="retarget" then 2 else ifx station=="layers" then 3 else 1);
  if end<text.count {first:=end+1;for k:first..<text.count+1 {if k==text.count || text[k]=='&' {part:=text[first..<k];eq:= -1;for c,j:part {if c=='=' {eq=j;break;}}if eq>=0 {key:=part[0..<eq];value:=part[eq+1..<part.count];if key=="rig" {name:=anim_named(value);if !anim_equal(name,s[0].wanted_rig) {s[0].wanted_clip=AnimName.{};}s[0].wanted_rig=name;}if key=="clip" {s[0].wanted_clip=anim_named(value);}if key=="to" {s[0].wanted_target=anim_named(value);}}first=k+1;}}}al_resolve(s);
 }
-al_loaded :: (s:[]AlState,b:[]u8)->bool #export_c #effects(all) {
- al_init(s);if b.count==0 {return false;}e:=anim_bundle_load(b,s[0].libraries[1..<2]);s[0].error=e;if e==0 {s[0].private_loaded=true;al_resolve(s);if s[0].rig==1 {s[0].mesh_dirty=true;}}return e==0;
+al_bundle_ingest :: (s:[]AlState,b:[]u8)->bool #export_c #effects(all) {
+ if b.count==0 {return false;}e:=anim_bundle_load(b,s[0].libraries[1..<2]);s[0].error=e;if e==0 {s[0].private_loaded=true;s[0].performances[1].ready=false;s[0].layer_clip_current=false;}return e==0;
 }
-al_seek :: (s:[]AlState,frame:int) {c:=al_clip(s);s[0].playing=false;s[0].time=cast(f32)(ifx frame<0 then 0 else ifx frame>=c.frames then c.frames-1 else frame)/c.rate;}
+al_library_ready :: (s:[]AlState) #export_c #effects(all) {al_init(s);if s[0].private_loaded {al_resolve(s);if s[0].rig==1 {s[0].mesh_dirty=true;}}}
+al_loaded :: (s:[]AlState,b:[]u8)->bool #export_c #effects(all) {al_init(s);accepted:=al_bundle_ingest(s,b);if accepted {al_library_ready(s);}return accepted;}
+
+al_seek :: (s:[]AlState,frame:int) {s[0].layer_before=0;s[0].layer_after=0;c:=al_clip(s);s[0].playing=false;s[0].time=cast(f32)(ifx frame<0 then 0 else ifx frame>=c.frames then c.frames-1 else frame)/c.rate;}
 al_key :: (s:[]AlState,key:int)->bool #export_c #effects(all) {
  al_init(s);lib:=al_library(s);r:=lib[0].rig[0];
+ if s[0].station==3 && (key==45 || key==61 || key== -2) {return al_layer_select(s,key);}
+ if s[0].station==3 && key>=49 && key<=53 {return al_layer_toggle(s,key-49);}
  if key== -1 {s[0].action=1;url:="/worlds";s[0].out_n=url.count;for c,k:url {s[0].outbox[k]=c;}return true;}
  if key==32 || key==80 {s[0].playing=!s[0].playing;return true;}
  if key==46 || key== -5 {al_seek(s,al_frame_index(s)+1);return true;}if key==44 || key== -4 {al_seek(s,al_frame_index(s)-1);return true;}
- if key==82 || key==67 || key==84 {al_station(s,ifx key==82 then 0 else ifx key==84 then 2 else 1);al_retarget(s);return true;}
+ if key==82 || key==67 || key==84 || key==76 {al_station(s,ifx key==82 then 0 else ifx key==84 then 2 else ifx key==76 then 3 else 1);al_retarget(s);return true;}
  if key==77 || key==69 {s[0].wanted_rig=anim_named(ifx key==77 then "mannequin" else "echo");s[0].wanted_clip=AnimName.{};al_resolve(s);return true;}
  if key==91 || key==93 {s[0].clip=(s[0].clip+lib[0].count+(ifx key==91 then -1 else 1))%lib[0].count;s[0].time=0;s[0].wanted_clip=lib[0].clips[s[0].clip].name;s[0].curve=lib[0].clips[s[0].clip].curve_count>0;if s[0].curve {s[0].shape=lib[0].clips[s[0].clip].curves[0];}return true;}
  if key==74 || key==75 {s[0].curve=false;s[0].joint=(s[0].joint+r.joints+(ifx key==74 then -1 else 1))%r.joints;return true;}
@@ -71,8 +79,10 @@ al_pointer :: (s:[]AlState,px:f32,py:f32,phase:int)->bool #export_c #effects(all
  if phase==2 {s[0].drag=false;s[0].seek=false;s[0].slider=false;return true;}
  if phase==0 {
   if y<48 {if x<90 {return al_key(s,82);}if x<170 {return al_key(s,67);}if x<270 {return al_key(s,77);}return al_key(s,69);}
-  if y>214 && y<244 {return al_key(s,84);}
-  if y>h-48 {if x<w*0.2 {return al_key(s,32);}if x<w*0.35 {return al_key(s,44);}if x<w*0.5 {return al_key(s,46);}if x<w*0.67 {return al_key(s,91);}if x<w*0.84 {return al_key(s,93);}return al_key(s,71);}
+  if y>214 && y<244 {return al_key(s,ifx x<w*0.5 then 84 else 76);}
+  if s[0].station==3 && y>=244 && y<282 {return al_layer_toggle(s,cast(int)lo(4,floor(x/(w/5))));}
+  if s[0].station==3 && y>=282 && y<318 {return al_layer_select(s,ifx x<w*0.2 then 45 else ifx x<w*0.4 then 61 else -2);}
+  if y>h-48 {if x<w*0.2 {return al_key(s,32);}if x<w*0.35 {return al_key(s,44);}if x<w*0.5 {return al_key(s,46);}if s[0].station==3 {return true;}if x<w*0.67 {return al_key(s,91);}if x<w*0.84 {return al_key(s,93);}return al_key(s,71);}
   if y>h-180 && y<h-150 {s[0].seek=true;}else if s[0].station==0 && y>165 && y<196 {s[0].slider=true;}
   else if y>48 && y<88 {if x<w*0.25 {return al_key(s,74);}if x<w*0.5 {return al_key(s,75);}if x<w*0.75 {return al_key(s,85);}return al_key(s,73);}
   else {s[0].drag=true;s[0].last_x=x;s[0].last_y=y;
@@ -98,7 +108,7 @@ al_skeleton :: (s:[]AlState,out:[]f32,n:int,sample:[]AnimSample,fade:f32)->int {
  at:=n;lib:=al_library(s);for j:0..<lib[0].rig[0].joints {parent:=lib[0].rig[0].parents[j];if parent<0 {continue;}a:=al_project(s,sample[0].position[parent]);b:=al_project(s,sample[0].position[j]);if a.z>0.01 && b.z>0.01 {colour:=ifx j==s[0].joint then v3(0.95,0.35,0.6) else v3(0.1*fade,0.75*fade,fade);at=al_line(out,at,a,b,colour);}}return at;
 }
 al_draw :: (s:[]AlState,out:[]f32,u:[]f32,geometry:[]u32,width:f32,height:f32,d:f32,dt:f32,still:bool)->int #export_c #effects(all) {
- al_tick(s,dt,still);w:=width/d;h:=height/d;s[0].width=w;s[0].height=h;s[0].dpr=d;lib:=al_library(s);r:=lib[0].rig[0];c:=al_clip(s);
+ al_tick(s,dt,still);if s[0].station==3 && s[0].playing && s[0].performances[s[0].rig].ready {length:=s[0].performances[s[0].rig].length;s[0].time-=length*floor(s[0].time/length);}w:=width/d;h:=height/d;s[0].width=w;s[0].height=h;s[0].dpr=d;lib:=al_library(s);r:=lib[0].rig[0];c:=al_clip(s);
  if s[0].mesh_dirty {
   s[0].mesh_words=anim_inspect_mesh(r,lib[0].packs[..],geometry,s[0].draws[..]);s[0].draw_count=ifx s[0].mesh_words>0 then r.sections else 0;
   if s[0].station==2 && s[0].error==0 && s[0].mesh_words>0 {
@@ -106,7 +116,7 @@ al_draw :: (s:[]AlState,out:[]f32,u:[]f32,geometry:[]u32,width:f32,height:f32,d:
    if n<0 || r.sections+target.rig[0].sections>64 {s[0].mesh_words= -1;s[0].draw_count=0;}else {geometry[1]=cast(u32)first+geometry[first];for k:0..<target.rig[0].sections {at:=(r.sections+k)*4;s[0].draws[at]=td[k*4]+cast(u32)first;s[0].draws[at+1]=td[k*4+1];s[0].draws[at+2]=td[k*4+2]+256;s[0].draws[at+3]=1;}s[0].draw_count+=target.rig[0].sections;s[0].mesh_words+=n;}
   }s[0].mesh_dirty=false;s[0].mesh_version+=1;
  }
- anim_sample(r,c,lib[0].packs[..],s[0].time,s[0].live[..]);if s[0].station==0 && r.shape_count>0 {s[0].live[0].weights[s[0].shape]=s[0].shape_weight;}
+ if s[0].station==3 && s[0].performances[s[0].rig].ready {al_layers_sample(s,s[0].time);}else {anim_sample(r,c,lib[0].packs[..],s[0].time,s[0].live[..]);}if s[0].station==0 && r.shape_count>0 {s[0].live[0].weights[s[0].shape]=s[0].shape_weight;}
  for k:0..<6144 {s[0].gpu[k]=s[0].live[0].palette[k];}for k:0..<256 {s[0].gpu[6144+k]=s[0].live[0].weights[k];}if s[0].station==2 && s[0].error==0 {target:=s[0].libraries[s[0].target_rig].rig[0];rt_apply(r,target,s[0].plan,s[0].live[..],s[0].retarget[..]);for k:0..<6144 {s[0].gpu[6400+k]=s[0].retarget[0].palette[k];}for k:0..<256 {s[0].gpu[12544+k]=s[0].retarget[0].weights[k];}s[0].target_origin=sub(s[0].retarget[0].position[0],target.rest[0].t);}s[0].revision+=1;
  s[0].origin=sub(s[0].live[0].position[0],r.rest[0].t);target:=s[0].center;s[0].eye=add(target,times(v3(sin(s[0].yaw)*cos(s[0].pitch),sin(s[0].pitch),cos(s[0].yaw)*cos(s[0].pitch)),s[0].radius*3*s[0].distance));s[0].forward=unit_or(sub(target,s[0].eye),v3(0,0,-1));s[0].right=unit_or(cross(s[0].forward,v3(0,1,0)),v3(1,0,0));s[0].up=cross(s[0].right,s[0].forward);s[0].zoom=lo(w*(ifx s[0].station==2 then 0.7 else 1.4),h*0.8);
  for k:0..<u.count {u[k]=0;}u[0]=w;u[1]=h;u[3]=1;for p,k:[5]Point.[s[0].eye,s[0].right,s[0].up,s[0].forward,s[0].origin] {u[8+k*4]=p.x;u[9+k*4]=p.y;u[10+k*4]=p.z;}u[28]=s[0].zoom;u[29]=cast(f32)s[0].joint;u[30]=ifx s[0].station==0 then 1 else 0;u[31]=h*0.51;u[32]=ifx s[0].station==2 then 1 else 0;u[36]=s[0].target_origin.x;u[37]=s[0].target_origin.y;u[38]=s[0].target_origin.z;
@@ -118,7 +128,8 @@ al_draw :: (s:[]AlState,out:[]f32,u:[]f32,geometry:[]u32,width:f32,height:f32,d:
  info:[256]u8;o:[1]PnOut;o[0].buf=info[..];pn_putint(o[..],r.joints);pn_put(o[..]," JOINTS / 8 INFLUENCES / ");pn_putint(o[..],r.shape_count);pn_put(o[..]," SHAPES");n=al_text(out,n,pn_text(o[..]),16,132,8);
  o[0]=PnOut.{buf=info[..]};pn_putint(o[..],r.face_joint_count);pn_put(o[..]," FACE BONES / ");pn_putint(o[..],r.material_count);pn_put(o[..]," MATERIALS");n=al_text(out,n,pn_text(o[..]),16,148,8);
  if s[0].station==0 && r.shape_count>0 {n=al_text(out,n,anim_text(r.shapes[..],s[0].shape),16,164,9);n=al_line(out,n,v3(16,181,0),v3(w-16,181,0),v3(0.15,0.2,0.3));n=al_line(out,n,v3(16,181,0),v3(16+(w-32)*s[0].shape_weight,181,0),v3(0.2,0.8,1));}
- n=al_text(out,n,"RETARGET [T]",16,230,10);
+ n=al_text(out,n,"RETARGET [T]",16,230,10);n=al_text(out,n,"LAYERS [L]",w*0.5+8,230,10);
+ if s[0].station==3 {n=al_layers_controls(s,out,n);}
  if s[0].station==2 && s[0].error==0 {target_rig:=s[0].libraries[s[0].target_rig].rig[0];o[0]=PnOut.{buf=info[..]};pn_putint(o[..],s[0].plan.paired);pn_put(o[..]," PAIRED / GREEN = MAPPED / PURPLE = UNPAIRED");n=al_text(out,n,pn_text(o[..]),16,180,7);source_names:=[1]AnimName.[r.name];n=al_text(out,n,anim_text(source_names[..],0),w*0.15,200,8);names:=[1]AnimName.[target_rig.name];n=al_text(out,n,anim_text(names[..],0),w*0.65,200,8);}
  if s[0].error!=0 {n=al_text(out,n,ifx !s[0].private_loaded && anim_equal(s[0].wanted_rig,anim_named("echo")) then "MISSING PRIVATE ANIMATION-LAB.BUNDLE" else anim_error_name(s[0].error),16,212,9);}
  if s[0].mesh_words<0 {n=al_text(out,n,"MESH EXCEEDS 64 MIB INSPECTION BUDGET",16,232,9);}
@@ -128,14 +139,15 @@ al_timeline :: (s:[]AlState,out:[]f32,n:int)->int {
  at:=n;lib:=al_library(s);r:=lib[0].rig[0];c:=al_clip(s);w:=s[0].width;h:=s[0].height;name:=[1]AnimName.[c.name];at=al_text(out,at,anim_text(name[..],0),16,h-192,10);
  y:=h-165;at=al_line(out,at,v3(16,y,0),v3(w-16,y,0),v3(0.15,0.3,0.45));play:=16+(w-32)*cast(f32)al_frame_index(s)/cast(f32)(c.frames-1);at=al_line(out,at,v3(play,y-8,0),v3(play,h-60,0),v3(0.9,0.4,0.7));
  for k:0..<c.event_count {x:=16+(w-32)*c.events[k].at/c.length;at=al_line(out,at,v3(x,y-6,0),v3(x,y+6,0),v3(0.3,1,0.65));}
- if s[0].plot_rig!=s[0].rig || s[0].plot_clip!=s[0].clip || s[0].plot_joint!=s[0].joint || s[0].plot_shape!=s[0].shape || s[0].plot_curve!=s[0].curve {
+ if s[0].plot_station!=s[0].station || s[0].plot_rig!=s[0].rig || s[0].plot_clip!=s[0].clip || s[0].plot_joint!=s[0].joint || s[0].plot_shape!=s[0].shape || s[0].plot_curve!=s[0].curve {
   for sample:0..<96 {t:=c.length*cast(f32)sample/95;anim_sample(r,c,lib[0].packs[..],t,s[0].ghost[..]);q:=s[0].ghost[0].local[s[0].joint].q;values:=[4]f32.[q.x,q.y,q.z,q.w];if s[0].curve {values[0]=s[0].ghost[0].weights[s[0].shape];}for component:0..<4 {s[0].plot[sample*4+component]=values[component];}}
-  s[0].plot_rig=s[0].rig;s[0].plot_clip=s[0].clip;s[0].plot_joint=s[0].joint;s[0].plot_shape=s[0].shape;s[0].plot_curve=s[0].curve;
+  s[0].plot_station=s[0].station;s[0].plot_rig=s[0].rig;s[0].plot_clip=s[0].clip;s[0].plot_joint=s[0].joint;s[0].plot_shape=s[0].shape;s[0].plot_curve=s[0].curve;
  }
  previous:[4]Point;for sample:0..<96 {values:[4]f32;for component:0..<4 {values[component]=s[0].plot[sample*4+component];}
   for component:0..<(ifx s[0].curve then 1 else 4) {p:=v3(16+(w-32)*cast(f32)sample/95,h-100-clampf(values[component],-1,1)*35,0);if sample>0 {colour:=[4]Point.[v3(0.3,0.85,1),v3(0.5,0.95,0.5),v3(0.95,0.45,0.6),v3(0.7,0.6,1)];at=al_line(out,at,previous[component],p,colour[component]);}previous[component]=p;}}
  label:[128]u8;writer:[1]PnOut;writer[0].buf=label[..];pn_put(writer[..],ifx s[0].curve then "CURVE " else "Q XYZW ");pn_put(writer[..],ifx s[0].curve && r.shape_count>0 then anim_text(r.shapes[..],s[0].shape) else anim_text(r.names[..],s[0].joint));pn_put(writer[..]," / FRAME ");pn_putint(writer[..],al_frame_index(s));at=al_text(out,at,pn_text(writer[..]),16,h-144,8);
- at=al_text(out,at,ifx s[0].playing then "PAUSE" else "PLAY",16,h-22,10);for key,k:[4]string.["<",">","[","]"] {x:=[4]f32.[0.2,0.35,0.5,0.67];at=al_text(out,at,key,w*x[k]+16,h-22,10);}writer[0]=PnOut.{buf=label[..]};pn_put(writer[..],"G ");pn_putint(writer[..],s[0].ghost_step);at=al_text(out,at,pn_text(writer[..]),w*0.84+8,h-22,9);
+ at=al_text(out,at,ifx s[0].playing then "PAUSE" else "PLAY",16,h-22,10);if s[0].station==3 {at=al_text(out,at,"<",w*0.2+16,h-22,10);at=al_text(out,at,">",w*0.35+16,h-22,10);return al_text(out,at,"1-5 LAYERS",w*0.52,h-22,9);}
+ for key,k:[4]string.["<",">","[","]"] {x:=[4]f32.[0.2,0.35,0.5,0.67];at=al_text(out,at,key,w*x[k]+16,h-22,10);}writer[0]=PnOut.{buf=label[..]};pn_put(writer[..],"G ");pn_putint(writer[..],s[0].ghost_step);at=al_text(out,at,pn_text(writer[..]),w*0.84+8,h-22,9);
  return at;
 }
 
@@ -143,7 +155,7 @@ clampf :: (x:f32,low:f32,high:f32)->f32 {return lo(hi(x,low),high);}
 
 al_wheel :: (s:[]AlState,delta:f32) #export_c #effects(all) {s[0].distance=clampf(s[0].distance+delta*0.001,0.25,4);}
 al_probe :: (s:[]AlState,field:int)->int #export_c #effects(all) {
- if field==0 {return ifx s[0].ready then 1 else 0;}if field==1 {return s[0].rig;}if field==2 {return s[0].clip;}if field==3 {return al_frame_index(s);}if field==4 {return al_library(s)[0].count;}if field==5 {return s[0].shape;}if field==6 {return s[0].joint;}if field==7 {return s[0].station;}if field==8 {return s[0].error;}if field==9 {return ifx s[0].private_loaded then 1 else 0;}if field==10 {return s[0].ghost_step;}if field==11 {return s[0].mesh_words;}if field==12 {return s[0].clock.ticks;}if field==14 {return al_library(s)[0].rig[0].joints;}if field==15 {return al_clip(s).face_joint_count;}if field==16 {return al_clip(s).curve_count;}if field==17 {return s[0].plan.paired;}if field==18 {return s[0].target_rig;}if field==19 {return s[0].draw_count;}if field==20 {return ifx s[0].station==2 then al_frame_index(s) else -1;}return -1;
+ if field==0 {return ifx s[0].ready then 1 else 0;}if field==1 {return s[0].rig;}if field==2 {return s[0].clip;}if field==3 {return al_frame_index(s);}if field==4 {return al_library(s)[0].count;}if field==5 {return s[0].shape;}if field==6 {return s[0].joint;}if field==7 {return s[0].station;}if field==8 {return s[0].error;}if field==9 {return ifx s[0].private_loaded then 1 else 0;}if field==10 {return s[0].ghost_step;}if field==11 {return s[0].mesh_words;}if field==12 {return s[0].clock.ticks;}if field==14 {return al_library(s)[0].rig[0].joints;}if field==15 {return al_clip(s).face_joint_count;}if field==16 {return al_clip(s).curve_count;}if field==17 {return s[0].plan.paired;}if field==18 {return s[0].target_rig;}if field==19 {return s[0].draw_count;}if field==20 {return ifx s[0].station==2 then al_frame_index(s) else -1;}if field==21 {return ifx s[0].performances[s[0].rig].ready then 1 else 0;}if field==22 {return s[0].performances[s[0].rig].count;}if field==23 {return cast(int)s[0].layer_disabled;}if field==24 {return cast(int)(s[0].layer_before*1000);}if field==25 {return cast(int)(s[0].layer_after*1000);}if field==26 {return s[0].layer_report.feet;}if field==27 {return al_clip(s).frames;}return -1;
 }
 al_message :: (s:[]AlState,kind:int,text:string) #export_c #effects(all) {if kind==700 {n:=anim_decimal(text);if n.ok && n.value>=0 && n.value<2000 {al_seek(s,cast(int)n.value);}}}
 
@@ -169,4 +181,55 @@ al_retarget :: (s:[]AlState) {
 al_mapped_skeleton :: (s:[]AlState,out:[]f32,n:int,model:int)->int {
  at:=n;r:=s[0].libraries[ifx model==0 then s[0].rig else s[0].target_rig].rig[0];sample:=ifx model==0 then s[0].live[..] else s[0].retarget[..];map:=ifx model==0 then s[0].plan.source else s[0].plan.target;other:=ifx model==0 then s[0].plan.target else s[0].plan.source;
  for j:0..<r.joints {parent:=r.parents[j];if parent<0 {continue;}slot:=rt_anchor_slot(map,j);paired:=slot>=0 && other.joints[slot]>=0;a:=al_project_model(s,sample[0].position[parent],model);b:=al_project_model(s,sample[0].position[j],model);if a.z>0.01 && b.z>0.01 {at=al_line(out,at,a,b,ifx paired then v3(0.15,0.95,0.55) else v3(0.8,0.4,0.95));}}return at;
+}
+al_layers_default :: (s:[]AlState) {
+ // The original studio wave leaves both feet at rest. Author that simple
+ // performance directly; private source contact inference is a native tool.
+ c:=s[0].libraries[0].clips[0];c.name=anim_named("studio-layers");c.looping=false;c.event_count=4;for foot:0..<2 {joint:=ifx foot==0 then 57 else 62;c.events[foot]=AnimEvent.{at=0.15,kind=0,joint=joint};c.events[foot+2]=AnimEvent.{at=c.length-0.15,kind=1,joint=joint};}s[0].libraries[0].clips[1]=c;
+ p:=AnimPerformance.{ready=true,name=anim_named("studio-layers"),rig=s[0].libraries[0].rig[0].name,length=c.length,count=7};for k:0..<4 {p.layers[k]=AnimLayer.{kind=k,clip=ifx k==0 then 1 else 0,start=0,end=c.length,speed=1,blend_in=0.15,blend_out=0.15,weight=ifx k==0 then 1 else 0.3,mask=ifx k==0 then 0 else ifx k==1 then 4 else ifx k==2 then 3 else 1};}
+ for foot:0..<2 {joint:=ifx foot==0 then 57 else 62;p.layers[4+foot]=AnimLayer.{kind=4,solver=0,joint=joint,target=s[0].live[0].position[joint],start=0.15,end=c.length,speed=1,blend_out=0.15,weight=1,mask=7};}p.layers[6]=AnimLayer.{kind=4,solver=1,joint=6,target=v3(1,1.65,3),start=0,end=c.length,speed=1,blend_in=0.15,blend_out=0.15,weight=0.3,mask=2};s[0].performances[0]=p;
+}
+
+// Each parser is a separate browser ABI call, bounding its JSON scratch frame.
+al_layers_ingest :: (s:[]AlState,index:int,bytes:[]u8)->bool #export_c #effects(all) {
+ if index<1 || index>2 || bytes.count<1 || bytes.count>262144 {return false;}slot:=index-1;s[0].layer_texts[slot]=cast(string)bytes;s[0].layer_sizes[slot]=bytes.count;return true;
+}
+al_layers_parse_clip :: (s:[]AlState) #export_c #effects(all) {
+ s[0].layer_clip_current=false;if !s[0].private_loaded || s[0].layer_sizes[1]==0 {return;}count:=s[0].libraries[1].count;if count>=64 {s[0].layer_error=ANIM_CAPACITY;return;}
+ e:=anim_clip_load(s[0].layer_texts[1],s[0].libraries[1].packs[..],s[0].libraries[1].rig[..],s[0].layer_pending[..]);s[0].layer_error=e;s[0].layer_clip_current=e==0;
+}
+al_layers_parse_performance :: (s:[]AlState) #export_c #effects(all) {
+ if !s[0].layer_clip_current || s[0].layer_sizes[0]==0 {return;}count:=s[0].libraries[1].count;
+ // No producer call runs inside synchronous admission. Restore on refusal.
+ previous:=s[0].libraries[1].clips[count];s[0].libraries[1].clips[count]=s[0].layer_pending[0];performance:[1]AnimPerformance;e:=anim_performance_load(s[0].layer_texts[0],s[0].libraries[1].rig[..],s[0].libraries[1].clips[0..<count+1],performance[..]);s[0].layer_error=e;if e!=0 {s[0].libraries[1].clips[count]=previous;return;}s[0].performances[1]=performance[0];s[0].plot_station= -1;
+}
+al_layers_try :: (s:[]AlState) {al_layers_parse_clip(s);al_layers_parse_performance(s);}
+al_layers_document :: (s:[]AlState,index:int,bytes:[]u8)->bool {
+ if !al_layers_ingest(s,index,bytes) {return false;}al_layers_try(s);return s[0].layer_error==0;
+}
+
+al_layer_toggle :: (s:[]AlState,kind:int)->bool {
+ p:=s[0].performances[s[0].rig];if !p.ready {return false;}enabled:=false;for k:0..<p.count {if p.layers[k].kind==kind && (s[0].layer_disabled&(cast(u32)1<<k))==0 {enabled=true;}}
+ for k:0..<p.count {if p.layers[k].kind!=kind {continue;}bit:=cast(u32)1<<k;if enabled {s[0].layer_disabled|=bit;}else {s[0].layer_disabled&=(0xffffffff^bit);}}return true;
+}
+al_layer_select :: (s:[]AlState,key:int)->bool {
+ p:=s[0].performances[s[0].rig];if !p.ready || p.count<1 {return false;}s[0].layer_selected%=p.count;
+ if key== -2 {s[0].layer_disabled^=cast(u32)1<<s[0].layer_selected;}else {s[0].layer_selected=(s[0].layer_selected+p.count+(ifx key==45 then -1 else 1))%p.count;}return true;
+}
+al_layers_sample :: (s:[]AlState,time:f32) {
+ p:=s[0].performances[s[0].rig];lib:=al_library(s);r:=lib[0].rig[..];clips:=lib[0].clips[..];layer_evaluate(r,p,clips,lib[0].packs[..],time,s[0].layer_disabled,s[0].live[..]);before:=s[0].live[0].position;
+ s[0].layer_report=fixup_evaluate(r,p,clips,time,s[0].layer_disabled,s[0].live[..]);if time<s[0].layer_last_time || s[0].layer_previous_disabled!=s[0].layer_disabled {s[0].layer_before=0;s[0].layer_after=0;}s[0].layer_last_time=time;s[0].layer_previous_disabled=s[0].layer_disabled;base:=p.layers[0];
+ for k:0..<p.count {l:=p.layers[k];if l.kind!=4 || l.solver!=0 || time<l.start || time>=l.end-l.blend_out || !fix_contact(clips[base.clip],(time-base.start)*base.speed,l.joint) {continue;}s[0].layer_before=hi(s[0].layer_before,length(sub(before[l.joint],l.target))*100);s[0].layer_after=hi(s[0].layer_after,length(sub(s[0].live[0].position[l.joint],l.target))*100);}
+}
+al_layers_controls :: (s:[]AlState,out:[]f32,n:int)->int {
+ at:=n;p:=s[0].performances[s[0].rig];if !p.ready {return al_text(out,at,"PRIVATE PERFORMANCE FILES NOT LOADED",16,180,8);}label:[256]u8;o:[1]PnOut;o[0].buf=label[..];pn_put(o[..],"CONTACT CM OFF ");pn_fixed(o[..],cast(f64)s[0].layer_before,2);pn_put(o[..]," / ON ");pn_fixed(o[..],cast(f64)s[0].layer_after,2);pn_put(o[..]," (CYCLE PEAK)");ink:=Ink.{core=0.6,light=1,glow=0.5,red=ifx s[0].layer_after>1 then 1 else 0.3,green=ifx s[0].layer_after>1 then 0.25 else 0.9,blue=0.5,scale=1};at=draw_text(out,at,pn_text(o[..]),16,180,8,0.5,0.8,ink,false,false);name:=[1]AnimName.[p.name];at=al_text(out,at,anim_text(name[..],0),16,200,9);
+ for kind:0..<5 {enabled:=false;for k:0..<p.count {if p.layers[k].kind==kind && (s[0].layer_disabled&(cast(u32)1<<k))==0 {enabled=true;}}o[0]=PnOut.{buf=label[..]};pn_put(o[..],[5]string.["BASE ","OVER ","ADD ","FACE ","FIX "][kind]);pn_put(o[..],ifx enabled then "ON" else "OFF");at=al_text(out,at,pn_text(o[..]),8+s[0].width*cast(f32)kind/5,263,8);}
+ selected:=s[0].layer_selected%p.count;o[0]=PnOut.{buf=label[..]};pn_putint(o[..],selected+1);pn_put(o[..],"/");pn_putint(o[..],p.count);pn_put(o[..]," ");pn_put(o[..],[5]string.["BASE ","OVER ","ADD ","FACE ","FIX "][p.layers[selected].kind]);pn_put(o[..],ifx (s[0].layer_disabled&(cast(u32)1<<selected))==0 then "ON [ENTER]" else "OFF [ENTER]");at=al_text(out,at,"< [-]",8,303,8);at=al_text(out,at,"> [=]",s[0].width*0.2+8,303,8);at=al_text(out,at,pn_text(o[..]),s[0].width*0.4+8,303,8);
+ if s[0].layer_error!=0 {at=al_text(out,at,anim_error_name(s[0].layer_error),16,326,8);}return at;
+}
+// The browser zeroes the arena, then initializes its small scalar defaults.
+// Avoid returning the multi-megabyte state aggregate on the Wasm stack.
+al_state_defaults :: (s:[]AlState) #export_c #effects(all) {
+ s[0].station=1;s[0].skeleton=true;s[0].ghost_step=8;s[0].yaw=0.3;s[0].pitch=0.08;s[0].distance=1;s[0].radius=1;s[0].dpr=1;s[0].mesh_dirty=true;
+ s[0].plot_rig= -1;s[0].plot_clip= -1;s[0].plot_joint= -1;s[0].plot_shape= -1;s[0].plot_station= -1;s[0].clock=clock.FrameClock.{};
 }

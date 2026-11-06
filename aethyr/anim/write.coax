@@ -1,5 +1,6 @@
 // Writers for admitted records. Re-admit the complete output before publishing.
 #load "inspect-mesh.coax";
+#load "performance-document.coax";
 #load "../../verse/tools/humans/ph_num.coax";
 #load "write-checks.coax";
 AwRigParts :: struct {rest:AnimPart;bind:AnimPart;bytes:int= -1;}
@@ -43,4 +44,11 @@ aw_clip :: (text:[]u8,clip:AnimClip,rig:AnimRig,hash:string)->int {
  jo_key(o[..],"curves");jo_arr(o[..]);for k:0..<c.curve_count {aw_name(o[..],r.shapes[c.curves[k]]);}jo_end(o[..]);if c.face.pack>=0 {jo_key(o[..],"face");aw_part(o[..],c.face,hash);}
  jo_key(o[..],"face_bones");jo_arr(o[..]);for k:0..<c.face_joint_count {aw_name(o[..],r.names[c.face_joints[k]]);}jo_end(o[..]);if c.face_pose.pack>=0 {jo_key(o[..],"face_pose");aw_part(o[..],c.face_pose,hash);}
  jo_key(o[..],"events");jo_arr(o[..]);for k:0..<c.event_count {e:=c.events[k];jo_obj(o[..]);jo_key(o[..],"at");aw_number(o[..],e.at);jo_key(o[..],"kind");jo_str(o[..],[4]string.["foot-down","foot-up","contact","cast"][e.kind]);jo_key(o[..],"joint");aw_name(o[..],r.names[e.joint]);jo_end(o[..]);}jo_end(o[..]);jo_key(o[..],"source");jo_obj(o[..]);source:[64]u8;receipt:[64]u8;#assert asset_hex(c.source,source[..]) && asset_hex(c.receipt,receipt[..]);jo_key(o[..],"pack");jo_str(o[..],cast(string)source[..]);jo_key(o[..],"receipt");jo_str(o[..],cast(string)receipt[..]);jo_key(o[..],"role");aw_name(o[..],c.role);jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+
+aw_performance :: (text:[]u8,p:AnimPerformance,r:AnimRig,clips:[]AnimClip)->int {
+ o:[1]Jo;jo_start(o[..],text);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.performance.v1");jo_key(o[..],"name");aw_name(o[..],p.name);jo_key(o[..],"rig");aw_name(o[..],p.rig);jo_key(o[..],"length");aw_number(o[..],p.length);jo_key(o[..],"layers");jo_arr(o[..]);
+ for k:0..<p.count {l:=p.layers[k];jo_obj(o[..]);jo_key(o[..],"kind");jo_str(o[..],ANIM_LAYER_KINDS[l.kind]);jo_key(o[..],"mask");jo_str(o[..],ANIM_MASKS[l.mask]);jo_key(o[..],"start");aw_number(o[..],l.start);jo_key(o[..],"end");aw_number(o[..],l.end);jo_key(o[..],"speed");aw_number(o[..],l.speed);jo_key(o[..],"blend_in");aw_number(o[..],l.blend_in);jo_key(o[..],"blend_out");aw_number(o[..],l.blend_out);jo_key(o[..],"weight");aw_number(o[..],l.weight);
+  if l.kind==4 {jo_key(o[..],"solver");jo_str(o[..],ANIM_SOLVERS[l.solver]);jo_key(o[..],"joint");aw_name(o[..],r.names[l.joint]);jo_key(o[..],"target");jo_arr(o[..]);for value:[3]f32.[l.target.x,l.target.y,l.target.z] {aw_number(o[..],value);}jo_end(o[..]);}else {jo_key(o[..],"clip");aw_name(o[..],clips[l.clip].name);}jo_end(o[..]);
+ }jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
 }

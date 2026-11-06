@@ -11,14 +11,14 @@ rt_exact :: (name:AnimName,slot:int)->bool #effects(all) {bytes:=name.bytes;retu
 rt_anchors :: (r:AnimRig,out:[]RtAnchors)->int #effects(all) {
  if out.count<1 {return ANIM_CAPACITY;}if !r.ready || !rt_joint_count(r.joints) {return ANIM_LIMIT;}
  for j:0..<r.joints {if !rt_parent(r.parents[j],j) {return ANIM_SKELETON;}if !rt_slot(r.mapped[j]) {return ANIM_REFERENCE;}if !anim_unit(r.offsets[j]) {return ANIM_NUMBER;}}
- next:RtAnchors;
- for slot:0..<65 {selected:=rt_pick_anchor(r,slot);if selected== -2 {return ANIM_REFERENCE;}next.joints[slot]=selected;if selected>=0 {next.count+=1;}}
+ rig:=[1]AnimRig.[r];next:RtAnchors;
+ for slot:0..<65 {selected:=rt_pick_anchor(rig[..],slot);if selected== -2 {return ANIM_REFERENCE;}next.joints[slot]=selected;if selected>=0 {next.count+=1;}}
  if next.count==0 {return ANIM_REFERENCE;}out[0]=next;return ANIM_OK;
 }
 rt_anchor_slot :: (map:RtAnchors,joint:int)->int #effects(all) {if joint<0 {return -1;}for slot:0..<65 {if map.joints[slot]==joint {return slot;}}return -1;}
 
-rt_pick_anchor :: (r:AnimRig,slot:int)->int #effects(all) {
+rt_pick_anchor :: (r:[]AnimRig,slot:int)->int #effects(all) {
  aliases:=0;selected:= -1;canonical:= -1;
- for j:0..<r.joints {if r.mapped[j]!=slot {continue;}aliases+=1;selected=j;if rt_exact(r.names[j],slot) {if canonical>=0 {return -2;}canonical=j;}}
+ for j:0..<r[0].joints {if r[0].mapped[j]!=slot {continue;}aliases+=1;selected=j;if rt_exact(r[0].names[j],slot) {if canonical>=0 {return -2;}canonical=j;}}
  if canonical>=0 {return canonical;}if aliases>1 {return -2;}return selected;
 }

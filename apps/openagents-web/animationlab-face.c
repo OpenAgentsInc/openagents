@@ -3,15 +3,16 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <string.h>
 #define EXPORT(name) __attribute__((export_name(name)))
-static uint8_t bundle[2][67108864],inbox[262144];
+static uint8_t bundle[2][67108864],inbox[262144],documents[2][262144];
 static uint32_t active_bundle; /* Publish the incoming bank only after Coax admits it. */
 static uint32_t geometry[16777216];
 static coax_t_AlState *state(uint32_t p){return (coax_t_AlState *)(uintptr_t)p;}
 static coax_v_t_AlState view(uint32_t p){return (coax_v_t_AlState){state(p),1};}
 EXPORT("coaxial_layout") uint32_t layout(void){return sizeof(coax_t_AlState)*1000003u+0x414c4231u;}
 EXPORT("coaxial_state_size") uint32_t size(void){return sizeof(coax_t_AlState);}
-EXPORT("coaxial_state_init") void init(uint32_t p){coax_default_t_AlState(state(p));}
+EXPORT("coaxial_state_init") void init(uint32_t p){memset(state(p),0,sizeof(coax_t_AlState));al_state_defaults(view(p));}
 EXPORT("coaxial_max_vertices") uint32_t vertices(void){return 65536;}
 EXPORT("coaxial_vertex_floats") uint32_t stride(void){return 12;}
 EXPORT("coaxial_uniform_floats") uint32_t uniforms(void){return 48;}
@@ -21,9 +22,20 @@ EXPORT("coaxial_pointer") uint32_t pointer(uint32_t p,float x,float y,int32_t ph
 EXPORT("coaxial_wheel") void wheel(uint32_t p,float delta){al_wheel(view(p),delta);}
 EXPORT("coaxial_blur") void blur(uint32_t p){state(p)->drag=false;state(p)->seek=false;state(p)->slider=false;}
 EXPORT("coaxial_scene_ready") uint32_t ready(uint32_t p){return state(p)->ready;}
-EXPORT("coaxial_asset") uint32_t asset(uint32_t p,int32_t i,uint32_t n){(void)p;return i==0&&n<=sizeof bundle[0]?(uint32_t)(uintptr_t)bundle[active_bundle^1u]:0;}
-EXPORT("coaxial_asset_capacity") uint32_t capacity(uint32_t p,int32_t i){(void)p;return i==0?sizeof bundle[0]:0;}
-EXPORT("coaxial_asset_ready") void loaded(uint32_t p,int32_t i,uint32_t n){if(i==0&&n<=sizeof bundle[0]&&al_loaded(view(p),(coax_v_u8){bundle[active_bundle^1u],n}))active_bundle^=1u;}
+EXPORT("coaxial_asset") uint32_t asset(uint32_t p,int32_t i,uint32_t n){(void)p;if(i==0&&n<=sizeof bundle[0])return (uint32_t)(uintptr_t)bundle[active_bundle^1u];return i>=1&&i<=2&&n<=sizeof documents[0]?(uint32_t)(uintptr_t)documents[i-1]:0;}
+EXPORT("coaxial_asset_capacity") uint32_t capacity(uint32_t p,int32_t i){(void)p;return i==0?sizeof bundle[0]:(i>=1&&i<=2?sizeof documents[0]:0);}
+/* Keep each Coax admission entry in its own stack frame under LTO. */
+static bool (*volatile load_bundle)(coax_v_t_AlState,coax_v_u8)=al_bundle_ingest;
+static void (*volatile prepare_library)(coax_v_t_AlState)=al_library_ready;
+static bool (*volatile ingest_document)(coax_v_t_AlState,int64_t,coax_v_u8)=al_layers_ingest;
+static void (*volatile parse_clip)(coax_v_t_AlState)=al_layers_parse_clip;
+static void (*volatile parse_performance)(coax_v_t_AlState)=al_layers_parse_performance;
+EXPORT("coaxial_asset_ready") void loaded(uint32_t p,int32_t i,uint32_t n){
+ if(i==0&&n<=sizeof bundle[0]){if(load_bundle(view(p),(coax_v_u8){bundle[active_bundle^1u],n})){active_bundle^=1u;prepare_library(view(p));}}
+ else if(i>=1&&i<=2&&n<=sizeof documents[0])ingest_document(view(p),i,(coax_v_u8){documents[i-1],n});
+ else return;
+ parse_clip(view(p));parse_performance(view(p));
+}
 EXPORT("coaxial_draws") uint32_t draws(uint32_t p){return (uint32_t)(uintptr_t)state(p)->draws.e;}
 EXPORT("coaxial_draw_count") uint32_t count(uint32_t p){return state(p)->mesh_words>0?(uint32_t)state(p)->draw_count:0;}
 EXPORT("coaxial_stores") uint32_t stores(void){return 2;}

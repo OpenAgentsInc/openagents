@@ -14,3 +14,7 @@
  hash:[64]u8;#assert asset_hex(packs[0].id,hash[..]);next:[1]AnimClip;n=aw_clip(text[..],c[0],r[0],cast(string)hash[..]);#assert n>0 && anim_clip_load(cast(string)text[0..<n],packs[..],r[..],next[..])==0;
  #assert next[0].event_count==4 && next[0].events[1].at==c[0].events[1].at && next[0].events[1].joint==1 && next[0].root.offset==224 && next[0].face_joint_count==2 && next[0].curves[0]==1 && asset_same(next[0].source,c[0].source);
 }
+#test "performance writer re-admits layer windows masks and authored targets" {
+ rigs:[1]AnimRig;clips:[1]AnimClip;anim_test_performance_context(rigs[..],clips[..]);p:[1]AnimPerformance;#assert anim_performance_load(AP_TEST,rigs[..],clips[..],p[..])==0;
+ text:[8192]u8;n:=aw_performance(text[..],p[0],rigs[0],clips[..]);#assert n>0;next:[1]AnimPerformance;#assert anim_performance_load(cast(string)text[0..<n],rigs[..],clips[..],next[..])==0 && next[0].count==2 && next[0].layers[1].target.z==3 && next[0].layers[1].weight==0.7 && next[0].layers[0].blend_out==0.4;
+}

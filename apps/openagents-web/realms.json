@@ -520,11 +520,11 @@
     { "id": "animationlab", "name": "ANIMATION LAB", "kind": "open", "listed": false, "orbit": { "r": 0.46, "a": 5.85, "size": 0.018 },
       "realm": {
         "slug": "animation-lab", "style": "lowpoly", "clock": "fixed:0.5",
-        "title": "Animation Lab", "description": "Inspect rigs, skin weights, shapes and animation clips on a neutral studio stage. Scrub, plot curves and compare ghost poses in Verse.",
+        "title": "Animation Lab", "description": "Inspect rigs and clips, compare retargeted poses, and toggle performance layers and contact fixes on a neutral Verse stage.",
         "alt": "A character skeleton, skin weight colours and animation curves in a neutral studio",
         "module": "animationlab", "slot": "animation-lab",
         "golden": { "lit": 0.02, "settle": 3000, "blocks": 6 },
-        "assets": ["local:/private/animation-lab.bundle"]
+        "assets": ["local:/private/animation-lab.bundle", "local:/private/animation-lab.performance.json", "local:/private/animation-lab.contact.clip.json"]
       } },
     { "id": "ocarinalab", "name": "OCARINA LAB", "kind": "open", "listed": false,
       "orbit": { "r": 0.45, "a": 5.6, "size": 0.018 },

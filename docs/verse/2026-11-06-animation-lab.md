@@ -1,7 +1,7 @@
 # Animation Lab
 
-Written 2026-11-06. Status: A0 documents, A1 rig/clip stations and A2 retargeting are implemented.
-A3–A8 are pending. See the verification record linked below.
+Written 2026-11-06. Status: A0 documents, A1 rig/clip stations, A2 retargeting and A3 layers/fix-ups are implemented.
+A4–A8 are pending. See the verification record linked below.
 
 Animation Lab is an unlisted realm and a set of `openagents labs` commands
 where you take any character's animation apart, change it and put it back
@@ -28,6 +28,7 @@ Draconia, The Guardian").
 | Animation documents (A0) | [Formats](anim-documents-v1.md), `aethyr/anim/*-document.coax` | Six bounded document readers, compiled-DNA admission, lossless private Echo/Slay conversion and shared source adapters; [verification](../verification/animation-lab-a0-2026-11-06/README.md) |
 | Rig and clip stations (A1) | `verse/animlab/`, `/worlds/animation-lab` | Neutral inspection, weights, shapes, scrub/play/step, skeleton ghosts and cached plots; [verification](../verification/animation-lab-a1-2026-11-06/README.md) |
 | Retargeting (A2) | `aethyr/anim/retarget*.coax`, `#retarget`, `labs anim retarget` | Rest-corrected anchor rotations, leg-scaled root motion, private exports and paired views; [verification](../verification/animation-lab-a2-2026-11-06/README.md) |
+| Layers and fix-ups (A3) | `aethyr/anim/layers.coax`, `fixup.coax`, `#layers` | Base, masked override, additive and facial layers; planted feet, head/eye aims and hand targets; [verification](../verification/animation-lab-a3-2026-11-06/README.md) |
 | Pose math | `aethyr/anim/pose.coax` | Quaternions, local poses, blending, the joint chain and the skinning palette |
 | Blend shapes | `aethyr/anim/morph.coax`, `morph-gpu.coax` | Sampled curves; sparse morph deltas applied on the GPU before skinning |
 | Face playback | `aethyr/anim/face.coax`, `face-pack.coax` | Plays face clips as morph weights plus face-bone overlays on a body pose; the EFC1 face pack format and its checks |
@@ -53,7 +54,7 @@ Before the Nuke (`git show 0b401561a0^:<path>`):
 - `docs/video-lab/`: typed `cut.v1`, `shot.v1` and `scene.v1` documents and
   the `lab.*` chat tools.
 
-The documents and admission are shared. The remaining milestones build layers, imports, scene tools and the director
+The documents and admission are shared. The remaining milestones build imports, scene tools and the director
 on them.
 
 ## Principles
@@ -390,3 +391,42 @@ a hash-linked receipt. It creates a new directory under `~/.openagents/`
 and refuses overwriting an existing output or resolving its parent outside
 that root. The viewer keeps A1's two-library and 64 MiB GPU limits. Two
 large meshes that exceed the combined budget are visibly refused.
+
+A3 uses smoothstep blend windows. Base and override layers replace selected
+local poses; additive layers apply deltas from the rig's local rest pose.
+Face layers use only facial tracks and curves. Masks inherit the nearest
+mapped ancestor for helper joints; facial membership is the rig's explicit
+face-bone list. Combined face weights clamp to 0–1. Valley's admitted EFC1
+adapter shares the pose, fade and schedule primitives and retains its source
+sampling and unclamped source weights, so its existing J/F/ambient views keep
+identical frames.
+
+Fix-ups run after layering: feet, then head/eye aims, then hand/reach targets.
+Two-bone IK preserves each frame's bone lengths and reports unsupported or
+unreachable targets. A shared pelvis can lower by at most 15 cm to keep a
+plant reachable; the swinging foot keeps its incoming world position.
+A foot-up event starts an authored release blend. Look-at rows name the head
+or eye joints explicitly, use the rig's rest axes with character-forward +Z,
+and limit head-anchor corrections to 45° and other aim joints to 20°.
+Authors supply eye-joint rows. Targets are in character space.
+
+The private study recipe infers contacts before choosing targets. It uses
+A2's height/speed thresholds, excludes the base layer's 0.15-second intro
+and outro blends, and merges gaps shorter than the 0.15-second release.
+This prevents a new plant from overlapping the previous release. All eight
+resulting contacts are measured at intervals of at most 1/120 second, including
+cumulative travel and a sample just before foot-up. Foot lock must
+stay under 1 cm per contact. Blend checks compare poses 0.1 ms either side
+of every layer/fade boundary: limits are 0.25° and 0.25 cm. These finite-step
+limits include finite motion around near-straight IK knees.
+The measurements and exact source identities are in the A3 record.
+
+The layers station has individual selection/toggles and five kind-group
+shortcuts. It loads a performance file plus one annotated clip beside
+its private bundle. The bundle keeps its public source-clip count and uses
+one spare slot for the derived clip, so this station accepts at most 63
+source clips. Rig/clip inspection retains the 64-clip bound. Pending JSON
+views refer to fixed host-owned buffers; admitted names and values are owned.
+Each JSON admission uses one bounded scratch arena and a separate ABI entry.
+Rig views avoid copying whole skeletons into the frame stack. These choices
+keep the existing 256 MiB memory and 4 MiB stack declarations.

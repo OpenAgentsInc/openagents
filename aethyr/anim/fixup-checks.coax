@@ -1,0 +1,53 @@
+fix_test_rig :: ()->AnimRig {
+ r:AnimRig;r.ready=true;r.joints=3;r.parents[0]= -1;r.parents[1]=0;r.parents[2]=1;r.rest[1].t=v3(0,1,0);r.rest[2].t=v3(0,1,0);r.mapped[0]=55;r.mapped[1]=56;r.mapped[2]=57;return r;
+}
+fix_test_pose :: (r:[]AnimRig,out:[]AnimSample) {for j:0..<r[0].joints {out[0].local[j]=r[0].rest[j];}layer_chain(r,out);}
+#test "two bone IK reaches a planted target without changing segment lengths" {
+ r:=[1]AnimRig.[fix_test_rig()];s:[1]AnimSample;fix_test_pose(r[..],s[..]);error:=fix_two_bone(r[..],s[..],0,1,2,v3(1,1,0),1);
+ #assert error<0.00001 && same(s[0].position[2],v3(1,1,0),0.00001) && abs(length(sub(s[0].position[1],s[0].position[0]))-1)<0.00001 && abs(length(sub(s[0].position[2],s[0].position[1]))-1)<0.00001;
+ fix_test_pose(r[..],s[..]);#assert fix_two_bone(r[..],s[..],0,1,2,v3(0,1,0),1)<0.00001;
+ fix_test_pose(r[..],s[..]);#assert fix_two_bone(r[..],s[..],0,1,2,v3(0,10,0),1)>7.99 && length(s[0].position[2])<2.00001;
+ fix_test_pose(r[..],s[..]);error=fix_two_bone(r[..],s[..],0,1,2,v3(1,1,0),0);#assert s[0].position[2].y==2;
+ r[0].rest[0].q=Quat.{z=0.70710678,w=0.70710678};fix_test_pose(r[..],s[..]);#assert fix_two_bone(r[..],s[..],0,1,2,v3(-1,1,0),1)<0.00001;
+}
+#test "aim clamps the head and eye arc and refuses a coincident target" {
+ r:=[1]AnimRig.[fix_test_rig()];s:[1]AnimSample;fix_test_pose(r[..],s[..]);fix_look(r[..],s[..],0,v3(1,0,0),0.78539816339,1);dir:=quat_rotate(s[0].rotation[0],v3(0,0,1));#assert near(dir.x,0.70710678,0.00001) && near(dir.z,0.70710678,0.00001);
+ fix_test_pose(r[..],s[..]);fix_look(r[..],s[..],0,v3(1,0,0),0.3490658504,1);dir=quat_rotate(s[0].rotation[0],v3(0,0,1));#assert near(dir.x,0.34202014,0.00001);
+ fix_test_pose(r[..],s[..]);fix_look(r[..],s[..],0,v3(0,0,0),0.7,1);#assert s[0].local[0].q.w==1;
+ q:=fix_from_to(v3(1,0,0),v3(-1,0,0));#assert same(quat_rotate(q,v3(1,0,0)),v3(-1,0,0),0.00001);
+}
+#test "foot contact windows use paired down up events and loop carry" {
+ c:AnimClip;c.ready=true;c.length=1;c.event_count=2;c.events[0]=AnimEvent.{at=0.2,kind=0,joint=2};c.events[1]=AnimEvent.{at=0.7,kind=1,joint=2};
+ #assert !fix_contact(c,0.1,2) && fix_contact(c,0.2,2) && fix_contact(c,0.6,2) && !fix_contact(c,0.7,2) && !fix_contact(c,0.5,1);
+ c.looping=true;#assert fix_contact(c,1.5,2);c.events[1].at=0.7;c.events[1].kind=0;c.events[0].kind=1;#assert fix_contact(c,0.1,2) && !fix_contact(c,0.3,2);
+}
+#test "performance solvers honor contacts masks disabled rows and report unreachable targets" {
+ r:=[1]AnimRig.[fix_test_rig()];r[0].mapped[0]=55;r[0].mapped[1]=56;r[0].mapped[2]=57;s:[1]AnimSample;fix_test_pose(r[..],s[..]);c:[1]AnimClip;c[0].ready=true;c[0].length=2;c[0].event_count=2;c[0].events[0]=AnimEvent.{at=0,kind=0,joint=2};c[0].events[1]=AnimEvent.{at=1,kind=1,joint=2};
+ p:AnimPerformance;p.ready=true;p.count=2;p.layers[0]=AnimLayer.{kind=0,clip=0,start=0,end=2,speed=1,weight=1};p.layers[1]=AnimLayer.{kind=4,solver=0,joint=2,target=v3(1,1,0),mask=7,start=0,end=2,speed=1,weight=1};
+ report:=fixup_evaluate(r[..],p,c[..],0.5,0,s[..]);#assert report.feet==1 && report.max_error<0.00001 && report.unreachable==0;
+ fix_test_pose(r[..],s[..]);report=fixup_evaluate(r[..],p,c[..],1.5,0,s[..]);#assert report.feet==0 && s[0].position[2].y==2;
+ report=fixup_evaluate(r[..],p,c[..],0.5,2,s[..]);#assert report.feet==0;
+ p.layers[1].mask=4;report=fixup_evaluate(r[..],p,c[..],0.5,0,s[..]);#assert report.unsupported==1;
+ p.layers[1].mask=7;p.layers[1].target=v3(0,10,0);report=fixup_evaluate(r[..],p,c[..],0.5,0,s[..]);#assert report.unreachable==1;
+ p.layers[1].solver=2;p.layers[1].target=v3(1,1,0);fix_test_pose(r[..],s[..]);report=fixup_evaluate(r[..],p,c[..],1.5,0,s[..]);#assert report.hands==1 && report.max_error<0.00001;
+ p.layers[1].solver=1;p.layers[1].target=v3(1,1,3);report=fixup_evaluate(r[..],p,c[..],0.5,0,s[..]);#assert report.looks==1;
+}
+#test "planted legs lower a shared pelvis within the authored safety limit without stretching" {
+ r:[1]AnimRig;r[0].ready=true;r[0].joints=4;slots:=[4]int.[1,55,56,57];for k:0..<4 {r[0].names[k]=anim_named(MANNEQUIN_NAME[slots[k]]);r[0].mapped[k]=slots[k];r[0].parents[k]=k-1;}r[0].rest[1].t=v3(0,1,0);r[0].rest[2].t=v3(0,-0.5,0);r[0].rest[3].t=v3(0,-0.5,0);
+ s:[1]AnimSample;fix_test_pose(r[..],s[..]);s[0].local[0].t.x=0.5;layer_chain(r[..],s[..]);clips:[1]AnimClip;clips[0].ready=true;clips[0].length=2;clips[0].event_count=1;clips[0].events[0]=AnimEvent.{at=0,kind=0,joint=3};p:AnimPerformance;p.ready=true;p.count=2;p.layers[0]=AnimLayer.{kind=0,clip=0,start=0,end=2,speed=1,weight=1};p.layers[1]=AnimLayer.{kind=4,solver=0,joint=3,target=v3(0,0,0),mask=7,start=0,end=2,speed=1,weight=1};
+ result:=fixup_evaluate(r[..],p,clips[..],0.5,0,s[..]);#assert result.feet==1 && result.max_error<0.00001 && result.pelvis_shift< -0.13 && result.pelvis_shift>= -0.15 && near(length(sub(s[0].position[2],s[0].position[1])),0.5,0.00001);
+}
+#test "pelvis grounding preserves the swinging foot when the other foot is planted" {
+ r:=[1]AnimRig.[rt_test_legs(1)];r[0].mapped[0]=1;r[0].names[0]=anim_named("pelvis");s:[1]AnimSample;fix_test_pose(r[..],s[..]);s[0].local[0].t.x=0.5;layer_chain(r[..],s[..]);swing:=s[0].position[6];c:[1]AnimClip;c[0].ready=true;c[0].length=2;c[0].event_count=1;c[0].events[0]=AnimEvent.{at=0,kind=0,joint=3};p:AnimPerformance;p.ready=true;p.count=2;p.layers[0]=AnimLayer.{kind=0,clip=0,start=0,end=2,speed=1,weight=1};p.layers[1]=AnimLayer.{kind=4,solver=0,joint=3,target=v3(-0.1,0,0),mask=7,start=0,end=2,speed=1,weight=1};
+ result:=fixup_evaluate(r[..],p,c[..],0.5,0,s[..]);#assert result.max_error<0.00001 && same(s[0].position[6],swing,0.00001) && result.pelvis_shift< -0.13;
+ #assert fix_contact_releasing(c[0],0.5,3,0.15);c[0].events[0].kind=1;c[0].events[0].at=0.7;#assert fix_contact_releasing(c[0],0.75,3,0.15) && !fix_contact_releasing(c[0],0.86,3,0.15);
+ r[0].parents[3]=0;#assert fix_chain(r[..],3).end== -1;
+}
+#test "look-at uses the rig rest axes rather than a joint's arbitrary local forward" {
+ r:=[1]AnimRig.[fix_test_rig()];r[0].rest[0].q=Quat.{x=0.70710678,w=0.70710678};s:[1]AnimSample;fix_test_pose(r[..],s[..]);before:=s[0].rotation[0];fix_look(r[..],s[..],0,v3(0,0,3),0.7,1);#assert rt_rotation_error(before,s[0].rotation[0])<0.0001;
+}
+#test "authored head and eye rows converge on a target through different rest axes" {
+ r:[1]AnimRig;r[0].ready=true;r[0].joints=3;r[0].names[0]=anim_named("Head");r[0].names[1]=anim_named("eye_l");r[0].names[2]=anim_named("eye_r");r[0].parents[0]= -1;r[0].parents[1]=0;r[0].parents[2]=0;r[0].mapped[0]=6;r[0].mapped[1]= -1;r[0].mapped[2]= -1;r[0].rest[0]=SkinLocal.{t=v3(0,1,0),q=Quat.{x=0.70710678,w=0.70710678}};r[0].rest[1].t=v3(-0.03,0.1,0.05);r[0].rest[2].t=v3(0.03,0.1,0.05);
+ s:[1]AnimSample;fix_test_pose(r[..],s[..]);p:AnimPerformance;p.ready=true;p.count=4;p.layers[0]=AnimLayer.{kind=0,clip=0,start=0,end=1,speed=1,weight=1};target:=v3(1,1.1,3);for j:0..<3 {p.layers[j+1]=AnimLayer.{kind=4,solver=1,joint=j,target=target,start=0,end=1,speed=1,weight=1,mask=2};}c:[1]AnimClip;report:=fixup_evaluate(r[..],p,c[..],0.5,0,s[..]);#assert report.looks==3;
+ for j:1..<3 {direction:=unit_or(sub(target,s[0].position[j]),v3(0,0,1));forward:=quat_rotate(s[0].rotation[j],v3(0,1,0));#assert dot(direction,forward)>0.9999 && rt_rotation_error(r[0].rest[j].q,s[0].local[j].q)<20.001;}
+}

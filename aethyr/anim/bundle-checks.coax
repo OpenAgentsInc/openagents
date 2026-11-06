@@ -1,0 +1,36 @@
+anim_test_library_bundle :: (b:[]u8)->int {
+ rb:[452]u8;cb:[112]u8;rt:[4096]u8;ct:[4096]u8;rn:=anim_test_rig(rt[..],rb[..]);cn:=anim_test_clip(ct[..],cb[..]);pack:[564]u8;for x,k:rb {pack[k]=x;}for x,k:cb {pack[452+k]=x;}
+ rh:[64]u8;ch:[64]u8;hash:[64]u8;#assert asset_hex(asset_id(cast(string)rb[..]),rh[..]) && asset_hex(asset_id(cast(string)cb[..]),ch[..]) && asset_hex(asset_id(cast(string)pack[..]),hash[..]);scratch:[4096]u8;
+ // Both made documents now name the combined immutable binary.
+ for k:0..<8 {n:=anim_test_replace(cast(string)rt[0..<rn],cast(string)rh[..],cast(string)hash[..],scratch[..]);if n<0 {break;}for j:0..<n {rt[j]=scratch[j];}rn=n;}
+ for k:0..<8 {n:=anim_test_replace(cast(string)ct[0..<cn],cast(string)ch[..],cast(string)hash[..],scratch[..]);if n<0 {break;}for j:0..<n {ct[j]=scratch[j];}cn=n;}
+ n:=anim_test_replace(cast(string)ct[0..<cn],"\"offset\":0","\"offset\":452",scratch[..]);#assert n>0;for j:0..<n {ct[j]=scratch[j];}cn=n;
+ total:=36+564+rn+cn;for x,k:[9]u32.[0x31424c41,cast(u32)total,1,36,564,600,cast(u32)rn,cast(u32)(600+rn),cast(u32)cn] {anim_bundle_put(b,k*4,x);}for x,k:pack {b[36+k]=x;}for k:0..<rn {b[600+k]=rt[k];}for k:0..<cn {b[600+rn+k]=ct[k];}
+ return total;
+}
+#test "animation bundle document admission retains its previous library on refusal" {
+ b:[16384]u8;total:=anim_test_library_bundle(b[..]);
+ lib:[1]AnimLibrary;#assert anim_bundle_load(b[0..<total],lib[..])==0 && lib[0].count==1 && lib[0].rig[0].joints==2;
+ b[cast(int)anim_word(b[..],28)]='!';#assert anim_bundle_load(b[0..<total],lib[..])==ANIM_JSON && lib[0].count==1 && lib[0].rig[0].ready;
+ #assert anim_bundle_load(b[0..<total],lib[0..<0])==ANIM_CAPACITY;
+}
+#test "shared bundle scratch owns names across documents and refuses duplicate or invalid records" #steps 100000000 {
+ source:[16384]u8;size:=anim_test_library_bundle(source[..]);b:[32768]u8;rig_at:=cast(int)anim_word(source[..],20);rig_n:=cast(int)anim_word(source[..],24);clip_at:=cast(int)anim_word(source[..],28);clip_n:=cast(int)anim_word(source[..],32);total:=size+8+clip_n;
+ for k:36..<size {b[k+8]=source[k];}for k:0..<clip_n {b[size+8+k]=source[clip_at+k];}
+ for word,k:[11]u32.[0x31424c41,cast(u32)total,2,44,564,cast(u32)(rig_at+8),cast(u32)rig_n,cast(u32)(clip_at+8),cast(u32)clip_n,cast(u32)(size+8),cast(u32)clip_n] {anim_bundle_put(b[..],k*4,word);}
+ lib:[1]AnimLibrary;#assert anim_bundle_load(source[0..<size],lib[..])==0;
+ #assert anim_bundle_load(b[0..<total],lib[..])==ANIM_NAME && lib[0].count==1;
+ changed:[4096]u8;n:=anim_test_replace(cast(string)source[clip_at..<clip_at+clip_n],"made-wave","made-wavx",changed[..]);#assert n==clip_n;for k:0..<n {b[size+8+k]=changed[k];}
+ #assert anim_bundle_load(b[0..<total],lib[..])==0 && lib[0].count==2 && anim_equal(lib[0].clips[0].name,anim_named("made-wave")) && anim_equal(lib[0].clips[1].name,anim_named("made-wavx"));
+ b[0]^=1;#assert anim_bundle_load(b[0..<total],lib[..])==ANIM_RANGE && lib[0].count==2;b[0]^=1;
+ n=anim_test_replace(cast(string)source[rig_at..<rig_at+rig_n],"anim.rig.v1","anim.rig.v0",changed[..]);#assert n==rig_n;for k:0..<n {b[rig_at+8+k]=changed[k];}#assert anim_bundle_load(b[0..<total],lib[..])==ANIM_SCHEMA && lib[0].count==2;
+ for k:0..<rig_n {b[rig_at+8+k]=source[rig_at+k];}b[rig_at+8]='!';#assert anim_bundle_load(b[0..<total],lib[..])==ANIM_JSON && lib[0].count==2;b[rig_at+8]='{';
+ n=anim_test_replace(cast(string)source[clip_at..<clip_at+clip_n],"\"frames\":2","\"frames\":1",changed[..]);#assert n==clip_n;for k:0..<n {b[clip_at+8+k]=changed[k];}#assert anim_bundle_load(b[0..<total],lib[..])==ANIM_NUMBER && lib[0].count==2;
+}
+#test "all 64 made clip documents share one scratch arena and fill the last library slot" #steps 300000000 {
+ source:[16384]u8;source_n:=anim_test_library_bundle(source[..]);rig_at:=cast(int)anim_word(source[..],20);rig_n:=cast(int)anim_word(source[..],24);clip_at:=cast(int)anim_word(source[..],28);clip_n:=cast(int)anim_word(source[..],32);b:[262144]u8;first:=540;cursor:=first+564+rig_n;
+ anim_bundle_put(b[..],0,0x31424c41);anim_bundle_put(b[..],8,64);anim_bundle_put(b[..],12,cast(u32)first);anim_bundle_put(b[..],16,564);anim_bundle_put(b[..],20,cast(u32)(first+564));anim_bundle_put(b[..],24,cast(u32)rig_n);
+ for k:0..<564 {b[first+k]=source[36+k];}for k:0..<rig_n {b[first+564+k]=source[rig_at+k];}
+ for k:0..<64 {name:[9]u8;for byte,j:"made-0000" {name[j]=byte;}digits:="0123456789abcdef";name[7]=digits[k/16];name[8]=digits[k%16];text:[4096]u8;n:=anim_test_replace(cast(string)source[clip_at..<clip_at+clip_n],"made-wave",cast(string)name[..],text[..]);#assert n==clip_n;anim_bundle_put(b[..],12+(k+2)*8,cast(u32)cursor);anim_bundle_put(b[..],16+(k+2)*8,cast(u32)n);for j:0..<n {b[cursor+j]=text[j];}cursor+=n;}
+ anim_bundle_put(b[..],4,cast(u32)cursor);out:[1]AnimLibrary;#assert anim_bundle_load(b[0..<cursor],out[..])==0 && out[0].count==64 && anim_equal(out[0].clips[63].name,anim_named("made-003f"));
+}

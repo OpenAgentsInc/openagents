@@ -1,0 +1,22 @@
+// Pose operations shared by document layers and admitted legacy source adapters.
+#load "pose.coax";
+#load "layer-core-checks.coax";
+#authority;
+LayerCycle :: struct {clock:f32;segment:int;}
+LayerDue :: struct {state:LayerCycle;due:bool;}
+layer_fades :: (age:f32,remaining:f32,blend_in:f32,blend_out:f32,weight:f32)->f32 #effects(all) {
+ fade:=ifx blend_in>0 then pose_fade(age,blend_in) else 1.0f32;
+ if blend_out>0 {fade=lo(fade,pose_fade(remaining,blend_out));}return fade*weight;
+}
+layer_window :: (start:f32,end:f32,blend_in:f32,blend_out:f32,weight:f32,time:f32)->f32 #effects(all) {
+ if time<start || time>end {return 0;}return layer_fades(time-start,end-time,blend_in,blend_out,weight);
+}
+layer_mix :: (kind:int,base:SkinLocal,rest:SkinLocal,sample:SkinLocal,weight:f32)->SkinLocal #effects(all) {
+ if kind!=2 {return pose_blend(base,sample,weight);}
+ inverse:=Quat.{x= -rest.q.x,y= -rest.q.y,z= -rest.q.z,w=rest.q.w};delta:=quat_mul(inverse,sample.q);
+ return SkinLocal.{t=add(base.t,times(sub(sample.t,rest.t),weight)),q=quat_unit(quat_mul(base.q,slerp(Quat.{},delta,weight)))};
+}
+layer_cycle :: (state:LayerCycle,dt:f32,period:f32,count:int)->LayerDue #effects(all) {
+ next:=LayerDue.{state=state};if !(dt>=0 && dt<=0.125) {return next;}next.state.clock+=dt;
+ if next.state.clock<period {return next;}next.state.clock-=period;next.state.segment=(next.state.segment+1)%count;next.due=true;return next;
+}

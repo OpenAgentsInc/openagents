@@ -1,0 +1,16 @@
+// Named joint sets resolve through the declared mannequin map. Helpers inherit
+// their nearest mapped ancestor; face membership is explicit in the rig.
+#load "rig-document.coax";
+#load "masks-checks.coax";
+#authority;
+layer_mask_slot :: (mask:int,slot:int,face:bool)->bool #effects(all) {
+ if mask==0 {return true;}if mask==1 {return face;}if mask==2 {return face || slot==5 || slot==6;}
+ if mask==3 {return slot>=2 && slot<=54;}if mask==4 {return slot>=7 && slot<=30;}if mask==5 {return slot>=31 && slot<=54;}
+ if mask==6 {return (slot>=10 && slot<=30) || (slot>=34 && slot<=54);}if mask==7 {return slot>=55 && slot<=64;}return false;
+}
+layer_joint_slot :: (r:[]AnimRig,joint:int)->int #effects(all) {
+ j:=joint;while j>=0 {if r[0].mapped[j]>=0 {return r[0].mapped[j];}j=r[0].parents[j];}return -1;
+}
+layer_joint_mask :: (r:[]AnimRig,joint:int,mask:int)->bool #effects(all) {
+ face:=false;for k:0..<r[0].face_joint_count {if r[0].face_joints[k]==joint {face=true;break;}}return layer_mask_slot(mask,layer_joint_slot(r,joint),face);
+}

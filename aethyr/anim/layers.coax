@@ -1,0 +1,26 @@
+// Evaluate admitted performances from immutable document and sample storage.
+// Solvers run afterwards through fixup.coax; disabled bits correspond to rows.
+#load "performance-document.coax";
+#load "retarget.coax";
+#load "masks.coax";
+#load "layer-core.coax";
+#load "layers-checks.coax";
+#authority;
+layer_evaluate :: (r:[]AnimRig,p:AnimPerformance,clips:[]AnimClip,packs:[]AnimPack,time:f32,disabled:u32,out:[]AnimSample) #effects(all) {
+ if !p.ready || out.count<1 || r.count<1 {return;}
+ for j:0..<r[0].joints {out[0].local[j]=r[0].rest[j];}for k:0..<256 {out[0].weights[k]=0;}
+ sample:[1]AnimSample;
+ for k:0..<p.count {layer:=p.layers[k];if layer.kind==4 || ((disabled>>k)&1)!=0 {continue;}
+  weight:=layer_window(layer.start,layer.end,layer.blend_in,layer.blend_out,layer.weight,time);if weight==0 {continue;}
+  clip:=clips[layer.clip];anim_sample(r[0],clip,packs,(time-layer.start)*layer.speed,sample[..]);
+  if layer.kind==3 {for b:0..<clip.face_joint_count {j:=clip.face_joints[b];if layer_joint_mask(r,j,layer.mask) {out[0].local[j]=layer_mix(layer.kind,out[0].local[j],r[0].rest[j],sample[0].local[j],weight);}}}
+  else {for j:0..<r[0].joints {if layer_joint_mask(r,j,layer.mask) {out[0].local[j]=layer_mix(layer.kind,out[0].local[j],r[0].rest[j],sample[0].local[j],weight);}}}
+  if layer.mask<=3 {for c:0..<clip.curve_count {shape:=clip.curves[c];value:=sample[0].weights[shape];if layer.kind==2 {out[0].weights[shape]+=value*weight;}else {out[0].weights[shape]+=(value-out[0].weights[shape])*weight;}}}
+ }
+ for k:0..<r[0].shape_count {out[0].weights[k]=clamp01(out[0].weights[k]);}layer_chain(r,out);
+}
+
+layer_chain :: (r:[]AnimRig,s:[]AnimSample) #effects(all) {
+ for j:0..<r[0].joints {pose_chain(s[0].rotation[..],s[0].position[..],r[0].parents[j],j,s[0].local[j]);}
+ for j:0..<r[0].joints {pose_palette(s[0].rotation[j],s[0].position[j],r[0].bind[..],j,s[0].palette[..]);}
+}

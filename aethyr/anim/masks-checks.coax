@@ -1,0 +1,12 @@
+#test "all eight named masks resolve exact mannequin sets including boundaries" {
+ expected:=[67]u32.[1,1,1,9,9,9,13,13,25,25,25,89,89,89,89,89,89,89,89,89,89,89,89,89,89,89,89,89,89,89,89,89,41,41,41,105,105,105,105,105,105,105,105,105,105,105,105,105,105,105,105,105,105,105,105,105,129,129,129,129,129,129,129,129,129,129,1];
+ for slot:-1..<66 {for mask:0..<9 {#assert layer_mask_slot(mask,slot,false)==((expected[slot+1] & (cast(u32)1<<mask))!=0);}}
+ #assert layer_mask_slot(1,-1,true) && layer_mask_slot(2,-1,true) && !layer_mask_slot(4,-1,true) && !layer_mask_slot(-1,6,true) && !layer_mask_slot(8,6,true);
+}
+#test "masks inherit a mapped ancestor and respect explicit facial bone membership" {
+ r:[1]AnimRig;r[0].ready=true;r[0].joints=4;r[0].parents[0]= -1;r[0].parents[1]=0;r[0].parents[2]=1;r[0].parents[3]=2;r[0].mapped[0]=0;r[0].mapped[1]=8;r[0].mapped[2]= -1;r[0].mapped[3]= -1;r[0].face_joint_count=1;r[0].face_joints[0]=3;
+ #assert layer_joint_slot(r[..],2)==8 && layer_joint_slot(r[..],0)==0;
+ #assert layer_joint_mask(r[..],2,4) && !layer_joint_mask(r[..],2,5) && !layer_joint_mask(r[..],2,1);
+ #assert layer_joint_mask(r[..],3,1) && layer_joint_mask(r[..],3,2) && !layer_joint_mask(r[..],0,1);
+ r[0].mapped[0]= -1;#assert layer_joint_slot(r[..],0)== -1 && layer_joint_mask(r[..],0,0) && !layer_joint_mask(r[..],0,7);
+}

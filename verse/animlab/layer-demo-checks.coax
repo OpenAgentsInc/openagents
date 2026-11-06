@@ -1,0 +1,12 @@
+#test "demo contacts omit base fades and produce ordered paired events on original made motion" #steps 100000000 {
+ r:=rt_test_legs(1);r.name=anim_named("made-walker");bytes:[140]u8;for frame:0..<5 {anim_test_put(bytes[..],frame*28,f32_bits(cast(f32)frame*0.05));anim_test_put(bytes[..],frame*28+24,f32_bits(1));}
+ library:[1]AnimLibrary;library[0].rig[0]=r;library[0].count=1;library[0].packs[0]=AnimPack.{bytes=bytes[..]};library[0].clips[0]=AnimClip.{ready=true,name=anim_named("made-walk"),rig=r.name,frames=5,rate=4,length=1,joint_count=1,body=AnimPart.{pack=0,count=5,stride=28,width=28}};
+ demo:[1]AlLayerDemo;#assert al_demo(library[..],demo[..])==0 && demo[0].count==2 && demo[0].clip.event_count==4 && demo[0].performance.count==6;
+ for k:0..<2 {#assert demo[0].contacts[k].first==1 && demo[0].contacts[k].end==0.85;}
+ #assert demo[0].clip.events[0].at==0.25 && demo[0].clip.events[2].at==0.85 && demo[0].clip.events[2].kind==1 && demo[0].performance.layers[4].blend_out==0.15;
+}
+#test "brief source height gaps merge before contact targets are chosen" #steps 100000000 {
+ r:=rt_test_legs(1);r.name=anim_named("made-walker");bytes:[252]u8;for frame:0..<9 {anim_test_put(bytes[..],frame*28+24,f32_bits(1));}anim_test_put(bytes[..],4*28+4,f32_bits(0.03f32));
+ library:[1]AnimLibrary;library[0].rig[0]=r;library[0].count=1;library[0].packs[0]=AnimPack.{bytes=bytes[..]};library[0].clips[0]=AnimClip.{ready=true,name=anim_named("made-walk"),rig=r.name,frames=9,rate=8,length=1,joint_count=1,body=AnimPart.{pack=0,count=9,stride=28,width=28}};
+ demo:[1]AlLayerDemo;#assert al_demo(library[..],demo[..])==0 && demo[0].count==2;for k:0..<2 {#assert demo[0].contacts[k].first==2 && demo[0].contacts[k].last==7 && demo[0].contacts[k].end==0.85;}
+}

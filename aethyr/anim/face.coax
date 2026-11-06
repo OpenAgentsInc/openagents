@@ -1,5 +1,5 @@
 // Named facial bone overlays and morph curves over a caller-owned body pose.
-#load "pose.coax";
+#load "layer-core.coax";
 #load "morph.coax";
 #load "face-pack.coax";
 FacePlayback :: struct {ready:bool;enabled:bool;playing:bool=true;looping:bool=true;clip:int;time:f32;age:f32;start:f32;end:f32;fade:f32;weights:[256]f32;local:[64]SkinLocal;}
@@ -43,7 +43,7 @@ face_tick :: (s:[]FacePlayback,b:[]u8,dt:f32) {
  f:=face_info(b);at:=f.clip_table+s[0].clip*80;frames:=cast(int)face_word(b,at+64);rate:=face_float(b,at+68);
  if s[0].playing {s[0].time+=dt;}s[0].age+=dt;
  if s[0].looping && s[0].time>s[0].end {duration:=s[0].end-s[0].start;s[0].time=s[0].start+(s[0].time-s[0].start)-duration*floor((s[0].time-s[0].start)/duration);}
- fade:=pose_fade(s[0].age,0.15);if !s[0].looping {fade=lo(fade,pose_fade(s[0].end-s[0].time,0.15));}s[0].fade=fade;
+ fade:=layer_fades(s[0].age,s[0].end-s[0].time,0.15,ifx s[0].looping then 0 else 0.15,1);s[0].fade=fade;
  sample:=curve_frame(s[0].time,rate,frames);weights:=cast(int)face_word(b,at+72);bones:=cast(int)face_word(b,at+76);
  for k:0..<256 {s[0].weights[k]=0;}
  for k:0..<f.curves {target:=cast(int)face_word(b,f.curve_table+k*68+64);a:=face_float(b,weights+(sample.a*f.curves+k)*4);c:=face_float(b,weights+(sample.b*f.curves+k)*4);s[0].weights[target]=curve_linear(a,c,sample.share)*fade;}
@@ -52,5 +52,5 @@ face_tick :: (s:[]FacePlayback,b:[]u8,dt:f32) {
 face_local :: (b:[]u8,at:int)->SkinLocal {return SkinLocal.{t=v3(face_float(b,at),face_float(b,at+4),face_float(b,at+8)),q=Quat.{x=face_float(b,at+12),y=face_float(b,at+16),z=face_float(b,at+20),w=face_float(b,at+24)}};}
 face_layer :: (s:[]FacePlayback,b:[]u8,body:[]SkinLocal) {
  if !s[0].ready || !s[0].enabled || s[0].fade==0 {return;}f:=face_info(b);
- for k:0..<f.bones {joint:=cast(int)face_word(b,f.bone_table+k*68+64);body[joint]=pose_blend(body[joint],s[0].local[k],s[0].fade);}
+ for k:0..<f.bones {joint:=cast(int)face_word(b,f.bone_table+k*68+64);body[joint]=layer_mix(3,body[joint],body[joint],s[0].local[k],s[0].fade);}
 }

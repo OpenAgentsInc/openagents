@@ -1,0 +1,76 @@
+// Pure post-layer solvers. Targets are authored in character space; each call
+// starts from the current layered pose, never from a previous solved frame.
+#load "layers.coax";
+#load "fixup-checks.coax";
+FixupReport :: struct {feet:int;looks:int;hands:int;unreachable:int;unsupported:int;weighted_residuals:int;max_error:f32;pelvis_shift:f32;}
+fix_from_to :: (from:Point,to:Point)->Quat {
+ if length(from)<0.000001 || length(to)<0.000001 {return Quat.{};}a:=unit_or(from,v3(0,1,0));b:=unit_or(to,v3(0,1,0));d:=dot(a,b);
+ if d< -0.999999 {axis:=unit_or(cross(a,ifx abs(a.x)<0.8 then v3(1,0,0) else v3(0,1,0)),v3(0,0,1));return Quat.{x=axis.x,y=axis.y,z=axis.z,w=0};}
+ c:=cross(a,b);q:=Quat.{x=c.x,y=c.y,z=c.z,w=1+d};return quat_scaled(q,1/sqrt(quat_dot(q,q)));
+}
+fix_rotate :: (r:[]AnimRig,s:[]AnimSample,joint:int,world:Quat,weight:f32) {
+ parent:=r[0].parents[joint];local:=ifx parent>=0 then quat_mul(rt_inverse(s[0].rotation[parent]),world) else world;s[0].local[joint].q=slerp(s[0].local[joint].q,quat_unit(local),weight);layer_chain(r,s);
+}
+fix_two_bone :: (r:[]AnimRig,s:[]AnimSample,root:int,mid:int,end:int,target:Point,weight:f32)->f32 {
+ if root<0 || mid<=root || end<=mid || end>=r[0].joints {return -1;}
+ a:=s[0].position[root];b:=s[0].position[mid];c:=s[0].position[end];upper:=length(sub(b,a));lower:=length(sub(c,b));if upper<0.000001 || lower<0.000001 {return -1;}
+ toward:=sub(target,a);direction:=unit_or(toward,v3(0,1,0));distance:=lo(hi(length(toward),abs(upper-lower)+0.000001),upper+lower-0.000001);pole:=sub(sub(b,a),times(direction,dot(sub(b,a),direction)));
+ if length(pole)<0.000001 {pole=cross(direction,ifx abs(direction.x)<0.8 then v3(1,0,0) else v3(0,1,0));}pole=unit_or(pole,v3(0,0,1));along:=(upper*upper-lower*lower+distance*distance)/(2*distance);height:=sqrt(hi(0,upper*upper-along*along));knee:=add(a,add(times(direction,along),times(pole,height)));
+ desired:=quat_mul(fix_from_to(sub(b,a),sub(knee,a)),s[0].rotation[root]);fix_rotate(r,s,root,desired,weight);
+ desired=quat_mul(fix_from_to(sub(s[0].position[end],s[0].position[mid]),sub(target,s[0].position[mid])),s[0].rotation[mid]);fix_rotate(r,s,mid,desired,weight);return length(sub(s[0].position[end],target));
+}
+fix_look :: (r:[]AnimRig,s:[]AnimSample,joint:int,target:Point,limit:f32,weight:f32) {
+ toward:=sub(target,s[0].position[joint]);if length(toward)<0.000001 {return;}rest:=fix_rest_rotation(r,joint);forward:=quat_rotate(quat_mul(s[0].rotation[joint],rt_inverse(rest)),v3(0,0,1));delta:=fix_from_to(forward,toward);angle:=2*atan2(sqrt(delta.x*delta.x+delta.y*delta.y+delta.z*delta.z),delta.w);share:=ifx angle>limit then weight*limit/angle else weight;fix_rotate(r,s,joint,quat_mul(delta,s[0].rotation[joint]),share);
+}
+fix_contact :: (clip:AnimClip,time:f32,joint:int)->bool {
+ events:=clip.events;active:=false;if clip.looping {for e:events[0..<clip.event_count] {if e.joint==joint && e.kind<2 {active=e.kind==0;}}}
+ t:=anim_sample_time(clip,time);for e:events[0..<clip.event_count] {if e.at<=t && e.joint==joint && e.kind<2 {active=e.kind==0;}}return active;
+}
+FixChain :: struct {root:int= -1;mid:int= -1;end:int= -1;}
+fix_chain :: (r:[]AnimRig,joint:int)->FixChain {
+ result:FixChain;if joint<0 || joint>=r[0].joints {return result;}slot:=r[0].mapped[joint];root:= -1;mid:= -1;
+ if slot==57 || slot==62 {root=rt_pick_anchor(r,slot-2);mid=rt_pick_anchor(r,slot-1);}else if slot==10 || slot==34 {root=rt_pick_anchor(r,slot-2);mid=rt_pick_anchor(r,slot-1);}else {mid=r[0].parents[joint];if mid>=0 {root=r[0].parents[mid];}}
+ parents:=r[0].parents;if root<0 || mid<=root || joint<=mid || !fix_ancestor(parents[..],root,mid) || !fix_ancestor(parents[..],mid,joint) {return result;}result.root=root;result.mid=mid;result.end=joint;return result;
+}
+fixup_evaluate :: (r:[]AnimRig,p:AnimPerformance,clips:[]AnimClip,time:f32,disabled:u32,out:[]AnimSample)->FixupReport {
+ report:FixupReport;if !p.ready || out.count<1 {return report;}
+ report.pelvis_shift=fix_prepare_feet(r,p,clips,time,disabled,out);
+ for pass:0..<3 {for k:0..<p.count {layer:=p.layers[k];order:=ifx layer.solver<2 then layer.solver else 2;if layer.kind!=4 || order!=pass || ((disabled>>k)&1)!=0 {continue;}
+  weight:=layer_window(layer.start,layer.end,layer.blend_in,layer.blend_out,layer.weight,time);if weight==0 {continue;}if !layer_joint_mask(r,layer.joint,layer.mask) {report.unsupported+=1;continue;}
+  if layer.solver==1 {limit:f32=ifx rt_pick_anchor(r,6)==layer.joint then 0.78539816339 else 0.3490658504;fix_look(r,out,layer.joint,layer.target,limit,weight);report.looks+=1;continue;}
+  if layer.solver==0 {base:=p.layers[0];if time<base.start || time>base.end || !fix_contact_releasing(clips[base.clip],(time-base.start)*base.speed,layer.joint,layer.blend_out*base.speed) {continue;}}
+  chain:=fix_chain(r,layer.joint);if chain.end<0 {report.unsupported+=1;continue;}error:=fix_two_bone(r,out,chain.root,chain.mid,chain.end,layer.target,weight);if error<0 {report.unsupported+=1;continue;}
+  if layer.solver==0 {report.feet+=1;}else {report.hands+=1;}report.max_error=hi(report.max_error,error);if error>0.01 {if weight>=1 {report.unreachable+=1;}else {report.weighted_residuals+=1;}}
+ }}return report;
+}
+
+fix_contact_releasing :: (clip:AnimClip,time:f32,joint:int,tail:f32)->bool {
+ if fix_contact(clip,time,joint) {return true;}events:=clip.events;t:=ifx clip.looping then anim_sample_time(clip,time) else hi(0,time);last:f32= -1000000;
+ if clip.looping {for e:events[0..<clip.event_count] {if e.joint==joint && e.kind==1 {last=e.at-clip.length;}}}
+ for e:events[0..<clip.event_count] {if e.joint==joint && e.kind==1 && e.at<=t {last=e.at;}}return t<last+tail;
+}
+
+// A common vertical pelvis correction makes reachable plants possible without
+// changing bone lengths. Extreme authored targets remain visibly unreachable.
+fix_prepare_feet :: (r:[]AnimRig,p:AnimPerformance,clips:[]AnimClip,time:f32,disabled:u32,out:[]AnimSample)->f32 {
+ pelvis:=rt_pick_anchor(r,1);if pelvis<0 {return 0;}drop:f32=0;base:=p.layers[0];
+ for k:0..<p.count {l:=p.layers[k];if l.kind!=4 || l.solver!=0 || ((disabled>>k)&1)!=0 || !layer_joint_mask(r,l.joint,l.mask) {continue;}
+  weight:=layer_window(l.start,l.end,l.blend_in,l.blend_out,l.weight,time);if weight==0 || !fix_contact_releasing(clips[base.clip],(time-base.start)*base.speed,l.joint,l.blend_out*base.speed) {continue;}chain:=fix_chain(r,l.joint);if chain.end<0 {continue;}
+  a:=out[0].position[chain.root];b:=out[0].position[chain.mid];c:=out[0].position[chain.end];reach:=length(sub(b,a))+length(sub(c,b))-0.000001;dx:=a.x-l.target.x;dz:=a.z-l.target.z;horizontal:=dx*dx+dz*dz;if reach<=0 || horizontal>=reach*reach {continue;}allowed:=sqrt(reach*reach-horizontal);needed:=l.target.y+allowed-a.y;if needed<0 {drop=lo(drop,needed*weight);}
+ }
+ drop=hi(drop,-0.15);if drop<0 {
+  feet:=[2]int.[rt_pick_anchor(r,57),rt_pick_anchor(r,62)];targets:[2]Point;for f:0..<2 {if feet[f]>=0 {targets[f]=out[0].position[feet[f]];}}
+  world:=v3(0,drop,0);parent:=r[0].parents[pelvis];local:=ifx parent>=0 then quat_rotate(rt_inverse(out[0].rotation[parent]),world) else world;out[0].local[pelvis].t=add(out[0].local[pelvis].t,local);layer_chain(r,out);
+  // Preserve the unconstrained feet while lowering the hips. A new plant
+  // then begins at the actual incoming foot position, without a release jump.
+  for f:0..<2 {if feet[f]<0 {continue;}chain:=fix_chain(r,feet[f]);if chain.end>=0 {restored:=fix_two_bone(r,out,chain.root,chain.mid,chain.end,targets[f],1);}}
+ }return drop;
+}
+
+fix_ancestor :: (parents:[]int,ancestor:int,child:int)->bool {
+ j:=child;while j>=0 {if j==ancestor {return true;}j=parents[j];}return false;
+}
+
+fix_rest_rotation :: (r:[]AnimRig,joint:int)->Quat {
+ rotations:[512]Quat;for j:0..<joint+1 {parent:=r[0].parents[j];rotations[j]=ifx parent<0 then r[0].rest[j].q else quat_unit(quat_mul(rotations[parent],r[0].rest[j].q));}return rotations[joint];
+}

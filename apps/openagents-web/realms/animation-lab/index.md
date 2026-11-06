@@ -19,6 +19,11 @@ Echo and the Slay face clips load from the owner's private animation bundle.
   Green joints are paired anchors; purple joints are unpaired. The target
   keeps unpaired joints at local rest. T or RETARGET selects this station.
 
+- `#layers`: toggle **BASE**, **OVER**, **ADD**, **FACE** and **FIX**, or use
+  keys 1–5. L or LAYERS selects this station. The contact meter shows the
+  cycle peak in centimetres with fixes off and on; it turns red above 1 cm.
+  Seeking resets the meter. The built-in studio wave has stationary feet.
+
 Drag the model to orbit. Scroll to zoom. On a phone, the same controls are
 at the top and bottom of the stage. M selects the mannequin, E selects Echo;
 J/K select joints, U/I shapes, V switches joint/curve plots, S toggles the
@@ -37,6 +42,20 @@ No licensed data ships with this page. Export the A0 documents, then run:
 coax/web/tool.sh aethyr/tools/anim-lab-bundle.coax DOCUMENT_DIR PRIVATE_OUTPUT.bundle
 ```
 
+To author the private walk/face study and its measured contact annotations:
+
+```sh
+coax/web/tool.sh aethyr/tools/anim-layer-demo.coax PRIVATE_INPUT.bundle NEW_PRIVATE_DIR
+```
+
+The command writes `performance.json`, `contact.clip.json`, `report.json` and
+`receipt.json`. It returns failure when a quality check exceeds the stated limits. Keep the
+private report and documents for review.
+Expose the first two files as `animation-lab.performance.json` and
+`animation-lab.contact.clip.json` in the same owner-local private web folder.
+Open `#layers?rig=echo`. The original source bundle and its public clip count
+stay intact. Keep the report and receipt with the private source.
+
 Expose the private output as
 `~/.openagents/verse/private-build/web/animation-lab.bundle` for the local
 dev server. It is admitted by the same document readers used by the tools.
@@ -52,3 +71,7 @@ It does not reproduce a source material or source lighting. Ghosts are
 skeletons so inspection remains usable on smaller devices. The frame budget
 is 33.3 ms on desktop and phone; physical phone qualification is recorded
 separately from a headless phone viewport.
+
+In `#layers`, the numbered row selects individual layers. Tap **<** or **>**,
+then its **ON/OFF** label. Keyboard: **-**, **=**, then **Enter**. The five
+group buttons remain shortcuts for all layers of the same kind.

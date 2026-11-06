@@ -1,0 +1,37 @@
+layer_test_rig :: ()->AnimRig {
+ r:AnimRig;r.ready=true;r.name=anim_named("layer-rig");r.joints=2;r.parents[0]= -1;r.parents[1]=0;r.names[0]=anim_named("root");r.names[1]=anim_named("Head");r.mapped[0]=0;r.mapped[1]=6;r.rest[0].t=v3(1,0,0);r.rest[1].t=v3(0,1,0);r.face_joint_count=1;r.face_joints[0]=1;r.shape_count=2;
+ for j:0..<2 {for row:0..<3 {r.bind[j*12+row*4+row]=1;}}return r;
+}
+layer_test_source :: (bytes:[]u8,clips:[]AnimClip)->AnimPerformance {
+ for k:0..<16 {anim_test_put(bytes,k*28+24,f32_bits(1));}
+ for kind:0..<4 {c:=AnimClip.{ready=true,frames=2,rate=1,length=1,joint_count=2};c.joints[0]=0;c.joints[1]=1;c.body=AnimPart.{pack=0,offset=kind*112,count=4,stride=28,width=28};clips[kind]=c;
+  for frame:0..<2 {at:=kind*112+frame*56;anim_test_put(bytes,at,f32_bits(ifx kind==0 then 2 else ifx kind==1 then 10 else ifx kind==2 then 1 else 99));anim_test_put(bytes,at+32,f32_bits(ifx kind==0 then 2 else ifx kind==1 then 4 else 2));}}
+ for k:0..<2 {anim_test_put(bytes,448+k*28+4,f32_bits(8));anim_test_put(bytes,448+k*28+24,f32_bits(1));anim_test_put(bytes,504+k*8,f32_bits(0.4f32));anim_test_put(bytes,508+k*8,f32_bits(0.6f32));}
+ clips[3].face_joint_count=1;clips[3].face_joints[0]=1;clips[3].face_pose=AnimPart.{pack=0,offset=448,count=2,stride=28,width=28};clips[3].curve_count=2;clips[3].curves[0]=0;clips[3].curves[1]=1;clips[3].face=AnimPart.{pack=0,offset=504,count=4,stride=4,width=4};
+ p:AnimPerformance;p.ready=true;p.count=5;p.length=2;p.rig=anim_named("layer-rig");for k:0..<4 {p.layers[k]=AnimLayer.{kind=k,clip=k,start=0,end=2,speed=1,weight=ifx k==1 || k==3 then 0.5 else 1,mask=ifx k==0 then 0 else ifx k==3 then 1 else 2};}p.layers[4].kind=4;return p;
+}
+#test "layer evaluation orders base override additive and face without touching the body root" {
+ bytes:[520]u8;clips:[4]AnimClip;p:=layer_test_source(bytes[..],clips[..]);r:=[1]AnimRig.[layer_test_rig()];packs:=[1]AnimPack.[AnimPack.{bytes=bytes[..]}];s:[1]AnimSample;
+ layer_evaluate(r[..],p,clips[..],packs[..],0.5,0,s[..]);#assert s[0].local[0].t.x==2 && s[0].local[1].t.y==6 && s[0].position[1].x==2 && s[0].position[1].y==6 && s[0].palette[3]==2 && s[0].palette[15]==2 && s[0].palette[19]==6 && near(s[0].weights[0],0.2,0.000001) && near(s[0].weights[1],0.3,0.000001);
+ layer_evaluate(r[..],p,clips[..],packs[..],0.5,8,s[..]);#assert s[0].local[1].t.y==4 && s[0].weights[0]==0;
+ layer_evaluate(r[..],p,clips[..],packs[..],0.5,4,s[..]);#assert s[0].local[1].t.y==5.5;
+ layer_evaluate(r[..],p,clips[..],packs[..],3,0,s[..]);#assert s[0].local[0].t.x==1 && s[0].local[1].t.y==1 && s[0].weights[0]==0;
+}
+#test "layer windows speed face isolation masks and disabled entries are independent" {
+ bytes:[520]u8;clips:[4]AnimClip;p:=layer_test_source(bytes[..],clips[..]);r:=[1]AnimRig.[layer_test_rig()];packs:=[1]AnimPack.[AnimPack.{bytes=bytes[..]}];s:[1]AnimSample;
+ p.layers[3].mask=4;layer_evaluate(r[..],p,clips[..],packs[..],0.5,0,s[..]);#assert s[0].local[1].t.y==4 && s[0].weights[0]==0;
+ p.layers[3].mask=3;layer_evaluate(r[..],p,clips[..],packs[..],0.5,0,s[..]);#assert s[0].local[1].t.y==6 && near(s[0].weights[0],0.2,0.000001);
+ p.layers[3].kind=2;p.layers[3].mask=0;p.layers[3].weight=1;layer_evaluate(r[..],p,clips[..],packs[..],0.5,0,s[..]);#assert near(s[0].weights[0],0.4,0.000001);
+ p.layers[3].kind=1;layer_evaluate(r[..],p,clips[..],packs[..],0.5,0,s[..]);#assert near(s[0].weights[1],0.6,0.000001);
+ p.count=1;p.layers[0].start=0.5;p.layers[0].speed=2;p.layers[0].blend_in=1;anim_test_put(bytes[..],56,f32_bits(6));layer_evaluate(r[..],p,clips[..],packs[..],0.75,0,s[..]);#assert near(s[0].local[0].t.x,1.46875,0.000001);
+ layer_evaluate(r[..],p,clips[..],packs[..],0.75,1,s[..]);#assert s[0].local[0].t.x==1;
+ p.ready=false;s[0].weights[0]=0.7;layer_evaluate(r[..],p,clips[..],packs[..],0.5,0,s[..]);#assert s[0].weights[0]==0.7;
+}
+#test "curve overrides mix against prior weights additive curves accumulate and final ranges clamp" {
+ bytes:[520]u8;clips:[4]AnimClip;p:=layer_test_source(bytes[..],clips[..]);r:=[1]AnimRig.[layer_test_rig()];packs:=[1]AnimPack.[AnimPack.{bytes=bytes[..]}];s:[1]AnimSample;
+ p.layers[3].mask=0;p.layers[4].start=0;p.layers[4].end=2;p.layers[4].weight=1;layer_evaluate(r[..],p,clips[..],packs[..],0.5,0,s[..]);#assert s[0].local[0].t.x==2;
+ layer_evaluate(r[..],p,clips[..],packs[..],0.5,0,s[0..<0]);s[0].weights[0]=0.7;layer_evaluate(r[0..<0],p,clips[..],packs[..],0.5,0,s[..]);#assert s[0].weights[0]==0.7;
+ p.count=3;p.layers[1]=AnimLayer.{kind=3,clip=3,start=0,end=2,speed=1,weight=0.5,mask=1};p.layers[2]=p.layers[1];layer_evaluate(r[..],p,clips[..],packs[..],0.5,0,s[..]);#assert near(s[0].weights[0],0.3,0.000001) && near(s[0].weights[1],0.45,0.000001);
+ p.layers[2].kind=2;layer_evaluate(r[..],p,clips[..],packs[..],0.5,0,s[..]);#assert near(s[0].weights[0],0.4,0.000001) && near(s[0].weights[1],0.6,0.000001);
+ p.layers[1].weight=1;p.layers[2].weight=1;p.layers[3]=p.layers[2];p.count=4;layer_evaluate(r[..],p,clips[..],packs[..],0.5,0,s[..]);#assert s[0].weights[0]==1 && s[0].weights[1]==1;
+}

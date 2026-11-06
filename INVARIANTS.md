@@ -5865,7 +5865,8 @@ captures, recovery and timing are recorded in
 `aethyr/anim/retarget-policy.coax` admits one rotational anchor per mannequin
 slot. Canonical names disambiguate folded helpers; ambiguous aliases, unknown
 slots and cyclic or forward parent edges are refused before plan publication.
-The mapping authority kills 81 mutants with zero survivors. All source joint
+The mapping authority killed 81 mutants in A2; its rig-view implementation
+kills 84 in A3, with zero survivors. All source joint
 errors are reported; only paired anchors have the 2° round-trip guarantee.
 Unpaired target joints retain local rest. Independent input and output pose
 snapshots keep parent-order evaluation deterministic. Root motion subtracts
@@ -5906,3 +5907,27 @@ Locomotion limits come from original carrier distance/duration, and gait time
 uses actual collision-resolved travel, not an extra animated world displacement
 or unresolved velocity. The source 30-fps assumption remains explicit; original
 controller physics and its transition graph have not been recovered.
+
+## Animation performance sampling is bounded and starts from source each frame
+
+`aethyr/anim/layers.coax` evaluates an admitted performance from immutable
+clips. Each frame starts from rest, then applies base, masked override,
+additive and face layers. Source body tracks cannot leak through a face-only
+layer. Fix-ups follow in foot, look-at and hand order. Foot locks use authored
+contact events and targets, preserve segment lengths, cap pelvis correction
+at 15 cm and preserve the swinging foot. Head and eye aims use rest-corrected
+axes with explicit angle limits. No solved frame becomes the next input.
+
+The bundle reader reuses one JSON arena across rig and clip documents and
+publishes only after all records pass admission. The browser retains pending
+JSON in fixed host buffers. Clip/performance parsing uses separate ABI calls;
+a staged derived clip is restored if performance admission fails. One spare
+clip slot supports the performance without changing source clip enumeration.
+Rig views and bounded parser scratch keep the 4 MiB Wasm stack and 256 MiB
+inspector memory limit. Headless checks exercise the actual asset ABI,
+malformed replacement, GPU recovery and fixed frames.
+
+A3 authority gates kill 30 envelope/pose, 82 mask, 88 layer, 84 anchor and
+47 bundle mutants: 331 total, zero survivors. Source frame preservation,
+contact travel, blend-boundary limits, toggles and frame times are recorded
+in `docs/verification/animation-lab-a3-2026-11-06/README.md`.

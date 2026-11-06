@@ -1,0 +1,27 @@
+#test "layers station evaluates a made performance and toggles complete layer kinds" #steps 300000000 {
+ s:[1]AlState;al_hash(s[..],"layers?rig=mannequin");#assert s[0].station==3 && s[0].performances[0].ready && s[0].performances[0].count>=6;
+ al_layers_sample(s[..],0.5);#assert s[0].layer_report.feet>=1;
+ #assert al_key(s[..],53);al_layers_sample(s[..],0.5);#assert s[0].layer_report.feet==0;
+ #assert al_key(s[..],49) && (s[0].layer_disabled&1)!=0;#assert al_key(s[..],49) && (s[0].layer_disabled&1)==0;
+ s[0].layer_before=12;s[0].layer_after=2;al_seek(s[..],5);#assert s[0].layer_before==0 && s[0].layer_after==0;
+ #assert al_key(s[..],67) && s[0].station==1;#assert al_key(s[..],76) && s[0].station==3;
+}
+#test "pending metadata can arrive in either order and rejected replacement retains owned records" #steps 300000000 {
+ s:[1]AlState;al_init(s[..]);clip_text:[8192]u8;bytes:[264]u8;n:=anim_test_clip_full(clip_text[..],bytes[..]);anim_test_clip_rig(s[0].libraries[1].rig[..]);s[0].libraries[1].count=1;s[0].libraries[1].packs[0]=AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]};s[0].private_loaded=true;
+ perf:[8192]u8;pn:=anim_test_replace(AP_TEST,"made-wave","all-tracks",perf[..]);#assert pn>0 && al_layers_document(s[..],1,perf[0..<pn]) && !s[0].performances[1].ready;
+ #assert al_layers_document(s[..],2,clip_text[0..<n]) && s[0].performances[1].ready && s[0].performances[1].layers[0].clip==1 && s[0].libraries[1].count==1;
+ perf[0]='[';#assert !al_layers_document(s[..],1,perf[0..<pn]) && s[0].performances[1].ready && anim_equal(s[0].performances[1].name,anim_named("made-performance")) && s[0].libraries[1].clips[1].ready;
+ changed:[8192]u8;nn:=anim_test_replace(cast(string)clip_text[0..<n],"\"loop\":false","\"loop\":true",changed[..]);#assert nn>0 && !al_layers_document(s[..],2,changed[0..<nn]) && !s[0].libraries[1].clips[1].looping;
+}
+#test "browser arena defaults initialize scalar controls without a whole-state temporary" #steps 300000000 {
+ s:[1]AlState;s[0].station=0;s[0].distance=0;s[0].clock.step_ns=0;al_state_defaults(s[..]);#assert s[0].station==1 && s[0].distance==1 && s[0].skeleton && s[0].ghost_step==8 && s[0].clock.step_ns==clock.LOOP_STEP_NS;
+ al_init(s[..]);#assert s[0].libraries[0].rig[0].ready && s[0].performances[0].ready;
+}
+
+#test "each authored layer can be selected and toggled independently by keys and touch" #steps 300000000 {
+ s:[1]AlState;al_hash(s[..],"layers?rig=mannequin");s[0].width=390;s[0].height=844;p:=s[0].performances[0];
+ for k:0..<p.count {#assert al_key(s[..],-2);#assert s[0].layer_disabled==(cast(u32)1<<k);#assert al_key(s[..],-2) && s[0].layer_disabled==0;#assert al_key(s[..],61);}
+ #assert s[0].layer_selected==0;#assert al_key(s[..],45) && s[0].layer_selected==p.count-1;
+ #assert al_pointer(s[..],90,300,0) && s[0].layer_selected==0;#assert al_pointer(s[..],250,300,0) && s[0].layer_disabled==1;
+ #assert al_pointer(s[..],10,300,0) && s[0].layer_selected==p.count-1 && s[0].layer_disabled==1;
+}

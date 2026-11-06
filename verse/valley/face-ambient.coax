@@ -7,7 +7,7 @@ EchoAmbient :: struct {clock:f32;segment:int;}
  for round:0..<2 {for k:0..<64 {due:=echo_ambient_due(s[..],0.125);#assert due==(k==63);}}#assert s[0].segment==0;
 }
 echo_ambient_due :: (s:[]EchoAmbient,dt:f32)->bool {
- if !(dt>=0 && dt<=0.125) {return false;}s[0].clock+=dt;if s[0].clock<8 {return false;}s[0].clock-=8;s[0].segment=(s[0].segment+1)%3;return true;
+ next:=layer_cycle(LayerCycle.{clock=s[0].clock,segment=s[0].segment},dt,8,3);s[0].clock=next.state.clock;s[0].segment=next.state.segment;return next.due;
 }
 echo_ambient :: (s:[]EchoAmbient,e:[]Echo,dt:f32) {
  if !e[0].ready || e[0].face_bytes==0 {return;}if echo_ambient_due(s,dt) {index:=(s[0].segment+2)%3;

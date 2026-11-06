@@ -1,23 +1,14 @@
 #load "bundle-policy.coax";
 #load "clip-document.coax";
+#load "bundle-checks.coax";
+#authority;
 AnimLibrary :: struct {rig:[1]AnimRig;clips:[64]AnimClip;count:int;packs:[1]AnimPack;}
-anim_bundle_part :: (b:[]u8,k:int)->[]u8 {at:=12+k*8;first:=cast(int)anim_word(b,at);n:=cast(int)anim_word(b,at+4);return b[first..<first+n];}
-anim_bundle_load :: (b:[]u8,out:[]AnimLibrary)->int {
+anim_bundle_part :: (b:[]u8,k:int)->[]u8 #effects(all) {at:=12+k*8;first:=cast(int)anim_word(b,at);n:=cast(int)anim_word(b,at+4);return b[first..<first+n];}
+anim_bundle_load :: (b:[]u8,out:[]AnimLibrary)->int #effects(all) {
  if out.count<1 {return ANIM_CAPACITY;}if !anim_bundle_valid(b) {return ANIM_RANGE;}next:AnimLibrary;bytes:=anim_bundle_part(b,0);next.packs[0]=AnimPack.{id=asset_id(cast(string)bytes),bytes=bytes};
- e:=anim_rig_load(cast(string)anim_bundle_part(b,1),next.packs[..],next.rig[..]);if e!=0 {return e;}next.count=cast(int)anim_word(b,8);
- for k:0..<next.count {e=anim_clip_load(cast(string)anim_bundle_part(b,k+2),next.packs[..],next.rig[..],next.clips[k..<k+1]);if e!=0 {return e;}for j:0..<k {if anim_equal(next.clips[j].name,next.clips[k].name) {return ANIM_NAME;}}}
+ // Reuse one bounded JSON arena across the rig and clips. Typed records own
+ // names; immutable binary views refer to the retained source bundle.
+ nodes:[ANIM_DOCUMENT_NODES]JvNode;d:[1]Jv;e:=anim_json(cast(string)anim_bundle_part(b,1),d[..],nodes[..]);if e!=0 {return e;}e=anim_rig_read(d[0],next.packs[..],next.rig[..]);if e!=0 {return e;}next.count=cast(int)anim_word(b,8);
+ for k:0..<next.count {e=anim_json(cast(string)anim_bundle_part(b,k+2),d[..],nodes[..]);if e!=0 {return e;}e=anim_clip_read(d[0],next.packs[..],next.rig[..],next.clips[k..<k+1]);if e!=0 {return e;}for j:0..<k {if anim_equal(next.clips[j].name,next.clips[k].name) {return ANIM_NAME;}}}
  out[0]=next;return ANIM_OK;
-}
-
-#test "animation bundle document admission retains its previous library on refusal" {
- rb:[452]u8;cb:[112]u8;rt:[4096]u8;ct:[4096]u8;rn:=anim_test_rig(rt[..],rb[..]);cn:=anim_test_clip(ct[..],cb[..]);pack:[564]u8;for x,k:rb {pack[k]=x;}for x,k:cb {pack[452+k]=x;}
- rh:[64]u8;ch:[64]u8;hash:[64]u8;#assert asset_hex(asset_id(cast(string)rb[..]),rh[..]) && asset_hex(asset_id(cast(string)cb[..]),ch[..]) && asset_hex(asset_id(cast(string)pack[..]),hash[..]);scratch:[4096]u8;
- // Both made documents now name the combined immutable binary.
- for k:0..<8 {n:=anim_test_replace(cast(string)rt[0..<rn],cast(string)rh[..],cast(string)hash[..],scratch[..]);if n<0 {break;}for j:0..<n {rt[j]=scratch[j];}rn=n;}
- for k:0..<8 {n:=anim_test_replace(cast(string)ct[0..<cn],cast(string)ch[..],cast(string)hash[..],scratch[..]);if n<0 {break;}for j:0..<n {ct[j]=scratch[j];}cn=n;}
- n:=anim_test_replace(cast(string)ct[0..<cn],"\"offset\":0","\"offset\":452",scratch[..]);#assert n>0;for j:0..<n {ct[j]=scratch[j];}cn=n;
- b:[16384]u8;total:=36+564+rn+cn;for x,k:[9]u32.[0x31424c41,cast(u32)total,1,36,564,600,cast(u32)rn,cast(u32)(600+rn),cast(u32)cn] {anim_bundle_put(b[..],k*4,x);}for x,k:pack {b[36+k]=x;}for k:0..<rn {b[600+k]=rt[k];}for k:0..<cn {b[600+rn+k]=ct[k];}
- lib:[1]AnimLibrary;#assert anim_bundle_load(b[0..<total],lib[..])==0 && lib[0].count==1 && lib[0].rig[0].joints==2;
- b[600+rn]='!';#assert anim_bundle_load(b[0..<total],lib[..])==ANIM_JSON && lib[0].count==1 && lib[0].rig[0].ready;
- #assert anim_bundle_load(b[0..<total],lib[0..<0])==ANIM_CAPACITY;
 }
