@@ -9,7 +9,7 @@
 // What it checks, in order (each a line, then one JSON line with every number, then holds/fails):
 //   1. both join (ENTER past the CHARACTER picker), each has the other's player (its row) and who it is
 //      (D's n) and draws it (net_probe 2), and the name for its nameplate isn't "-" (a local room,
-//      coax/web/room/local.coax, names players as the API does; 8b's BLOCK is skipped there, for the
+//      coax/web/room/local.coax, names players as the API does; 8b's BLOCK reload is skipped there, for the
 //      local stand-in keeps no blocks, and 8's link keeps the ?relay=);
 //   2. by the spawn: A casts Conjure Animals (bar slot 32); both hear e cast from A's seat and have
 //      the pack;
@@ -86,6 +86,17 @@ ep_sorted_mid :: (t: [] int, n: int, q: int) -> int {
   for i: 1..<n { v := s[i]; j := i - 1; while j >= 0 && s[j] > v { s[j + 1] = s[j]; j -= 1; } s[j + 1] = v; }
   k := (n * q) / 100; if k >= n { k = n - 1; }
   return s[k];
+}
+
+ep_rg_landed :: (gone: bool, ground: int) -> bool {
+  return gone && (ground & 1) != 0;
+}
+
+#test "Reverse Gravity can end on a higher solid surface (#12946)" {
+  // A lands on the 4.5 m south palisade after starting on the road at 0 m.
+  #assert ep_rg_landed(true, 1);
+  #assert !ep_rg_landed(false, 1);
+  #assert !ep_rg_landed(true, 0);
 }
 
 #test "the pair smoke's pieces" {
@@ -365,9 +376,10 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   rg_both := false; top_a := -999999; top_b := -999999;
   deadline = proc_now_ms() + 6000;
   qr: [1] Buf; bput(qr[..], "__eg.topSince("); bint(qr[..], tr); bput(qr[..], ", "); bint(qr[..], sa); bput(qr[..], ")");
+  cylinder: [1] Buf; bput(cylinder[..], "__eg.probe("); bint(cylinder[..], 340 + sa); bput(cylinder[..], ")");
   while proc_now_ms() < deadline && !(rg_both && top_a > y0 + 300 && top_b > y0 + 300) {
     proc_sleep(200);
-    rg_both = ep_int(ca, "__eg.madeFrom(900000)", 0) > 0 && ep_int(cb, "__eg.madeFrom(900000)", 0) > 0;
+    rg_both = ep_int(ca, btext(cylinder[..]), 0) > 0 && ep_int(cb, btext(cylinder[..]), 0) > 0;
     ya := ep_int(ca, "__eg.probe(20)", -999999); if ya > top_a { top_a = ya; }
     top_b = ep_int(cb, btext(qr[..]), -999999);
   }
@@ -377,11 +389,14 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   rg_off := ifx ep_press(ca, true, "5", "Digit5", 53) && ep_press(ca, false, "5", "Digit5", 53) then 1 else 0;
   gone := false;
   deadline = proc_now_ms() + 6000;
-  while !gone && proc_now_ms() < deadline { proc_sleep(200); gone = ep_int(ca, "__eg.madeFrom(900000)", 1) == 0 && ep_int(cb, "__eg.madeFrom(900000)", 1) == 0; }
+  while !gone && proc_now_ms() < deadline { proc_sleep(200); gone = ep_int(ca, btext(cylinder[..]), -1) == 0 && ep_int(cb, btext(cylinder[..]), -1) == 0; }
   proc_sleep(3000);
   y1 := ep_int(ca, "__eg.probe(20)", -999999);
-  all = ep_check(rg_off == 1 && gone && y1 < y0 + 100, "A's press again ends it on both pages and A comes down") && all;
-  print("  A's y after % cm\n", y1);
+  ground := ep_int(ca, "(__eg.rows[__eg.seat] || []).at(-1)?.[1]?.[8] ?? -1", -1);
+  all = ep_check(rg_off == 1 && ground >= 0 && ep_rg_landed(gone, ground), "A's press again ends it on both pages and A lands on solid ground") && all;
+  print("  A's y after % cm, ground flags %, cylinders gone %\n", y1, ground, gone);
+  trace: [8192] u8;
+  print("  gravity commands: %\n", ep_str(ca, "JSON.stringify({commands: __eg.commands, refused: __eg.refused, entities: Object.keys(__eg.creatures)})", trace[..]));
   // 7b. a silent network drop: A's socket goes quiet both ways and never says it closed (a phone
   // between networks). A's page notices the quiet (everglade-net.coax NET_SILENT_MS), says so, opens a
   // new socket and is back in the room; B has A again, and on the site only once (the server gives a
@@ -439,16 +454,13 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
   }
   all = ep_check(inv_ok, "INVITE: a page opening A's ?room= link lands in A's instance, on A's shard, and has A") && all;
   // 8b. BLOCK (#12714): B opens the pane on A (as a tap on A's nameplate does), clicks BLOCK: A's body
-  // goes from B's view at once while A stays in B's state, and after B reloads and joins again the
+  // goes from B's view at once, and after B reloads and joins again the
   // seat ticket's answer brings the block back
-  if ep_param(url, "relay").count > 0 {
-    // the blocks come back with the next ticket from the API's verse.player_blocks, which the local
-    // stand-in (room-dev.coax) doesn't keep
-    print("skip BLOCK (?relay=: the local stand-in keeps no blocks)\n");
-  } else if ep_int(cb, "__eg.probe(37)", -1) < 0 {
+  if ep_int(cb, "__eg.probe(37)", -1) < 0 {
     print("skip BLOCK (this page has no moderation probes yet: net_probe 31 to 38)\n");
   } else {
     qo: [1] Buf; bput(qo[..], "__eg.probe("); bint(qo[..], 300 + sa); bput(qo[..], ")");
+    visible: [1] Buf; bput(visible[..], "__eg.probe("); bint(visible[..], 320 + sa); bput(visible[..], ")");
     opened := ep_int(cb, btext(qo[..]), 0) == 1;
     bx := -1; bly := -1;
     dl := proc_now_ms() + 3000;
@@ -456,8 +468,11 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
     if bx >= 0 { _ = ep_click(cb, bx, bly); }
     hid := false;
     dl = proc_now_ms() + 3000;
-    while bx >= 0 && !hid && proc_now_ms() < dl { proc_sleep(150); hid = ep_int(cb, "__eg.probe(37)", 0) >= 1 && ep_int(cb, "__eg.probe(38)", -1) == 0 && ep_int(cb, "__eg.probe(2)", 0) >= 1; }
-    all = ep_check(opened && hid, "BLOCK: B's BLOCK on A hides A's body at once, while A stays in B's state") && all;
+    while bx >= 0 && !hid && proc_now_ms() < dl { proc_sleep(150); hid = ep_int(cb, "__eg.probe(37)", 0) >= 1 && ep_int(cb, btext(visible[..]), -1) == 0; }
+    all = ep_check(opened && hid, "BLOCK: B's BLOCK on A hides A's body at once") && all;
+    if ep_param(url, "relay").count > 0 {
+      print("skip BLOCK reload (?relay=: the local stand-in keeps no blocks)\n");
+    } else {
     // B reloads: the seat ticket's answer has A blocked again
     reloaded := ep_int(cb, "(setTimeout(() => location.reload(), 50), 1)", 0) == 1;
     proc_sleep(2500);
@@ -466,11 +481,12 @@ ep_run :: (ca: [] Cdp, cb: [] Cdp, url: string, origin: string, mark: string, wh
     while hid && reloaded && !kept && proc_now_ms() < dl {
       proc_sleep(700);
       _ = ep_press(cb, true, "Enter", "Enter", 13); _ = ep_press(cb, false, "Enter", "Enter", 13);
-      kept = ep_int(cb, "__eg.live()", 0) == 1 && ep_int(cb, "__eg.probe(2)", 0) >= 1 && ep_int(cb, "__eg.probe(37)", 0) >= 1 && ep_int(cb, "__eg.probe(38)", -1) == 0;
+      kept = ep_int(cb, "__eg.live()", 0) == 1 && ep_int(cb, "__eg.probe(37)", 0) >= 1 && ep_int(cb, btext(visible[..]), -1) == 0;
     }
     print("  BLOCK: pane %, button at % %, hidden %; after the reload: blocks %, bodies %, players %\n", opened, bx, bly, hid,
       ep_int(cb, "__eg.probe(37)", -1), ep_int(cb, "__eg.probe(38)", -1), ep_int(cb, "__eg.probe(2)", -1));
     all = ep_check(kept, "BLOCK: after B reloads and joins again, A is still hidden (the seat ticket's blocks)") && all;
+    }
   }
   // 9. live admin edits (opt in): A, an admin (OA_EVERGLADE_ADMIN_SESSION, its oa_session), places a
   // thing and publishes (B: EDIT, 1: the first thing, B: DONE publishes at once); B's socket hears

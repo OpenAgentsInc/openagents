@@ -18,7 +18,7 @@
                      //          drawn feet x mm, drawn feet z mm, act, clip, last re-run's move mm^2, page ms]
     d: [],           // D arrivals: [t, tick, my x cm, my z cm, my clip, my g, ack]
     others: {},      // seat -> [[t, x, z, clip, g], ...] as D carried them
-    names: {}, casts: [], hits: [], deaths: [], wanted: {}, creatures: {}, refused: [],
+    names: {}, casts: [], hits: [], deaths: [], wanted: {}, creatures: {}, refused: [], commands: [],
     rows: {},        // entity id -> its last rows [[tick, fields]], to read the next delta against
     pings: {}, rtt: [], sentI: [], jumpBits: [], seqPos: {}, edits: [], worldGets: [],
   });
@@ -110,6 +110,7 @@
   const said = (text) => {
     const t = now(), f = text.split(" ");
     keep(">", text);
+    if (text[0] === "C" || text[0] === "E") { E.commands.push([t, text]); if (E.commands.length > 128) E.commands.shift(); }
     if (f[0] === "H") E.hello = text;
     if (f[0] === "t") E.pings[f[1]] = t;
     else if (f[0] === "I") {
@@ -243,7 +244,6 @@
   };
   // seat ss's highest y (cm) in D since t, and the server's entities with ids from `id0` on
   E.topSince = (t, ss) => { let top = -1e9; for (const r of E.others[ss] || []) if (r[0] >= t && r[5] > top) top = r[5]; return Math.round(top); };
-  E.madeFrom = (id0) => Object.keys(E.creatures).filter((k) => Number(k) >= id0).length;
   E.otherSeat = () => { for (const ss of Object.keys(E.others)) if (Number(ss) !== E.seat && E.others[ss].length) return Number(ss); return -1; };
   E.now = now;
   // The jump as this page drew you: between tj (the key) and tl the clip went to the jump (3) once and

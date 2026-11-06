@@ -226,6 +226,7 @@ net_moderated :: (s: [] Everglade, answer: string) #export_c {
 // middle (CSS px), 34 the pane open (1), 35 and 36 its BLOCK's middle (CSS px, -1 while it isn't
 // drawn), 37 the players you block, 38 the other players drawn as bodies (those you don't block).
 // 300 + SEAT opens the pane on that seat's player, as a tap on their nameplate does: 1 when it did.
+// 320 + SEAT reports that seat's visible body, excluding blocked players.
 md_probe :: (s: [] Everglade, field: int) -> int {
   if !net_on(s) { return -1; }
   n := net_of(s);
@@ -248,6 +249,15 @@ md_probe :: (s: [] Everglade, field: int) -> int {
     c := 0;
     for j: 0..<net_count(s, WK_PLAYER) { v := net_view(s, WK_PLAYER, j); if v.ok && !net_blocks(s, net_view_id(s, WK_PLAYER, j)) { c += 1; } }
     return c;
+  }
+  if field >= 320 && field < 320 + EG_RA_SEATS {
+    for j: 0..<net_count(s, WK_PLAYER) {
+      v := net_view(s, WK_PLAYER, j);
+      if v.ok && v.eid == field - 320 {
+        return ifx net_blocks(s, net_view_id(s, WK_PLAYER, j)) then 0 else 1;
+      }
+    }
+    return 0;
   }
   if field >= 300 && field < 300 + EG_RA_SEATS {
     for j: 0..<net_count(s, WK_PLAYER) {
@@ -286,6 +296,24 @@ md_probe :: (s: [] Everglade, field: int) -> int {
   #assert md_pointer(g[..], 20, 20, 0, 2) && md_pointer(g[..], 20, 20, 2, 2);
   #assert !n[0].mod[0].open && md_is_blocked(n, "p-00000000000000cc") && n[0].mod[0].asked == MD_ASK_BLOCK && net_probe(g[..], 37) == 1;
   #assert n[0].pipe[0].n == 1 && n[0].pipe[0].op[0] == NET_PIPE_ASK && pipe_bytes(n[0].pipe[..], 0) == "/api/playtest/block\n{\"player\":\"p-00000000000000cc\",\"on\":true}";
+}
+
+#test "moderate: a blocked seat is hidden while an unrelated held visitor stays visible (#12946)" {
+  g: [1] Everglade; nn: [1] EgNet; room: [1] NetTestRoom;
+  #assert net_test_page(g[..], nn[..], 2, "p-me", 100) && net_test_hear(g[..], 2, "y 1 1 5000100");
+  net_test_tick(room[..], 1, 0);
+  net_test_s(room[..], WireS.{id = 0, kind = WK_PLAYER, owner = 0, g = WG_GROUND});
+  net_test_n(room[..], WireN.{ss = 0, id = "p-blocked", name = "Willow"});
+  net_test_s(room[..], WireS.{id = 2, kind = WK_PLAYER, owner = 2, g = WG_GROUND | WG_AWAY});
+  net_test_n(room[..], WireN.{ss = 2, id = "p-visitor", name = "Rowan"});
+  #assert net_test_hear(g[..], 2, net_test_frame(room[..]));
+  #assert net_probe(g[..], 320) == 1 && net_probe(g[..], 322) == 1;
+  md_block_add(nn[..], "p-blocked");
+  #assert net_probe(g[..], 320) == 0 && net_probe(g[..], 322) == 1 && net_probe(g[..], 38) == 1;
+  bodies: [3] RemoteBody;
+  #assert remote_bodies(g[..], bodies[..]) == 1 && bodies[0].pid == "p-visitor";
+  md_ticket(nn[..], "200\n{\"blocked\":\"p-blocked\"}");
+  #assert net_probe(g[..], 320) == 0 && net_probe(g[..], 322) == 1;
 }
 
 #test "moderate: REPORT sends the player's 16 hex; KICK is an admin's; a tap off the pane closes it" {

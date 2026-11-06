@@ -2100,7 +2100,17 @@ net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if field == 19 { return n[0].creature_deaths; }
   // you as this frame drew you: the controller's act (aethyr/walk.coax Act: 3 airborne) and the clip
   // your body plays (aethyr/skin.coax SKIN_*: 3 the jump), for a check that the jump's pose ends
-  if field >= 31 && field <= 38 || field >= 300 && field < 300 + EG_RA_SEATS { return md_probe(s, field); }   // the others, as you deal with them (everglade-moderate.coax)
+  if field >= 31 && field <= 38 || field >= 300 && field < 300 + EG_RA_SEATS || field >= 320 && field < 320 + EG_RA_SEATS { return md_probe(s, field); }   // the others, as you deal with them (everglade-moderate.coax)
+  // 340 + SEAT: that caster's authoritative Reverse Gravity cylinders. Doors
+  // and boats use larger entity IDs too, so an ID cutoff is not a spell count.
+  if field >= 340 && field < 340 + EG_RA_SEATS {
+    count := 0;
+    for e: 0..<NET_ENTS {
+      en := n[0].ents[e];
+      if en.live && en.kind == WK_ZONE && en.owner == field - 340 && en.p1 == AB_REVERSE { count += 1; }
+    }
+    return count;
+  }
   if field == 29 { return s[0].act; }
   if field == 30 { return s[0].skin[0].clip; }
   // your body as drawn: how upright (its up axis's height, x1000: 1000 standing, about 0 lying), and
@@ -2637,6 +2647,41 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   na[0].acked += 1; net_own_rg_frame(a[..], na[..]);
   #assert !net_owns_rg(a[..]);
 }
+#test "net: Reverse Gravity observations exclude doors boats and another caster's zone (#12946)" {
+  a: [1] Everglade; na: [1] EgNet; room: [1] NetTestRoom;
+  #assert net_test_page(a[..], na[..], 2, "pa", 100) && net_test_hear(a[..], 2, "y 3 1 5000100");
+  net_test_tick(room[..], 1, 0);
+  net_test_s(room[..], WireS.{id = NET_MADE_ID + WIRE_DOORS_EID, kind = WK_DOORS});
+  net_test_s(room[..], WireS.{id = NET_MADE_ID + WIRE_BOAT_EID, kind = WK_BOAT});
+  net_test_s(room[..], WireS.{id = NET_MADE_ID + NET_ABILITY_ID + 1, kind = WK_ZONE, owner = 0, p1 = AB_REVERSE});
+  #assert net_test_hear(a[..], 2, net_test_frame(room[..]));
+  #assert net_probe(a[..], 343) == 0 && net_probe(a[..], 340) == 1;
+  net_test_tick(room[..], 2, 0);
+  net_test_s(room[..], WireS.{id = NET_MADE_ID + NET_ABILITY_ID + 2, kind = WK_ZONE, owner = 3, p1 = AB_REVERSE});
+  #assert net_test_hear(a[..], 2, net_test_frame(room[..])) && net_probe(a[..], 343) == 1;
+  net_test_tick(room[..], 3, 0);
+  net_test_x(room[..], NET_MADE_ID + NET_ABILITY_ID + 2);
+  #assert net_test_hear(a[..], 2, net_test_frame(room[..]));
+  #assert net_probe(a[..], 343) == 0 && net_probe(a[..], 340) == 1;
+}
+
+#test "net: Reverse Gravity ends on a second keyboard press after its entity arrives (#12946)" #steps 4000000000 {
+  a: [1] Everglade; na: [1] EgNet; dm: [1] DemoWorld;
+  everglade_start(a[..]);
+  a[0].sp.on = true; everglade_attach_demolish(a[..], dm[..]);
+  a[0].sp.ready = true;
+  #assert net_test_page(a[..], na[..], 2, "pa", 100) && net_test_hear(a[..], 2, "y 3 1 5000100");
+  #assert ege_entry(a[..], na[..], "g 1 0 0 0 0 0 0 0 0 0 0 0 0 0 2");
+  #assert everglade_key(a[..], '5', 0);
+  #assert na[0].rg_open > 0 && na[0].rg_close == 0;
+  #assert everglade_key_up(a[..], '5', 0);
+  id := NET_MADE_ID + NET_ABILITY_ID + 5;
+  #assert net_own_follow(a[..], na[..], AB_REVERSE, id);
+  #assert everglade_key(a[..], '5', 0);
+  #assert na[0].rg_close > na[0].rg_open;
+  #assert !a[0].sp.room_ab[0].seat[3].live[AB_REVERSE];
+}
+
 #test "net: your own Reverse Gravity shows at your press, the room's entity for it is that cast, and one the room never raised ends (#12887)" #steps 4000000000 {
   a: [1] Everglade; na: [1] EgNet; dm: [1] DemoWorld;
   everglade_start(a[..]);
