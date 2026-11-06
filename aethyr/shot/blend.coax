@@ -1,0 +1,21 @@
+// One smootherstep blend for authored camera flights and object close-ups.
+#module "aethyr.shot.blend";
+#authority;
+#load "../shot.coax";
+
+#test "a camera blend has exact endpoints and hand-worked quarter and half shots" {
+ a:=CameraShot.{eye=world_point(0,2,4),at=world_point(2,4,6)};
+ b:=CameraShot.{eye=world_point(8,10,12),at=world_point(10,12,14)};
+ q:=camera_blend(a,b,0.25);#assert q.eye.x==0.828125 && q.eye.y==2.828125 && q.at.z==6.828125;
+ h:=camera_blend(a,b,0.5);#assert h.eye.x==4 && h.eye.y==6 && h.eye.z==8 && h.at.x==6 && h.at.y==8 && h.at.z==10;
+ a.eye.x=999999;b.eye.x=0.01;
+ #assert camera_blend(a,b,0).eye.x==a.eye.x && camera_blend(a,b,1).eye.x==b.eye.x;
+ #assert camera_blend(a,b,-1).at.x==a.at.x && camera_blend(a,b,2).at.x==b.at.x;
+ zero:=0.0f32;#assert camera_blend(a,b,zero/zero).eye.x==a.eye.x;
+ a.eye.x= -zero;b.eye.x=1;#assert f32_bits(camera_blend(a,b,0).eye.x)==2147483648;
+}
+
+camera_blend :: (from:CameraShot,to:CameraShot,share:f32)->CameraShot #effects(all) {
+ if !(share>0) {return from;}if share>=1 {return to;}
+ u:=shot_ease(share);return CameraShot.{eye=shot_mix(from.eye,to.eye,u),at=shot_mix(from.at,to.at,u)};
+}

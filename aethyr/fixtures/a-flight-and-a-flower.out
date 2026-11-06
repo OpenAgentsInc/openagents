@@ -1,0 +1,6 @@
+30 FPS: 258 source frames skipped; one authored cut; below 128 m/s
+60 FPS: 516 source frames skipped; one authored cut; below 128 m/s
+144 FPS: 1239 source frames skipped; one authored cut; below 128 m/s
+record: 5 events, 256 ticks, 1 flower
+replay: all six camera components and flower count match
+missing click: first divergent tick 176

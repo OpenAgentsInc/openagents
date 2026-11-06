@@ -36,7 +36,7 @@
 #load "../../aethyr/locomotion.coax" as route_tuning;
 #load "../../aethyr/walk-frame.coax" as walk_frame;
 #load "../../aethyr/loop.coax" as realm_loop;
-#load "../../aethyr/cinematic.coax";
+#load "../../verse/planetary-villa/arrival.coax";
 #load "../../aethyr/particles.coax";
 #load "villapet.coax";
 #load "villaplay.coax";
@@ -257,8 +257,7 @@ DOG_X :: -18.6; DOG_Z :: -27.0;
 FOUNTAIN_R :: 1.9;
 
 // The flight in: through space to the planet, then down to the south gate.
-PLANET_X :: -17.0; PLANET_Y :: -40.0; PLANET_Z :: 120.0; PLANET_R :: 32.0;
-FLIGHT_CUT :: 3.4;      // seconds: the cut from space to the garden
+PLANET_R :: 32.0;
 FLASH :: 0.55;          // seconds the cut's flash takes to fade
 GOLDEN_TIME :: 2.0;
 GOLDEN_PHASE :: 0.4;    // golden mode's moon: a waxing gibbous
@@ -554,16 +553,6 @@ villa_player_theta :: (s: [] Villa) -> f32 #export_c #effects(all) { return wrap
 
 // ---- the flight
 
-flight_keys :: () -> Flight {
-  f := verse_flight_new();
-  px := f32(PLANET_X); py := f32(PLANET_Y); pz := f32(PLANET_Z);
-  f = verse_flight_key(f, 0, v3(px + 14, py + 18, pz - 190), v3(px, py, pz), false, EASE_LINEAR);
-  f = verse_flight_key(f, 3.2, v3(px + 3, py + 12, pz - 64), v3(px, py + 22, pz), false, EASE_IN);
-  f = verse_flight_key(f, f32(FLIGHT_CUT), v3(-17, 70, -95), v3(-17, 0, -4), true, EASE_LINEAR);
-  f = verse_flight_key(f, 6.0, v3(-24, 24, -54), v3(-17, 1, -14), false, EASE_SMOOTH);
-  f = verse_flight_key(f, 8.6, v3(-17, 2.7, -32.2), v3(-17, 1.5, -23), false, EASE_SMOOTH);
-  return f;
-}
 
 // Space shows while the first take flies (until the cut).
 in_space :: (s: [] Villa) -> bool { return s[0].fl_active && s[0].fl_take == 0; }
@@ -631,7 +620,7 @@ villa_step_in :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, ac
   }
   if s[0].skip_ask { s[0].skip_ask = false; s[0].flight = verse_flight_skip(s[0].flight, s[0].time); }
   f := s[0].flight; now := s[0].time;
-  s[0].shot = verse_flight_shot(f, now, s[0].live);
+  s[0].shot = camera_legacy(camera_flight(f,now,camera_world(s[0].live)));
   s[0].fl_active = verse_flight_active(f, now); s[0].fl_flying = verse_flight_flying(f, now);
   s[0].fl_take = verse_flight_take(f, now); s[0].fl_t = f32(now - f.start);
   // it has played (or was skipped): the browser keeps that with the tips (villatips.coax)

@@ -1,0 +1,25 @@
+// A staged page capture with a provenance sidecar; rendering stays in the shared recorder.
+// This entry point does not accept a replay or claim that it recorded a real session.
+#import "Basic";
+#load "clip-label.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/net/ws.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) {return 2;}
+ wh:=args_size(args_value(a[..],"--size","1280x720"));fps:=args_number(args_value(a[..],"--fps","30"));seed:=args_number(args_value(a[..],"--seed","-1"));
+ if !wh.ok || !fps.ok || !seed.ok || fps.value!=floor(fps.value) || seed.value!=floor(seed.value) || fps.value<1 || fps.value>144 || seed.value<0 || seed.value>4294967295 || args_has(a[..],"--replay") {return 2;}
+ label:=ClipLabel.{game=args_value(a[..],"--game",""),commit=args_value(a[..],"--commit",""),stage=args_value(a[..],"--stage",""),seed=cast(int)seed.value,width=wh.w,height=wh.h,fps=cast(int)fps.value};
+ body:[1024]u8;n:=clip_label(label,body[..]);out:=args_at(a[..],1);
+ if n<0 || out.count==0 {tool_errln("usage: clip URL OUT.mp4 --game NAME --commit SHA40 --stage NAME --seed N [recorder flags]");return 2;}
+ side:[4096]u8;if out.count+5>side.count {return 2;}at:=ws_put(side[..],0,out);at=ws_put(side[..],at,".json");
+ // Argument vectors go straight to the process API, never through a shell.
+ argv:[ARGS_MAX+2]string;argv[0]="coax/web/tool.sh";argv[1]="clip";
+ for i:0..<args_count(a[..]) {argv[i+2]=args_at(a[..],i);}
+ stdout:[65536]u8;stderr:[65536]u8;r:=proc_run(argv[0..<args_count(a[..])+2],840000,stdout[..],stderr[..]);
+ tool_err(cast(string)stderr[0..<r.err_n]);if r.started!=0 || r.status!=0 || r.timed_out {return 1;}
+ if !fs_write(cast(string)side[0..<at],cast(string)body[0..<n]) {tool_errln("clip: could not write the sidecar");return 1;}
+ print("%\n%\n",out,cast(string)side[0..<at]);return 0;
+}

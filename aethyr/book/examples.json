@@ -2,25 +2,54 @@
   "schema": 1,
   "examples": [
     {
+      "source": "aethyr/examples/a-flight-and-a-flower.coax",
+      "chapter": "aethyr/book/ch078-cinematics-and-close-ups.md",
+      "stdout": "aethyr/fixtures/a-flight-and-a-flower.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "aethyr/examples/closeup-refuses-projection.coax",
+      "chapter": "aethyr/book/ch078-cinematics-and-close-ups.md",
+      "stdout": "aethyr/fixtures/closeup-refuses-projection.out",
+      "exit_status": 2,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "aethyr/examples/talk-and-replay.coax",
       "chapter": "aethyr/book/ch077-people-who-talk-back.md",
       "stdout": "aethyr/fixtures/talk-and-replay.out",
       "exit_status": 0,
-      "modes": ["debug", "release"]
+      "modes": [
+        "debug",
+        "release"
+      ]
     },
     {
       "source": "aethyr/examples/talk-refuses-empty-question.coax",
       "chapter": "aethyr/book/ch077-people-who-talk-back.md",
       "stdout": "aethyr/fixtures/talk-refuses-empty-question.out",
       "exit_status": 2,
-      "modes": ["debug", "release"]
+      "modes": [
+        "debug",
+        "release"
+      ]
     },
     {
       "source": "aethyr/examples/power-boundaries.coax",
       "chapter": "aethyr/book/ch005-replay-a-session-exactly.md",
       "stdout": "aethyr/fixtures/power-boundaries.out",
       "exit_status": 0,
-      "modes": ["debug", "release"]
+      "modes": [
+        "debug",
+        "release"
+      ]
     },
     {
       "source": "aethyr/examples/frame-rates.coax",

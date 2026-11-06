@@ -1,96 +1,275 @@
 # 78. Cinematics and close-ups
 
-> **Status: unimplemented — design draft.** Today
-> [`aethyr/cinematic.coax`](../../aethyr/cinematic.coax) flies authored camera
-> paths (Hecate's Cemetery's arrival flight uses it),
-> [`aethyr/arrange.coax`](../../aethyr/arrange.coax) frames one object up close
-> for placing flowers in a vase, and
-> [`coax/web/clip.coax`](../../coax/web/clip.coax) records clips one fixed step
-> at a time. Each hands the camera back in its own way. This chapter plans
-> them as producers of [chapter 10](ch010-the-camera-follows.md)'s `Shot`,
-> with one hand-back rule. Nothing in `aethyr/` runs yet.
+> **Status: partly implemented.** Typed flight and close-up producers share
+> chapter 10's `CameraShot` and quintic blend. Hecate's Cemetery and the Garden
+> use them. Native debug and release run a bounded camera take with recorded
+> controls; the staged page recorder writes a provenance sidecar. A saved realm
+> replay is not yet connected to that recorder. See [Still to do](#still-to-do).
 
-A realm sometimes takes the camera away from the player: an arrival flight,
-a close-up for a small task, or a recorded clip. This chapter makes each of
-these a `Shot` producer that the follow camera can blend to and from, so the
-view never jumps and the player can always skip.
+An arrival can cross a whole landscape. A close-up moves a metre to let you
+place a flower. Both produce a view: an eye and a point to look at. Neither
+moves the player. When the player skips or finishes, the view returns to the
+live camera over a declared interval.
 
 ## What this chapter teaches
 
-- How to author a camera flight as keys of time and a `Shot`.
-- How to fly between keys with a spline and per-key easing.
-- How to cut, skip and hand the view back without a jump.
-- How to frame an object up close and point at parts of it.
-- How to record a clip from a replay at any size and frame rate.
+- Author keys, splines, easing and intentional cuts.
+- Return a typed world-space shot from a flight or close-up.
+- Bound a hand-back using its distance and duration.
+- Point through the shot that was actually drawn.
+- Record and replay a small camera take, and distinguish that state check
+  from a page clip.
 
-## Outline
+## One output for every camera
 
-1. **Keys and flights.** A `Flight` holds up to `FLIGHT_KEYS` (16) keys.
-   `verse_flight_key` adds a key at a time after the last one, with an eye,
-   a look point, a cut flag and an easing: `EASE_LINEAR`, `EASE_SMOOTH`,
-   `EASE_IN` or `EASE_OUT`. Keys out of order are refused.
-2. **Flying through keys.** Positions follow a Catmull-Rom spline through
-   the keys (`fl_spline`), eased per key (`fl_ease`). A cut jumps to its
-   key. `verse_flight_take` reports the current take, so the host changes
-   the scene behind a cut.
-3. **Skip and hand back.** A key or a touch skips the flight. At the end the
-   view blends to the player's live `Shot` over `HANDBACK` (0.9 s). With
-   reduced motion, or with no keys, the flight ends at once. A free orbit
-   takes the last shot with `verse_orbit_toward`.
-4. **Close-ups.** `Arrange` frames an object at `ARRANGE_DIST` (1.05 m),
-   looking down `ARRANGE_PITCH` (0.6 rad) into its opening. It blends in and
-   out over `ARRANGE_IN` (0.7 s), facing the way the world camera faced, so
-   the blend moves in rather than swinging round. A pointer ray
-   (`verse_shot_ray`) places a stem (`ARRANGE_PLACE`) or takes one out
-   (`ARRANGE_TAKE`), up to `ARRANGE_STEMS` (24).
-5. **One blend rule.** Aethyr gives every producer the same blend: a
-   frame-rate-independent ease from chapter 10, and a check that the eye
-   never moves more than a stated distance in one frame.
-6. **Clips from replays.** The recorder draws one fixed step a frame, so a
-   slow machine never makes a clip stutter. Staged moments (`?stage=NAME`)
-   set up a scene from a seed. A recorded session from
-   [chapter 5](ch005-replay-a-session-exactly.md) re-renders a moment at any
-   size, angle or frame rate. Each clip has a sidecar label: source, game,
-   commit, stage or replay ID, seed, size and frame rate.
-7. **Camera paths for clips.** The planned items in
-   [clips.md](../../docs/verse/clips.md): inputs on a timeline, orbit and
-   dolly paths, slow motion by smaller steps, and 9:16 and square crops from
-   one run.
+[CameraShot](../shot.coax) contains two `WorldPoint` values, `eye` and `at`.
+The new [flight](../shot/flight.coax) and [close-up](../shot/closeup.coax)
+producers return that same type. The [legacy adapter](../shot/legacy.coax)
+copies all six components to or from the existing `Point`/`Shot` record at a
+page boundary. It changes no units or coordinate axes.
 
-## What exists today
+[The blend](../shot/blend.coax) clamps a share to its endpoints, applies
+`shot_ease`, then interpolates both points. Its curve is:
 
-- [aethyr/cinematic.coax](../../aethyr/cinematic.coax): flights, keys,
-  easing, cuts, skip and hand-back, with `#test`s.
-- [aethyr/arrange.coax](../../aethyr/arrange.coax): the close-up arranging
-  view, used by [apps/openagents-web/garden.coax](../../apps/openagents-web/garden.coax).
-- [apps/openagents-web/villa.coax](../../apps/openagents-web/villa.coax):
-  Hecate's Cemetery's arrival flight.
-- [aethyr/camera.coax](../../aethyr/camera.coax): `Shot` and the orbit.
-- [coax/web/clip.coax](../../coax/web/clip.coax) and
-  [docs/verse/clips.md](../../docs/verse/clips.md): the clip recorder and
-  staged moments.
-- [coax/web/og-render.ts](../../coax/web/og-render.ts): link-preview cards
-  shot from stages with `&card=1`.
+```text
+s(u) = 6u^5 - 15u^4 + 10u^3,  0 <= u <= 1
+```
 
-## What it builds
+At a quarter, `s(0.25) = 0.103515625`. An eye moving from x = 0 to x = 8
+therefore reaches x = 0.828125. At a half, it reaches x = 4. Both the eye and
+look point use the same share. At the endpoints the function returns the
+original record exactly, preserving signed zero and avoiding cancellation
+when a very large coordinate returns to a small one. A NaN share returns the
+starting shot.
 
-- `aethyr/shot/flight.coax`: authored flights as `Shot` producers.
-- `aethyr/shot/closeup.coax`: close-ups with pointing.
-- `aethyr/shot/blend.coax`: the shared blend and its per-frame bound.
-- `aethyr/tools/clip.coax`: clips from replays and stages.
+The old flight and arranging code already used this quintic curve. The new
+producers share its implementation while retaining their existing durations:
+0.9 seconds for a flight hand-back and 0.7 seconds for a close-up transition.
+A close-up's stored `blend` advances linearly; the camera producer eases that
+share once.
 
-## Acceptance checks and oracles
+## Author the actual arrival
 
-The chapter is done when:
+[aethyr/cinematic.coax](../cinematic.coax) retains the flight state and key
+admission. A flight holds at most 16 keys. Times must be finite, nonnegative
+and strictly increasing. A key with a nonfinite shot is refused. Easing is
+`EASE_LINEAR`, `EASE_SMOOTH`, `EASE_IN` or `EASE_OUT`.
 
-- `cinematic.coax`'s and `arrange.coax`'s checks pass on the Aethyr modules.
-- Hecate's arrival flight hands the camera over with no frame-to-frame eye
-  move above the chapter 10 bound, at 30, 60 and 144 FPS.
-- Skipping at any frame ends in the live `Shot` within `HANDBACK`.
-- Reduced motion ends every flight at once.
-- A clip rendered twice from the same replay gives identical frames.
+The eye and look point follow Catmull–Rom splines through each pair of keys.
+The neighbouring keys set their tangents. A cut holds the previous take until
+the cut's time, then jumps to the cut key. `verse_flight_take` tells the page
+which take is visible so it can change the scene at that boundary.
 
-## Dependencies
+Hecate's keys now live in
+[verse/planetary-villa/arrival.coax](../../verse/planetary-villa/arrival.coax).
+The page and this chapter's checks load that same function. The planet centre
+is (-17, -40, 120); the table shows the resulting world coordinates.
 
-Chapters 1 (the clock), 5 (replay), 10 (the `Shot` and its easing), 14
-(figures drawn in close-ups) and 15 (skip and reduced-motion controls).
+| Time (s) | Eye | Look point | Arrival rule |
+| ---: | --- | --- | --- |
+| 0 | (-3, -22, -70) | (-17, -40, 120) | First take |
+| 3.2 | (-14, -28, 56) | (-17, -18, 120) | Ease in |
+| 3.4 | (-17, 70, -95) | (-17, 0, -4) | Intentional cut |
+| 6 | (-24, 24, -54) | (-17, 1, -14) | Smooth |
+| 8.6 | (-17, 2.7, -32.2) | (-17, 1.5, -23) | Smooth |
+
+The authored part ends at the last key. `camera_flight` holds that key while
+blending to the live camera. A skip captures the current authored shot and
+starts the same hand-back immediately. With reduced motion, or no keys,
+`verse_flight_start` leaves the flight inactive and the producer returns the
+live shot at once. The host continues to own input, scene changes and the
+player's free orbit.
+
+## State the movement bound
+
+A fixed frame distance cannot cover arbitrary flight lengths, a moving target
+and a fixed hand-back deadline. Chapter 10's follow-camera check concerns its
+own fixture; an arrival across a landscape needs its own stated profile.
+
+For a fixed source eye A and fixed live eye B, distance D, duration T and
+frame interval dt, the quintic derivative has maximum 1.875. Therefore:
+
+```text
+frame distance <= 1.875 * D * dt / T
+```
+
+For D = 4 m, T = 0.9 s and 60 FPS, the bound is 0.138889 m per frame.
+For a moving live eye, add its movement during the frame and use the largest
+distance from A to that live eye over the interval. A teleport needs a
+separate cut policy; easing cannot promise both a universal speed cap and
+completion in 0.9 seconds.
+
+[The path fixture](../tests/camera-take.coax) uses the actual Hecate keys and
+a declared stationary live eye (-17, 2, -30), looking at (-17, 1, -23).
+At 30, 60 and 144 FPS it checks:
+
+- Every ordinary arrival interval stays below **128 m/s**, or 128/FPS metres
+  per frame. The one authored cut is counted separately.
+- Each of the **258, 516 and 1,239** displayed source frames can be skipped.
+  Every hand-back frame respects the analytic distance bound, with 0.0001 m
+  rounding allowance.
+- A skip begins at the exact incoming shot, reaches the hand-worked midpoint,
+  and returns all six live components exactly at `skip time + HANDBACK`.
+- Reduced motion returns the live camera immediately.
+
+The evaluator runs 32 bounded slices under its ordinary per-check budget.
+The native example runs all slices together. These measurements qualify the
+stated path and live camera, not every possible realm camera or browser FPS.
+
+## Point through the close-up
+
+[aethyr/arrange.coax](../arrange.coax) owns the vase, orbit, opening and up to
+24 stems. It frames the opening from 1.05 m away, pitched down 0.6 radians,
+looking 0.2 m above the opening. Opening preserves the approach direction;
+closing clears the current selection and returns the view over 0.7 seconds.
+
+The Garden passes its current live camera to `camera_closeup`. For a click
+or hover, it passes the resulting drawn shot to `camera_closeup_point`.
+Projection scales must be positive, finite and below the shot module's
+one-million-unit limit; normalized pointer coordinates must be inside [-1, 1].
+All six camera components must be finite and inside that same limit. A
+refused projection clears both hover kind and stem index, so an old selection
+cannot turn a malformed click into a removal.
+
+The ray uses the same horizontal and vertical scales as the page's view
+matrix. The Garden suite independently projects a spot in the vase and a
+flower tip through that matrix, clicks each, then checks placement, removal
+and the return control. Camera input is held while the close-up owns it.
+
+## Record the camera take
+
+[The worked fixture](../tests/camera-take.coax) runs 256 ticks at 64 Hz. It
+records accepted control envelopes through chapter 5's `ReplaySession`.
+Recording and replay both take the event before stepping the camera.
+
+| Tick | Time (s) | Command |
+| ---: | ---: | --- |
+| 0 | 0 | Start the actual arrival |
+| 64 | 1 | Skip |
+| 128 | 2 | Open the vase close-up |
+| 176 | 2.75 | Point at the opening and place a flower |
+| 192 | 3 | Close the view |
+
+Every tick's mark includes the float bits of all six shot components, the
+close-up share and the flower count. Replay rebuilds the initial camera and
+applies the five recorded events on their ticks. Omitting the click diverges
+at tick 176. This bounded fixture does not serialize the full realm, its
+network traffic, persistence or rendered pixels.
+
+Run [a-flight-and-a-flower.coax](../examples/a-flight-and-a-flower.coax):
+
+```shell
+coax/bin/coax run aethyr/examples/a-flight-and-a-flower.coax
+coax/bin/coax run aethyr/examples/a-flight-and-a-flower.coax --release
+```
+
+<!-- source: aethyr/examples/a-flight-and-a-flower.coax example -->
+```jai
+#load "../tests/camera-take.coax";
+#import "Basic";
+exit :: (code:s32) #foreign #effects(foreign);
+main :: () #effects(all) {
+ for fps:[3]int.[30,60,144] {
+  r:=take_rate(fps,0,1);if !r.ok || r.cuts!=1 || r.maximum>=128 {exit(1);return;}
+  print("% FPS: % source frames skipped; one authored cut; below 128 m/s\n",fps,r.skips);
+ }
+ b:[1]ReplayBacking;s:=replay_backing(b[..]);live:=take_record(s);digest:=replay_digest(s);
+ print("record: % events, % ticks, % flower\n",replay_events(s),replay_tick(s),live.vase.count);
+ played:=take_play(s,false);
+ if !replay_matched(s) || replay_digest(s)!=digest || played.vase.count!=1 {exit(1);return;}
+ print("replay: all six camera components and flower count match\n");
+ played=take_play(s,true);
+ print("missing click: first divergent tick %\n",replay_diverged(s));
+ if replay_diverged(s)!=176 || played.vase.count!=0 {exit(1);}
+}
+```
+
+Both modes exit 0 and match [the exact transcript](../fixtures/a-flight-and-a-flower.out):
+
+```text
+30 FPS: 258 source frames skipped; one authored cut; below 128 m/s
+60 FPS: 516 source frames skipped; one authored cut; below 128 m/s
+144 FPS: 1239 source frames skipped; one authored cut; below 128 m/s
+record: 5 events, 256 ticks, 1 flower
+replay: all six camera components and flower count match
+missing click: first divergent tick 176
+```
+
+[closeup-refuses-projection.coax](../examples/closeup-refuses-projection.coax)
+is the deliberate refusal example. It supplies a zero horizontal projection
+scale with a stale stem selection. In both modes it prints
+[the refusal fixture](../fixtures/closeup-refuses-projection.out) and exits 2:
+
+```shell
+coax/bin/coax run aethyr/examples/closeup-refuses-projection.coax
+coax/bin/coax run aethyr/examples/closeup-refuses-projection.coax --release
+```
+
+## Capture a staged page clip
+
+[aethyr/tools/clip.coax](../tools/clip.coax) delegates frame capture and encoding
+to the existing [shared recorder](../../coax/web/clip.coax). Headless, muted
+Chrome draws one fixed step, captures it and repeats. ffmpeg encodes those
+frames. Slow capture changes the time spent recording, not the game-time
+interval between frames.
+
+The wrapper adds a checked `.mp4.json` sidecar. It always labels its source
+`staged`; it refuses `--replay`. Required fields are game, a 40-character
+lowercase hexadecimal commit, stage label, seed, width, height and integer
+FPS. Names use 1–64 lowercase letters, digits or hyphens; seed is an unsigned
+32-bit value; dimensions are 1–4,096 and FPS is 1–144. A short output buffer
+publishes no partial label.
+
+These fields describe the caller's setup. `--stage` and `--seed` label the
+capture; they do not inject a stage or seed into a realm. The URL and any
+`--eval` setup must actually establish it. Seed 0 below denotes the Garden's
+authored setup without an external random seed. The development `probe` URL
+holds W, advances 3.2 seconds, presses E and advances into the close-up. It
+is a reproducible test setup, not a saved player's session.
+
+```shell
+coax/web/serve.sh apps/openagents-web --static --listen 127.0.0.1:8990
+# In another terminal, use the source commit you built for COMMIT_SHA40.
+coax/web/tool.sh aethyr/tools/clip.coax \
+  'http://127.0.0.1:8990/realms/garden?golden=1&probe&do=kw;t3.2;ke;t1' \
+  /tmp/garden-close-up.mp4 --game garden --commit COMMIT_SHA40 \
+  --stage close-up --seed 0 --size 960x600 --fps 30 --seconds 1 \
+  --frames /tmp/garden-close-up-frames
+```
+
+Golden mode freezes the Garden's visual effects for this staged capture.
+Hecate's golden mode suppresses its arrival, so it must be off when checking
+that flight. A frame-for-frame repeat of this Garden setup would qualify
+that staged clip only; it would not establish a clip rendered from a saved
+realm replay.
+
+## Checks and evidence
+
+```shell
+coax/bin/coax test aethyr/tests/camera-take.coax
+coax/bin/coax mutate aethyr/shot/blend.coax --library --root-only
+coax/bin/coax mutate aethyr/shot/flight.coax --library --root-only
+coax/bin/coax mutate aethyr/shot/closeup.coax --library --root-only
+coax/bin/coax mutate aethyr/tools/clip-label.coax --library --root-only
+coax/bin/coax test apps/openagents-web/villa.coax --library
+coax/bin/coax test apps/openagents-web/garden.coax --library
+python3 psionic/tests/book.py --book aethyr
+```
+
+[The qualification record](../../docs/verification/aethyr-cameras-2026-11-06/README.md)
+records the failing-before-fix checks, mutation scopes, native fixtures, page
+suites, headless captures, drift check and Wasm budgets. The root mutation
+scores apply to the new producer and label logic; imported legacy checks
+still run. They are not a claim that every legacy cinematic or arranging
+mutation is killed.
+
+## Still to do
+
+Connect a validated saved realm replay to the browser recorder, including its
+initial state, seed, accepted external events and camera direction. Then
+render it twice and compare every decoded frame, with a sidecar bound to that
+record's identity. General timeline controls, orbit and dolly paths, slow
+motion and reframing remain in [the clip plan](../../docs/verse/clips.md).
+The chapter remains partly implemented until that replay-to-pixel path is
+qualified. The native camera take and staged page captures keep their
+separate evidence.

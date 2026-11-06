@@ -1,0 +1,14 @@
+// Legacy Point/Shot declarations inherit their caller's logical owner.
+// Keep the conversion in that owner; CameraShot and the blend have stable modules.
+#authority;
+#load "../points.coax";
+#load "blend.coax";
+
+#test "legacy and world camera records preserve all six source components" {
+ a:=Shot.{eye=v3(1,2,3),at=v3(4,5,6)};b:=camera_world(a);c:=camera_legacy(b);
+ #assert b.eye.x==1 && b.eye.y==2 && b.eye.z==3 && b.at.x==4 && b.at.y==5 && b.at.z==6;
+ #assert c.eye.x==1 && c.eye.y==2 && c.eye.z==3 && c.at.x==4 && c.at.y==5 && c.at.z==6;
+}
+
+camera_world :: (s:Shot)->CameraShot #effects(all) {return CameraShot.{eye=world_point(s.eye.x,s.eye.y,s.eye.z),at=world_point(s.at.x,s.at.y,s.at.z)};}
+camera_legacy :: (s:CameraShot)->Shot #effects(all) {return Shot.{eye=v3(s.eye.x,s.eye.y,s.eye.z),at=v3(s.at.x,s.at.y,s.at.z)};}

@@ -1,0 +1,13 @@
+// book:begin example
+#load "../shot/closeup.coax";
+#import "Basic";
+exit :: (code:s32) #foreign #effects(foreign);
+main :: () #effects(all) {
+ a:=verse_arrange_open(verse_arrange_new(v3(0,0,0),0.1),0);
+ a.hover=ARRANGE_TAKE;a.hover_stem=3;
+ s:=CameraShot.{eye=world_point(0,2,0),at=world_point(0,0,0)};
+ a=camera_closeup_point(a,s,0,1,0,0);
+ if a.hover!=ARRANGE_NONE || a.hover_stem!= -1 {exit(1);return;}
+ print("refused zero projection scale; no stale selection\n");exit(2);
+}
+// book:end example

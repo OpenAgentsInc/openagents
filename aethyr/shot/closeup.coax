@@ -1,0 +1,44 @@
+// The arranging view produces the same typed CameraShot as a flight or follow.
+#authority;
+#load "../arrange.coax";
+#load "legacy.coax";
+
+#test "a close-up blends the live camera and accepts pointing through its actual shot" {
+ a:=verse_arrange_new(v3(2,1,3),0.1);live:=CameraShot.{eye=world_point(2,2,-4),at=world_point(2,1,3)};
+ b:=camera_closeup(a,live);#assert b.eye.z==live.eye.z && b.at.x==live.at.x;
+ a=verse_arrange_open(a,0);a=verse_arrange_step(a,1,true);b=camera_closeup(a,live);target:=verse_arrange_shot(a);
+ #assert b.eye.x==target.eye.x && b.eye.y==target.eye.y && b.eye.z==target.eye.z && b.at.y==target.at.y;
+ a.blend=0.25;b=camera_closeup(a,live);#assert abs(b.eye.z-(live.eye.z+(target.eye.z-live.eye.z)*0.103515625))<0.000001;
+}
+#test "pointing admits the viewport edges and refuses malformed projection without a stale selection" {
+ s:=CameraShot.{eye=world_point(0,2,0),at=world_point(0,0,0)};
+ for x: -1..<2 {for y: -1..<2 {
+  a:=verse_arrange_open(verse_arrange_new(v3(f32(x)*2,0,f32(y)* -2),0.1),0);
+  b:=camera_closeup_point(a,s,1,1,f32(x),f32(y));#assert b.hover==ARRANGE_PLACE;
+ }}
+ a:=verse_arrange_open(verse_arrange_new(v3(0,0,0),0.1),0);a.hover=ARRANGE_TAKE;a.hover_stem=3;
+ z:=0.0f32;bad:=[5]f32.[0,-1,z/z,1/z,1000000];
+ for v:bad {
+  b:=camera_closeup_point(a,s,v,1,0,0);#assert b.hover==ARRANGE_NONE && b.hover_stem== -1;
+  b=camera_closeup_point(a,s,1,v,0,0);#assert b.hover==ARRANGE_NONE && b.hover_stem== -1;
+ }
+ for nx:[4]f32.[-1.01,1.01,z/z,1/z] {
+  b:=camera_closeup_point(a,s,1,1,nx,0);#assert b.hover==ARRANGE_NONE && b.hover_stem== -1;
+  b=camera_closeup_point(a,s,1,1,0,nx);#assert b.hover==ARRANGE_NONE && b.hover_stem== -1;
+ }
+ for field:0..<6 {
+  bad_shot:=s;if field==0 {bad_shot.eye.x=z/z;}if field==1 {bad_shot.eye.y=z/z;}if field==2 {bad_shot.eye.z=z/z;}
+  if field==3 {bad_shot.at.x=z/z;}if field==4 {bad_shot.at.y=z/z;}if field==5 {bad_shot.at.z=z/z;}
+  b:=camera_closeup_point(a,bad_shot,1,1,0,0);#assert b.hover==ARRANGE_NONE && b.hover_stem== -1;
+ }
+}
+
+camera_closeup :: (a:Arrange,live:CameraShot)->CameraShot #effects(all) {
+ return camera_blend(live,camera_world(verse_arrange_shot(a)),a.blend);
+}
+camera_closeup_point :: (a:Arrange,s:CameraShot,fx:f32,fy:f32,nx:f32,ny:f32)->Arrange #effects(all) {
+ next:=a;next.hover=ARRANGE_NONE;next.hover_stem= -1;
+ if !(fx>0 && fy>0 && shot_finite(fx) && shot_finite(fy) && nx>= -1 && nx<=1 && ny>= -1 && ny<=1) {return next;}
+ values:=[6]f32.[s.eye.x,s.eye.y,s.eye.z,s.at.x,s.at.y,s.at.z];for value:values {if !shot_finite(value) {return next;}}
+ return verse_arrange_point(a,verse_shot_ray(camera_legacy(s),fx,fy,nx,ny));
+}

@@ -37,7 +37,7 @@
 #load "../../aethyr/locomotion.coax" as route_tuning;
 #load "../../aethyr/walk-frame.coax" as walk_frame;
 #load "../../aethyr/loop.coax" as realm_loop;
-#load "../../aethyr/arrange.coax";
+#load "../../aethyr/shot/closeup.coax";
 #load "place-orbit.coax";
 #load "../../aethyr/budget.coax";
 
@@ -1024,25 +1024,29 @@ vase :: (s: [] Garden) {
 // The ray under a point on the screen (device pixels) through this shot,
 // with garden's projection (view).
 screen_ray :: (s: [] Garden, shot: Shot, x: f32, y: f32) -> OrbitRay {
+  w:=hi(s[0].width,1);h:=hi(s[0].height,1);aspect:=w/h;fy:=clamp(aspect*1.25,0.95,1.9);
+  return verse_shot_ray(shot,fy/aspect,fy,2*x/w-1,1-2*y/h);
+}
+garden_closeup_point :: (s: [] Garden, shot: Shot, x: f32, y: f32) -> Arrange {
   w := hi(s[0].width, 1); h := hi(s[0].height, 1);
   aspect := w / h;
   fy := clamp(aspect * 1.25, 0.95, 1.9);
-  return verse_shot_ray(shot, fy / aspect, fy, 2 * x / w - 1, 1 - 2 * y / h);
+  return camera_closeup_point(s[0].vase,camera_world(shot),fy/aspect,fy,2*x/w-1,1-2*y/h);
 }
 
 // The close-up's frame: the blend in or out, what the mouse points at, and
 // a click or tap placing or taking out a flower.
 close_up :: (s: [] Garden, live: Shot, t: f32, still: bool) -> Shot {
   s[0].vase = verse_arrange_step(s[0].vase, t, still);
-  shot := verse_arrange_view(s[0].vase, live);
+  shot := camera_legacy(camera_closeup(s[0].vase,camera_world(live)));
   if !s[0].vase.open { s[0].tap = false; return shot; }
   if s[0].tap {
-    s[0].vase = verse_arrange_point(s[0].vase, screen_ray(s, shot, s[0].tap_x, s[0].tap_y));
+    s[0].vase = garden_closeup_point(s,shot,s[0].tap_x,s[0].tap_y);
     s[0].vase = verse_arrange_click(s[0].vase);
     s[0].tap = false;
   }
   if s[0].point_on && !s[0].touch {
-    s[0].vase = verse_arrange_point(s[0].vase, screen_ray(s, shot, s[0].point_x, s[0].point_y));
+    s[0].vase = garden_closeup_point(s,shot,s[0].point_x,s[0].point_y);
   } else {
     s[0].vase.hover = ARRANGE_NONE; s[0].vase.hover_stem = -1;
   }

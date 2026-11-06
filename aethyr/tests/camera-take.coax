@@ -1,0 +1,131 @@
+// A bounded camera take: the realm's actual arrival, a skip, and a vase close-up.
+// This is a teaching fixture, not an alternate realm simulation or pixel renderer.
+#load "../../verse/planetary-villa/arrival.coax";
+#load "../shot/closeup.coax";
+#load "../replay.coax";
+
+take_live :: ()->CameraShot {return CameraShot.{eye=world_point(-17,2,-30),at=world_point(-17,1,-23)};}
+take_distance :: (a:WorldPoint,b:WorldPoint)->f32 {x:=a.x-b.x;y:=a.y-b.y;z:=a.z-b.z;return sqrt(x*x+y*y+z*z);}
+take_same :: (a:CameraShot,b:CameraShot)->bool {
+ return f32_bits(a.eye.x)==f32_bits(b.eye.x) && f32_bits(a.eye.y)==f32_bits(b.eye.y) && f32_bits(a.eye.z)==f32_bits(b.eye.z)
+ && f32_bits(a.at.x)==f32_bits(b.at.x) && f32_bits(a.at.y)==f32_bits(b.at.y) && f32_bits(a.at.z)==f32_bits(b.at.z);
+}
+TakeRate :: struct {maximum:f32;cuts:int;skips:int;ok:bool=true;}
+take_rate :: (fps:int,shard:int,shards:int)->TakeRate #effects(all) {
+ r:TakeRate;f:=verse_flight_start(flight_keys(),0,false);live:=take_live();last:=camera_flight(f,0,live);last_take:=verse_flight_take(f,0);
+ for frame:1..<fps*10+1 {
+  now:=f64(frame)/f64(fps);s:=camera_flight(f,now,live);part:=verse_flight_take(f,now);
+  if last_take==0 && part==2 {r.cuts+=1;}
+  else {speed:=take_distance(s.eye,last.eye)*f32(fps);if speed>r.maximum {r.maximum=speed;}}
+  last=s;last_take=part;
+ }
+ // Every displayed source frame can be skipped. Check the starting shot, the
+ // midpoint, every hand-back frame's analytic bound, and the exact deadline.
+ for frame:0..<cast(int)(f64(verse_flight_length(f))*f64(fps))+1 {
+  if frame%shards!=shard {continue;}
+  at:=f64(frame)/f64(fps);if !verse_flight_flying(f,at) {continue;}
+  skip:=verse_flight_skip(f,at);source:=camera_flight(f,at,live);
+  if !take_same(source,camera_flight(skip,at,live)) {r.ok=false;}
+  if !take_same(live,camera_flight(skip,at+f64(HANDBACK),live)) {r.ok=false;}
+  mid:=camera_flight(skip,at+f64(HANDBACK)*0.5,live);
+  if take_distance(mid.eye,shot_mix(source.eye,live.eye,0.5))>0.0001 {r.ok=false;}
+  previous:=source;
+  bound:=1.875*take_distance(source.eye,live.eye)/(f32(HANDBACK)*f32(fps))+0.0001;
+  for k:1..<cast(int)(f64(HANDBACK)*f64(fps))+2 {
+   s:=camera_flight(skip,at+f64(k)/f64(fps),live);
+   if take_distance(s.eye,previous.eye)>bound {r.ok=false;}previous=s;
+  }
+  r.skips+=1;
+ }
+ if !take_same(live,camera_flight(verse_flight_start(flight_keys(),0,true),0,live)) {r.ok=false;}
+ return r;
+}
+take_rate_slice :: (shard:int)->bool #effects(all) {
+ for fps:[3]int.[30,60,144] {r:=take_rate(fps,shard,32);if !(r.ok && r.cuts==1 && r.maximum<128 && r.skips>fps*8/32) {return false;}}
+ return true;
+}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 1/32" {#assert take_rate_slice(0);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 2/32" {#assert take_rate_slice(1);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 3/32" {#assert take_rate_slice(2);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 4/32" {#assert take_rate_slice(3);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 5/32" {#assert take_rate_slice(4);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 6/32" {#assert take_rate_slice(5);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 7/32" {#assert take_rate_slice(6);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 8/32" {#assert take_rate_slice(7);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 9/32" {#assert take_rate_slice(8);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 10/32" {#assert take_rate_slice(9);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 11/32" {#assert take_rate_slice(10);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 12/32" {#assert take_rate_slice(11);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 13/32" {#assert take_rate_slice(12);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 14/32" {#assert take_rate_slice(13);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 15/32" {#assert take_rate_slice(14);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 16/32" {#assert take_rate_slice(15);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 17/32" {#assert take_rate_slice(16);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 18/32" {#assert take_rate_slice(17);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 19/32" {#assert take_rate_slice(18);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 20/32" {#assert take_rate_slice(19);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 21/32" {#assert take_rate_slice(20);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 22/32" {#assert take_rate_slice(21);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 23/32" {#assert take_rate_slice(22);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 24/32" {#assert take_rate_slice(23);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 25/32" {#assert take_rate_slice(24);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 26/32" {#assert take_rate_slice(25);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 27/32" {#assert take_rate_slice(26);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 28/32" {#assert take_rate_slice(27);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 29/32" {#assert take_rate_slice(28);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 30/32" {#assert take_rate_slice(29);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 31/32" {#assert take_rate_slice(30);}
+#test "Hecate 30/60/144 FPS and every-frame skip slice 32/32" {#assert take_rate_slice(31);}
+
+CameraTake :: struct {flight:Flight;vase:Arrange;shot:CameraShot;}
+take_new :: ()->CameraTake #effects(all) {return CameraTake.{flight=flight_keys(),vase=verse_arrange_new(v3(-17,1,-23),0.1),shot=take_live()};}
+// book:begin step
+take_step :: (state:CameraTake,tick:int,command:int)->CameraTake #effects(all) {
+ next:=state;now:=f64(tick)/64;
+ if command==1 {next.flight=verse_flight_start(next.flight,now,false);}
+ if command==2 {next.flight=verse_flight_skip(next.flight,now);}
+ if command==3 {next.vase=verse_arrange_open(next.vase,0);}
+ if command==4 {
+  // The opening is below the look point by ARRANGE_LIFT. This projected
+  // coordinate is calculated from the authored pitch and distance.
+  ny:= -f32(ARRANGE_LIFT)*cos(f32(ARRANGE_PITCH))/(f32(ARRANGE_DIST)+f32(ARRANGE_LIFT)*sin(f32(ARRANGE_PITCH)));
+  next.vase=camera_closeup_point(next.vase,state.shot,1,1,0,ny);
+  next.vase=verse_arrange_click(next.vase);
+ }
+ if command==5 {next.vase=verse_arrange_close(next.vase);}
+ next.vase=verse_arrange_step(next.vase,1.0f32/64,false);
+ next.shot=camera_flight(next.flight,now,take_live());
+ if next.vase.blend>0 {next.shot=camera_closeup(next.vase,take_live());}
+ return next;
+}
+// book:end step
+take_digest :: (s:CameraTake)->int {
+ h:=2166136261;values:=[6]f32.[s.shot.eye.x,s.shot.eye.y,s.shot.eye.z,s.shot.at.x,s.shot.at.y,s.shot.at.z];
+ for v:values {h=replay_mix(h,cast(int)f32_bits(v));}
+ h=replay_mix(h,s.vase.count);h=replay_mix(h,cast(int)f32_bits(s.vase.blend));return h;
+}
+take_command :: (tick:int)->int {if tick==0 {return 1;}if tick==64 {return 2;}if tick==128 {return 3;}if tick==176 {return 4;}if tick==192 {return 5;}return 0;}
+take_record :: (s:ReplaySession)->CameraTake #effects(all) {
+ state:=take_new();replay_record(s,take_digest(state),7801);
+ for tick:0..<256 {
+  command:=take_command(tick);
+  if command>0 {e:=ReplayEvent.{source=REPLAY_ACTIONS,request=tick+1};e.words[0]=command;verdict:=replay_offer(s,e);}
+  t:=replay_take(s);state=take_step(state,tick,ifx t.ok then t.event.words[0] else 0);replay_stepped(s,take_digest(state));
+ }
+ return state;
+}
+take_play :: (s:ReplaySession,fault:bool)->CameraTake #effects(all) {
+ state:=take_new();ok:=replay_play(s,take_digest(state));
+ for tick:0..<256 {
+  t:=replay_take(s);command:=ifx t.ok then t.event.words[0] else 0;
+  if fault && tick==176 {command=0;}
+  state=take_step(state,tick,command);replay_stepped(s,take_digest(state));
+ }
+ return state;
+}
+#test "a recorded camera take replays every camera component and detects a missing flower click" {
+ b:[1]ReplayBacking;s:=replay_backing(b[..]);live:=take_record(s);digest:=replay_digest(s);
+ #assert live.vase.count==1 && live.vase.blend==0 && take_same(live.shot,take_live());
+ played:=take_play(s,false);#assert played.vase.count==1 && replay_matched(s) && replay_digest(s)==digest;
+ played=take_play(s,true);#assert played.vase.count==0 && replay_diverged(s)==176 && !replay_matched(s);
+}

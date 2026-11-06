@@ -1,0 +1,19 @@
+// book:begin example
+#load "../tests/camera-take.coax";
+#import "Basic";
+exit :: (code:s32) #foreign #effects(foreign);
+main :: () #effects(all) {
+ for fps:[3]int.[30,60,144] {
+  r:=take_rate(fps,0,1);if !r.ok || r.cuts!=1 || r.maximum>=128 {exit(1);return;}
+  print("% FPS: % source frames skipped; one authored cut; below 128 m/s\n",fps,r.skips);
+ }
+ b:[1]ReplayBacking;s:=replay_backing(b[..]);live:=take_record(s);digest:=replay_digest(s);
+ print("record: % events, % ticks, % flower\n",replay_events(s),replay_tick(s),live.vase.count);
+ played:=take_play(s,false);
+ if !replay_matched(s) || replay_digest(s)!=digest || played.vase.count!=1 {exit(1);return;}
+ print("replay: all six camera components and flower count match\n");
+ played=take_play(s,true);
+ print("missing click: first divergent tick %\n",replay_diverged(s));
+ if replay_diverged(s)!=176 || played.vase.count!=0 {exit(1);}
+}
+// book:end example

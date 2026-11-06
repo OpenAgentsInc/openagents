@@ -106,7 +106,7 @@
 - [75. Creatures that follow and watch](ch075-creatures-that-follow-and-watch.md) — partly implemented
 - [76. Find a way through](ch076-find-a-way-through.md) — partly implemented
 - [77. People who talk back](ch077-people-who-talk-back.md) — partly implemented
-- [78. Cinematics and close-ups](ch078-cinematics-and-close-ups.md) — design draft
+- [78. Cinematics and close-ups](ch078-cinematics-and-close-ups.md) — partly implemented
 
 **X. Aethyrforge: generating worlds**
 

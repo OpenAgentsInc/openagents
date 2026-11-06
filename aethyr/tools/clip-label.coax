@@ -1,0 +1,50 @@
+// Metadata for this chapter's staged fixed-step captures. Never labels one recorded.
+#module "aethyr.tools.cliplabel";
+#authority;
+#load "../../coax/lib/json/json.coax";
+ClipLabel :: struct {game:string;commit:string;stage:string;seed:int;width:int;height:int;fps:int;}
+#test "a staged capture label is exact JSON and a short output is untouched" {
+ a:=ClipLabel.{game="garden",commit="0123456789abcdef0123456789abcdef01234567",stage="close-up",seed=7801,width=960,height=600,fps=30};
+ out:[1024]u8;n:=clip_label(a,out[..]);
+ #assert n>0 && cast(string)out[0..<n]=="{\"schema\":1,\"source\":\"staged\",\"game\":\"garden\",\"commit\":\"0123456789abcdef0123456789abcdef01234567\",\"stage\":\"close-up\",\"seed\":7801,\"width\":960,\"height\":600,\"fps\":30}";
+ for i:0..<out.count {out[i]=73;}
+ #assert clip_label(a,out[0..<n-1])== -1;for v:out {#assert v==73;}
+ #assert clip_label(a,out[0..<n])==n;
+}
+#test "labels admit bounded names, exact hexadecimal commits, seed and render limits" {
+ a:=ClipLabel.{game="g",commit="0123456789abcdef0123456789abcdef01234567",stage="s",seed=0,width=1,height=1,fps=1};out:[1024]u8;
+ #assert clip_label(a,out[..])>0;
+ a.seed=4294967295;a.width=4096;a.height=4096;a.fps=144;#assert clip_label(a,out[..])>0;
+ for field:0..<8 {
+  bad:=a;if field==0 {bad.game="";}if field==1 {bad.stage="";}if field==2 {bad.commit="0123456789abcdef0123456789abcdef0123456";}
+  if field==3 {bad.seed= -1;}if field==4 {bad.width=0;}if field==5 {bad.height=0;}if field==6 {bad.fps=0;}if field==7 {bad.seed=4294967296;}
+  #assert clip_label(bad,out[..])== -1;
+ }
+ for field:0..<3 {bad:=a;if field==0 {bad.width=4097;}if field==1 {bad.height=4097;}if field==2 {bad.fps=145;}#assert clip_label(bad,out[..])== -1;}
+ for bad_name:[4]string.["Upper","has space","quote\"","slash/"] {bad:=a;bad.game=bad_name;#assert clip_label(bad,out[..])== -1;bad=a;bad.stage=bad_name;#assert clip_label(bad,out[..])== -1;}
+ long:[65]u8;for i:0..<long.count {long[i]='a';}bad:=a;bad.game=cast(string)long[..];#assert clip_label(bad,out[..])== -1;bad=a;bad.stage=cast(string)long[..];#assert clip_label(bad,out[..])== -1;
+ bad=a;bad.game=cast(string)long[0..<64];bad.stage=bad.game;#assert clip_label(bad,out[..])>0;
+ bad=a;bad.commit="0123456789abcdef0123456789abcdef012345678";#assert clip_label(bad,out[..])== -1;
+ bad.commit="g123456789abcdef0123456789abcdef01234567";#assert clip_label(bad,out[..])== -1;
+ bad.commit="A123456789abcdef0123456789abcdef01234567";#assert clip_label(bad,out[..])== -1;
+ bad.commit=":123456789abcdef0123456789abcdef01234567";#assert clip_label(bad,out[..])== -1;
+}
+#test "name alphabet includes each boundary and excludes its neighbours" {
+ for name:[5]string.["a","z","0","9","-"] {#assert clip_label_id(name);}
+ for name:[6]string.["`","{","/",":",",","."] {#assert !clip_label_id(name);}
+}
+clip_label_id :: (s:string)->bool #effects(all) {
+ if s.count<1 || s.count>64 {return false;}
+ for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-') {return false;}}
+ return true;
+}
+clip_label :: (a:ClipLabel,out:[]u8)->int #effects(all) {
+ if !clip_label_id(a.game) || !clip_label_id(a.stage) || a.commit.count!=40 {return -1;}
+ for c:a.commit {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return -1;}}
+ if a.seed<0 || a.seed>4294967295 || a.width<1 || a.width>4096 || a.height<1 || a.height>4096 || a.fps<1 || a.fps>144 {return -1;}
+ buf:[1024]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);
+ jo_key(o[..],"schema");jo_int(o[..],1);jo_key(o[..],"source");jo_str(o[..],"staged");
+ jo_key(o[..],"game");jo_str(o[..],a.game);jo_key(o[..],"commit");jo_str(o[..],a.commit);jo_key(o[..],"stage");jo_str(o[..],a.stage);
+ jo_key(o[..],"seed");jo_int(o[..],a.seed);jo_key(o[..],"width");jo_int(o[..],a.width);jo_key(o[..],"height");jo_int(o[..],a.height);jo_key(o[..],"fps");jo_int(o[..],a.fps);jo_end(o[..]);
+ text:=jo_text(o[..]);if out.count<text.count {return -1;}for i:0..<text.count {out[i]=text[i];}return text.count;
+}

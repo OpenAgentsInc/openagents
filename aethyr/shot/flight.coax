@@ -1,0 +1,27 @@
+// Authored flights produce chapter 10's CameraShot and share the camera blend.
+#authority;
+#load "../cinematic.coax";
+#load "legacy.coax";
+
+#test "a typed flight preserves the authored shot and hands back to the live camera" {
+ f:=verse_flight_new();f=verse_flight_key(f,0,v3(0,8,-8),v3(0,0,0),false,EASE_LINEAR);
+ f=verse_flight_key(f,2,v3(2,2,-4),v3(0,1,1),false,EASE_SMOOTH);f=verse_flight_start(f,10,false);
+ live:=CameraShot.{eye=world_point(4,2,-3),at=world_point(4,1,1)};
+ a:=camera_flight(f,10,live);#assert a.eye.y==8 && a.eye.z== -8;
+ b:=camera_flight(f,12,live);#assert b.eye.x==2 && b.eye.y==2 && b.at.z==1;
+ c:=camera_flight(f,12.45,live);#assert abs(c.eye.x-3)<0.000001 && abs(c.at.x-2)<0.000001;
+ d:=camera_flight(f,12.9,live);#assert d.eye.x==live.eye.x && d.at.x==live.at.x;
+ f=verse_flight_skip(f,11);a=camera_flight(f,11,live);b=camera_world(fl_flown(f,1));
+ #assert a.eye.x==b.eye.x && a.eye.y==b.eye.y && a.at.z==b.at.z;
+ d=camera_flight(f,11.9,live);#assert d.eye.x==live.eye.x && d.at.x==live.at.x;
+ f=verse_flight_start(f,20,true);d=camera_flight(f,20,live);#assert d.eye.x==live.eye.x && d.at.z==live.at.z;
+}
+
+camera_flight :: (f:Flight,now:f64,live:CameraShot)->CameraShot #effects(all) {
+ if !f.running {return live;}
+ from:=f.back_from;at:=f.back_at;
+ if !f.backing {
+  from=fl_flown(f,f32(now-f.start));at=f.start+f64(verse_flight_length(f));
+ }
+ return camera_blend(camera_world(from),live,f32(now-at)/f32(HANDBACK));
+}
