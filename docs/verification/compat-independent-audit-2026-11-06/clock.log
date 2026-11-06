@@ -1,0 +1,17 @@
+  ok   argv arrives whole
+  ok   a temporary directory
+  ok   write, append, size
+  ok   read whole, refuse a short buffer
+  ok   mkdir with parents, twice
+  ok   list, sorted
+  ok   missing, not-a-file, not-a-dir
+  ok   run: stdout lines, stderr, status
+  ok   a timeout kills the child
+  ok   a missing program is ENOENT
+  ok   quiet: output dropped, exit 0
+  ok   sleep
+  ok   nanoseconds use the monotonic clock, at nanosecond scale
+  ok   environment
+  ok   working directory
+  ok   remove a tree, and again
+sys selftest: ok

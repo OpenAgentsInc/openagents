@@ -1,0 +1,39 @@
+// Independent CLI composition checks for the #12955 published-state boundary.
+// Runs in an isolated checkout; COMPILER may name a qualified candidate compiler.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+AuditCompat :: struct {name:string;old:string;fresh:string;base:string;status:int;}
+audit_contains :: (text:string,part:string)->bool {
+  if part.count>text.count {return false;}for i:0..<text.count-part.count+1 {if text[i..<i+part.count]==part {return true;}}return false;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=1 {return 2;}
+  compiler:=args_at(args[..],0);dbuf:[4096]u8;dir:=fs_temp("coax-compat-audit-",dbuf[..]);if dir=="" {return 2;}
+  defer {gone:=fs_remove(dir);}
+  abuf:[4096]u8;bbuf:[4096]u8;cbuf:[4096]u8;
+  old:=fs_join(dir,"old.coax",abuf[..]);fresh:=fs_join(dir,"new.coax",bbuf[..]);base:=fs_join(dir,"base.coax",cbuf[..]);
+  cases:=[10]AuditCompat.[
+    AuditCompat.{name="last element of an owned array default",old="Save :: struct #persisted {x:[2]u64=[2]u64.[0,18446744073709551615];}",fresh="Save :: struct #persisted {x:[2]u64=[2]u64.[0,18446744073709551614];}",status=1},
+    AuditCompat.{name="optional default tag",old="Save :: struct #persisted {x:int?=null;}",fresh="Save :: struct #persisted {x:int?=some(0);}",status=1},
+    AuditCompat.{name="enum numeric identity in a saved value",old="Kind :: enum u8 {one=1;two=2;} Save :: struct #persisted {x:Kind;}",fresh="Kind :: enum u8 {one=1;two=3;} Save :: struct #persisted {x:Kind;}",status=1},
+    AuditCompat.{name="ABI stride through a view",old="Child :: struct {x:int;} f :: (v:[]Child)->int #export_c #effects(all) {return v.count;}",fresh="Child :: struct {x:int;y:int=0;} f :: (v:[]Child)->int #export_c #effects(all) {return v.count;}",status=1},
+    AuditCompat.{name="ABI stride through a nested view",old="Child :: struct {x:int;} Parent :: struct {child:[]Child;} f :: (v:Parent)->int #export_c #effects(all) {return v.child.count;}",fresh="Child :: struct {x:int;y:int=0;} Parent :: struct {child:[]Child;} f :: (v:Parent)->int #export_c #effects(all) {return v.child.count;}",status=1},
+    AuditCompat.{name="baseline suppresses evaluated default equivalence",old="Save :: struct #persisted {x:int=1;}",base="Save :: struct #persisted {x:int=2;}",fresh="Save :: struct #persisted {x:int=1+1;}",status=0},
+    AuditCompat.{name="baseline refuses a different bad default",old="Save :: struct #persisted {x:int=1;}",base="Save :: struct #persisted {x:int=2;}",fresh="Save :: struct #persisted {x:int=3;}",status=1},
+    AuditCompat.{name="nested optional default payload",old="Child :: struct {x:int;} Save :: struct #persisted {x:Child?=some(Child.{x=7});}",fresh="Child :: struct {x:int;} Save :: struct #persisted {x:Child?=some(Child.{x=8});}",status=1},
+    AuditCompat.{name="nested appended default remains compatible",old="Child :: struct {x:[2]int=[2]int.[1,2];} Save :: struct #persisted {x:Child?=some(Child.{});}",fresh="Child :: struct {x:[2]int=[2]int.[1,2];y:int=3;} Save :: struct #persisted {x:Child?=some(Child.{});}",status=0},
+    AuditCompat.{name="nested append cannot hide a changed existing default",old="Child :: struct {x:[2]int=[2]int.[1,2];} Save :: struct #persisted {x:Child?=some(Child.{});}",fresh="Child :: struct {x:[2]int=[2]int.[1,4];y:int=3;} Save :: struct #persisted {x:Child?=some(Child.{});}",status=1}
+  ];
+  bad:=0;
+  for c:cases {
+    if !fs_write(old,c.old) || !fs_write(fresh,c.fresh) || !fs_write(base,c.base) {return 2;}
+    argv:=[6]string.[compiler,"compat",old,fresh,"--baseline",base];out:[65536]u8;err:[65536]u8;
+    r:=proc_run(argv[0..<(ifx c.base=="" then 4 else 6)],120000,out[..],err[..]);text:=cast(string)err[0..<r.err_n];
+    ok:=r.started==0 && r.status==c.status && !r.cut && !r.timed_out;
+    if c.status==1 && !audit_contains(text,"coax compat: incompatible") {ok=false;}
+    print("% %\n",ifx ok then "PASS" else "FAIL",c.name);if !ok {bad+=1;tool_errln(text);}
+  }
+  print("compat composition audit: %/10 passed\n",10-bad);return ifx bad==0 then 0 else 1;
+}

@@ -1,0 +1,30 @@
+diff --git a/aethyr/lab/physics-aethyr.coax b/aethyr/lab/physics-aethyr.coax
+index d959eea079..931d6542ad 100644
+--- a/aethyr/lab/physics-aethyr.coax
++++ b/aethyr/lab/physics-aethyr.coax
+@@ -6 +6 @@
+-tool_main :: ()->int #export_c {
++tool_main :: ()->int #export_c #effects(all) {
+diff --git a/aethyr/lab/physics-lab.coax b/aethyr/lab/physics-lab.coax
+index ac8b88b443..a37d213c0c 100644
+--- a/aethyr/lab/physics-lab.coax
++++ b/aethyr/lab/physics-lab.coax
+@@ -68 +68 @@ lab_capture :: (p:LabSpec,states:[][]u8,path:string)->bool {
+-tool_main :: ()->int #export_c {
++tool_main :: ()->int #export_c #effects(all) {
+diff --git a/aethyr/lab/physics-scene.coax b/aethyr/lab/physics-scene.coax
+index c0a3dcbd33..6f4eb60684 100644
+--- a/aethyr/lab/physics-scene.coax
++++ b/aethyr/lab/physics-scene.coax
+@@ -77 +77 @@ LAB_NAMES :: [6]string.["fall-1k","fall-10k","fall-30k","stack","pile","slope"];
+-lab_name :: (kind:int)->string {
++lab_name :: (kind:int)->string #effects(all) {
+@@ -80 +80 @@ lab_name :: (kind:int)->string {
+-lab_vec :: (x:f64,y:f64,z:f64)->LabVec {
++lab_vec :: (x:f64,y:f64,z:f64)->LabVec #effects(all) {
+@@ -83 +83 @@ lab_vec :: (x:f64,y:f64,z:f64)->LabVec {
+-lab_spec :: (kind:int)->LabSpec {
++lab_spec :: (kind:int)->LabSpec #effects(all) {
+@@ -94 +94 @@ lab_spec :: (kind:int)->LabSpec {
+-lab_body :: (p:LabSpec,seed:int,index:int)->LabBody {
++lab_body :: (p:LabSpec,seed:int,index:int)->LabBody #effects(all) {

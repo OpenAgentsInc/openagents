@@ -1,0 +1,16 @@
+aethyr/lab/physics-lab.coax:68:1: error[E0942]: procedure 'tool_main' requires #effects in this unit
+  tool_main :: ()->int #export_c {
+  ^
+aethyr/lab/physics-scene.coax:77:1: error[E0942]: procedure 'lab_name' requires #effects in this unit
+  lab_name :: (kind:int)->string {
+  ^
+aethyr/lab/physics-scene.coax:80:1: error[E0942]: procedure 'lab_vec' requires #effects in this unit
+  lab_vec :: (x:f64,y:f64,z:f64)->LabVec {
+  ^
+aethyr/lab/physics-scene.coax:83:1: error[E0942]: procedure 'lab_spec' requires #effects in this unit
+  lab_spec :: (kind:int)->LabSpec {
+  ^
+aethyr/lab/physics-scene.coax:94:1: error[E0942]: procedure 'lab_body' requires #effects in this unit
+  lab_body :: (p:LabSpec,seed:int,index:int)->LabBody {
+  ^
+5 errors
