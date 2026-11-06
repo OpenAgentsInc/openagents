@@ -1,5 +1,10 @@
 # Owner actions
 
+## Valley Lab walking preview (2026-11-05)
+
+- [ ] Open [the local Canyon Pair walking view](http://127.0.0.1:8891/worlds/valley-canyon?pack=valley-canyon) to try it. WASD moves, Space jumps, right-side drag or arrows look, R resets and O changes to orbit. The existing lab also opens it with P. Automated desktop/phone checks pass.
+- The preview is served locally; repository instructions require headless checks and prohibit opening a visible browser window.
+
 ## WoW automation terminated (2026-11-04)
 
 The owner cancelled this entire subproject and requested deletion from main.

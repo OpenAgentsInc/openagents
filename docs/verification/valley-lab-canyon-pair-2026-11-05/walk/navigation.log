@@ -1,0 +1,3 @@
+coax jobs: waiting for 1 of 12 build workers held by 1 other coax process; running 11 now (coax status shows them)
+PASS Canyon navigation desktop: parent P key opens full source pair; 1 returns to parent
+PASS Canyon navigation phone: parent actual touch opens full source pair; 1 returns to parent

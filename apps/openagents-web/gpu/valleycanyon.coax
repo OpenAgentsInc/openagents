@@ -9,7 +9,14 @@ cv_word :: (vertices:[]u32,at:int)->f32 {return f32_from_bits(vertices[at]);}
 cv_world :: (id:u32,instance:u32,vertices:[]u32,u:[]f32)->V3 {at:=cast(int)id*12;p:=v4(cv_word(vertices,at),cv_word(vertices,at+1),cv_word(vertices,at+2),1);m:=32+cast(int)instance*24;return v3(wg_dot4(wg_at4(u,m),p),wg_dot4(wg_at4(u,m+4),p),wg_dot4(wg_at4(u,m+8),p));}
 cv_shadow :: (world:V3,u:[]f32)->V3 {p:=cv_sub(world,cv_at(u,92));return v3(wg_dot3(p,cv_at(u,80))/u[96],wg_dot3(p,cv_at(u,84))/u[96],0.5-wg_dot3(p,cv_at(u,88))/(4*u[96]));}
 vc_bg_vs :: (i:u32,j:u32)->V4 {return splash_bg_vs(i,j);}
-vc_bg_fs :: (p:V4,u:[]f32)->V4 {return v4(0.065,0.075,0.09,1);}
+// An explicit metre grid on the inspection floor, below every source bound. The original scene's terrain is not included.
+vc_bg_fs :: (p:V4,u:[]f32)->V4 {
+  sky:=v3(0.065,0.075,0.09);if u[7]<0.5 {return v4(sky.x,sky.y,sky.z,1);}
+  ray:=cv_add(cv_at(u,20),cv_add(cv_scale(cv_at(u,12),(p.x/u[0]*2-1)/u[15]),cv_scale(cv_at(u,16),(1-p.y/u[1]*2)/u[19])));
+  if ray.y>=-0.0001 {return v4(sky.x,sky.y,sky.z,1);}t:=(u[100]-u[9])/ray.y;if t<=0 {return v4(sky.x,sky.y,sky.z,1);}
+  at:=cv_add(cv_at(u,8),cv_scale(ray,t));fx:=abs(at.x-floor(at.x+0.5));fz:=abs(at.z-floor(at.z+0.5));line:=ifx fx<0.025 || fz<0.025 then 0.08f32 else 0.0f32;
+  fade:=1.0f32/(1.0f32+t*0.025f32);c:=cv_add(cv_scale(v3(0.16+line,0.15+line,0.13+line),fade),cv_scale(sky,1-fade));return v4(c.x,c.y,c.z,1);
+}
 vc_vertex :: struct {a:V4;b:V4;c:V4;}
 vc_fx_vs :: (i:u32,j:u32,a:vc_vertex,u:[]f32)->SplashV {return splash_fx_vs(i,j,splash_fx_vs_in.{a=a.a,b=a.b,c=a.c,d=v4(0,0,0,0)},u);}
 vc_fx_fs :: (v:SplashV,u:[]f32)->V4 {return splash_fx_fs(v,u);}

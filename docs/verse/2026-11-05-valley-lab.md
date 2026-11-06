@@ -9,6 +9,8 @@ loads two exact Quixel-ID matches from a private local cache, through Coax
 download/import, SHA-256 admission and the same bounded GPU path. A dedicated
 Canyon Pair view also reconstructs two actual Ancient World instances using
 all 1,999,990 source triangles, original 4K maps and recovered world poses.
+That section now opens with the shared first-person walker, a metre-grid
+inspection floor and conservative source-bounds collision.
 
 Build **Valley Lab**, an unlisted world at `/worlds/valley-lab`, where a
 visitor can inspect each engine system alone and then watch those same
@@ -684,3 +686,60 @@ measured-savings gates; arbitrary imported meshes remain unsupported.
 Continue the remaining milestone 0/1 exits alongside that step: saved
 walkthrough/replay, bounded source import and shared-renderer qualification.
 A working station does not upgrade a book chapter's completion status.
+
+## Landed: walk around the original Canyon Pair
+
+The parent lab's **P** key and `#section` open
+`/worlds/valley-canyon?pack=valley-canyon`, now in first person by default.
+**WASD** moves, **Shift** walks instead of running, **Space** jumps, arrow keys
+or dragging the right half looks, and **R** restores the spawn. Touch uses a
+left-side drag to move, a right-side drag to look, and the **JUMP** button.
+These touch drags are sequential single-pointer controls. **O**, or its top
+button, switches between walking and the existing isolated orbit inspection;
+**V** and **I** retain material diagnostics and instance isolation. **1** returns
+to the primitive stations.
+
+This uses Aethyr's existing `walk.coax` fixed 1/64-second capsule controller,
+its declared Valley Lab collision profile and `follow_first_shot` camera.
+Source vertices, texture bytes and the two source matrices are unchanged.
+The metre-grid floor sits below the pair's conservative bounds. Two explicit
+conservative AABB barriers extend from that floor to each source bound's top,
+including when an instance is hidden for inspection. These barriers also close
+the space below suspended parts of the source assembly. They are inspection
+fixtures, not the original scene's terrain or its collision mesh. The view
+has no imported Echo avatar, slope-aware animation or vaulting yet. Full
+triangle collision and adjoining source terrain remain separate future stages.
+
+Short jump presses are queued through Aethyr's input primitive even when
+released before a frame. Blur releases held controls while retaining already queued presses, following
+the shared input contract;
+reset clears movement and restores the initial feet. Orbit freezes locomotion
+and clears held controls.
+
+## Assessment: the original project's controller and Echo avatar
+
+Inspected the local `ValleyoftheAncient2` project under
+`~/Documents/Unreal Projects/`. This assessment comes from its C++ source,
+configuration, asset inventory and serialized asset names/references. It does
+not execute the sample game or Blueprint graphs. References establish that a
+system is present; they do not qualify its runtime behavior or numeric tuning.
+
+| System | Evidence in this copy | Implication for Aethyr |
+| --- | --- | --- |
+| Player character | `Content/AncientContent/Blueprints/Character/BP_EchoCharacter.uasset` references `/Script/ModularGameplayActors.ModularCharacter`, capsule, `CharacterMovementComponent`, `AddMovementInput`, `JumpZVelocity`, `MaxWalkSpeed`, camera, Motion Warping and vaulting. The plugin's `Public/ModularCharacter.h` derives from `ACharacter`. | Use the existing checked Aethyr capsule and camera as the movement foundation. The Blueprint is not an engine-independent controller to drop into Coax. Capsule dimensions, acceleration, jump speed and braking defaults have not yet been decoded. |
+| Input | `Config/DefaultInput.ini` selects Enhanced Input. `Input/IM_ThirdPersonControls_InputMapping` and move-forward/right, turn and look-up actions exist. `Source/AncientGame/Input/PlayerControlsComponent.cpp` installs/removes mapping contexts and delegates control setup to Blueprint. | Preserve semantic actions in Coax; translate bindings rather than shipping Unreal input components. |
+| Movement tuning and abilities | `Character/MovementAttributeSet.cpp` applies the Gameplay Ability System's `MoveSpeed` attribute to `CharacterMovementComponent::MaxWalkSpeed`. Echo has `Data/DT_EchoAttributeDefaults`, an ability-binding component, `Blueprints/Abilities/GA_Vault`, vaulting trigger/utilities and a `VaultOver` clip/montage. | Movement and animation are coupled to attributes and abilities. Port explicit locomotion states and traversal rules as separately checked systems. Exact defaults and Blueprint transition conditions still need a structured export. |
+| Camera | `Source/AncientGame/Camera/` contains a camera-mode stack, spring-arm modes and critically damped location/rotation interpolators. `SpringArm.cpp` sweeps a sphere against the camera channel to pull the camera out of obstacles. Third-person, vaulting-area, catwalk, spline and static-framing Blueprint modes exist. | Our shared follow camera covers the basic movement view. The original's authored camera modes and transitions need their own data and parity checks. |
+| Visible avatar | `Characters/Echo/Meshes/Echo.uasset` is about 54 MiB; `Echo_Skeleton.uasset` and `Rig/Physics/PA_Echo` exist. There are 183 files under `Characters/Echo`, including meshes, animation, materials, hair and rigs. Material references include skin/head, eyes/lashes/teeth, clothing, leather, accessories and hair cards. | There is useful source data for a skinned avatar. Export one mesh LOD, skeleton, bind poses, weights, material slots and a small clip set before expanding fidelity. Asset-file size is not a runtime GPU budget or triangle count. |
+| Locomotion animation | `Echo_AnimBP`, idle/walk/jog starts and stops, left/right 90/180-degree starts, fall/land, sit/stand, reach and vault clips exist. Serialized animation references include locomotion-state determination, acceleration, falling and root-motion queries. | A single walking loop will not reproduce Echo's responsiveness. Test idle/walk/jog/jump blending and turning first, then starts/stops, root motion and traversal. Graph presence alone does not verify active states. |
+| Ground adaptation and secondary motion | `Echo_SlopeWarping_CtrlRig`, twist/helper rigs, `Echo_PostProcess_AnimBP`, hair animation and groom binding assets exist. Physics assets cover skirt, scarf, ponytail, pouch, canister and shoulder pad. Animation metadata names FBIK enable/disable controls. | Separate skinning, foot placement/slope adaptation, corrective deformation, hair and cloth. Begin with baked animation and simpler material/hair representations, then qualify each additional system in isolation. |
+| Encounter-specific extensions | `Plugins/GameFeatures/AncientBattle/Content/Characters/Echo/Animations` includes dodge and light-dart charge/release assets and montages. | Keep combat/ability animation separate from the basic walking-avatar milestone. |
+
+The practical next avatar slice is an isolated Echo station: export and verify
+one skeletal LOD plus idle, walk, jog and jump clips, show the bind pose and
+bone/weight diagnostics, then drive those clips with the same Aethyr walker
+used here. Record scale, bone count, influence limits, material cost and clip
+samples against the source before claiming equivalence. Add slope warping,
+vaulting, secondary motion and encounter abilities only after those checks.
+The current Canyon Pair view is first person; it does not contain Echo's mesh
+or claim an Unreal controller port.

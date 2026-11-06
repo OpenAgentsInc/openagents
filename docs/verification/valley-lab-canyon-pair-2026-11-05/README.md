@@ -9,8 +9,9 @@ material, transforms and independent SDK samples are in `source-placement.json`.
 Open `/worlds/valley-canyon?pack=valley-canyon`, or press **P** in the parent
 lab. The scan station also has a touch button. **1** returns to the parent;
 **V** cycles PBR, albedo, normals, roughness and source vertex paint;
-**I** isolates either instance or shows both; drag/wheel orbit/zoom and **R**
-resets the view. It is an unlisted Valley Lab inspection view with its own
+**I** isolates either instance or shows both. Walking is now the default:
+**WASD** moves, **Space** jumps and right-side drag or arrow keys look.
+**O** switches to the original drag/wheel orbit/zoom; **R** resets the view. It is an unlisted Valley Lab inspection view with its own
 small GPU-facing module, so the original primitive stations keep their
 independent frame/mesh limits.
 
@@ -175,3 +176,52 @@ navigation journeys passed again. Their receipts are `rebased-host-browser.txt`
 and `rebased-host-navigation.txt`. The source view's runtime/shader dependencies did not change. The parent
 walker changed only a test step-budget annotation. The new host pack/action
 paths were the reason for that repeat qualification.
+
+
+## Walking follow-up, 2026-11-05
+
+The source pair now defaults to first-person walking through shared
+`aethyr/walk.coax` and `follow_first_shot`, with a lab floor and conservative
+per-instance AABB collision. The source pack, UVs/maps and pose matrices are
+unchanged from `8de46834ec`; that commit's exhaustive geometry oracle and
+13/13 pack-policy mutation kills remain the source/admission evidence.
+No changes to the shared controller or collision-policy modules were required.
+The avatar/controller source assessment is in the main Valley Lab plan.
+
+Final walking Wasm: **66,113 bytes**, below the existing 80,000-byte cap;
+SHA-256 `f6b0355c50b59a425fdac97d6d82f934f49254f7d66f8b69bda14b1400278386`.
+WGSL SHA-256 `0af67fdcb4d9dc59df5b9c44d901f2fdd029b48d398c45aed473a2b88e4aa96b`.
+Measured/accounted frame resources: **287,773,224 bytes**, not a browser peak.
+Both full source instances and their shadow submissions still fit the
+12,100,000-vertex declaration (orbit desktop observed 12,007,644; phone
+12,007,560). Budget test covers the first-person HUD at desktop, phone and
+high DPR. Physical camera/character units are metres and seconds.
+
+Evidence under `walk/`:
+
+- `native.log`: **368/368** load-graph checks, including capsule blocking,
+  jump taps released before a frame, the touch jump button, blur retaining
+  already queued presses, reset, touch movement and frame budgets.
+- `browser.log`: final hardware Metal desktop/phone journeys: default walk,
+  real key down/up, jump, reset, exact source matrix words, five distinct GPU
+  diagnostic crops, instance isolation, byte-identical reset/recovery crops
+  and preserved state over GPU loss. Phone also dispatches actual emulated
+  touch movement. Desktop additionally rejects a same-length source-byte
+  corruption before upload.
+- `navigation.log`: desktop P and parent phone touch open this section;
+  1 returns to the parent.
+- `desktop.png` and `phone.png`: visual layout inspection. Desktop capture
+  predates the final nonvisual blur queue correction; the phone capture and
+  full final browser journey use the final Wasm above.
+
+The phone test enables touch emulation **before navigation**. Enabling it
+only later changes the host's shadow-map selection from 2048 to 1024 on GPU
+recovery and makes a purported same-device pixel comparison invalid. Both
+sides of the final phone comparison use the same coarse-pointer profile.
+
+Additional checks: the Canyon material helper passes; committed WGSL matches
+its Coax source; `git diff --check` passes; `tools-check` reports 1,811 tracked
+tools and zero new tools without a firm reason. The rebase adds only unrelated
+language-design documents, so unchanged qualified code is not retested for it.
+Original terrain, exact triangle collision, Echo's visible avatar and Unreal
+lighting/animation equivalence remain unqualified.
