@@ -5,6 +5,10 @@ A4 imports are implemented within the [v1 profile](anim-imports-v1.md); the exac
 Echo/Slay re-import qualification remains open in [#12983](https://github.com/OpenAgentsInc/openagents/issues/12983). A5 scenes/cuts and the private Guardian study are implemented within the
 [scene profile](anim-scenes-v1.md). A6–A8 are pending.
 
+A6's cel half is being replanned as a hand-drawn 2D pipeline (layouts, key
+drawings, exposure sheets, ink and paint, painted backgrounds) with this lab's
+3D scenes as previz: see [Drawn Anime](2026-11-06-drawn-anime.md).
+
 Animation Lab is an unlisted realm and a set of `openagents labs` commands
 where you take any character's animation apart, change it and put it back
 together, then build scenes and cuts from it. Everything renders in Verse.

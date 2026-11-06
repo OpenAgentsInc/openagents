@@ -7,6 +7,9 @@ page for #12633. The [Anime CLI](../cli/2026-11-01-openagents-labs.md#labs-anime
 adds catalogue, direct and play for #12634. Live voice and asset generation
 remain distinct steps below. Source completion does not assert deployment.
 
+The cel-shaded 3D look described here is being replaced by drawn animation:
+see [Drawn Anime](2026-11-06-drawn-anime.md).
+
 Owner request, 2026-11-02:
 
 > I want people to be able to real time basically direct an anime. Let's
