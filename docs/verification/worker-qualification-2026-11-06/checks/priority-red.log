@@ -1,0 +1,10 @@
+ok   #forall each named visible hold target survives the observed person index (47 cases, 48600 steps, 0 ms)
+ok   #test a hold observation refuses missing ambiguous and absent targets (1 case, 2997 steps, 0 ms)
+ok   #forall other condition bits never become a scripted Hold Person target (15 cases, 7987 steps, 0 ms)
+FAIL #forall timed qualification admits normal priority and refuses altered scheduling (0 ms)
+coax/web/drift-hold.coax:35:3: error[E0406]: assertion failed
+    #assert drh_priority_ok(gated==1,nice)==(gated==0 || nice==0);
+    ^
+  note: in #forall timed qualification admits normal priority and refuses altered scheduling
+  counterexample: nice = -20, gated = 1
+4 checks, 3 passed, 1 failed

@@ -1,0 +1,7 @@
+scripted=0 observer=0
+ok   #test forge NPCs use cultist and villager stat blocks and their explicit target takes real damage (1 case, 6414005 steps, 105 ms)
+ok   #test forge NPCs stop without choosing a raid foe and building blows are ordinary turn actions (1 case, 363722 steps, 18 ms)
+213 checks, 213 passed, 0 failed
+ok   #test a hold observation refuses missing ambiguous and absent targets (1 case, 2997 steps, 0 ms)
+ok   #forall other condition bits never become a scripted Hold Person target (15 cases, 7987 steps, 0 ms)
+3 checks, 3 passed, 0 failed

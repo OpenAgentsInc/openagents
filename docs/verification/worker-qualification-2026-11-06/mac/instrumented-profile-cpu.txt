@@ -1,0 +1,21 @@
+Fri Nov  6 16:29:43 UTC 2026
+20424     1  0  99.4    01:18:22 CrashReportClient
+53983     1  0  99.4    10:07:53 CrashReportClient
+91705     1  0  99.4    01:48:57 CrashReportClient
+ 8828     1  0  99.3    01:39:29 CrashReportClient
+63335     1  0  99.1    09:58:59 CrashReportClient
+86108 86097  0  61.4       00:12 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.39/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)
+  403     1  0  15.4 10-17:21:35 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+51412     1  0   9.4 10-16:13:42 /Applications/Rex Beta.app/Contents/MacOS/Rex
+86378 86364  0   4.6       00:01 (docker)
+25636 57225  0   4.1    14:16:17 /Users/christopherdavid/.nvm/versions/node/v24.13.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex
+30788     1  0   3.4    02:36:39 /usr/libexec/amfid
+66688 66227  0   3.4    01:59:27 /Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/156.0.8078.79/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)
+66254 66227  0   3.0    01:59:29 /Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/156.0.8078.79/Helpers/Codex (Service).app/Contents/MacOS/Codex (Service)
+ 1827  1377  0   2.5    03:08:46 claude
+ 8625     1  0   2.4    01:39:58 /Users/christopherdavid/Applications/Lichii Frizti v1.app/Contents/MacOS/lichii
+30935 30436  0   2.4    13:36:54 /Users/christopherdavid/.nvm/versions/node/v24.13.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex
+86379     1  0   2.4       00:01 /usr/libexec/taskgated-helper
+77863     1  0   1.9 04-20:45:59 /usr/libexec/trustd
+  371     1  0   1.6 10-17:21:36 /usr/libexec/opendirectoryd
+  485     1  0   1.6 10-17:21:34 /usr/libexec/syspolicyd

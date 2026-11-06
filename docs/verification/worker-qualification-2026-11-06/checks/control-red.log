@@ -1,0 +1,8 @@
+status=1
+FAIL #test paired development holds name one person and refuse public or invalid target commands (1343 ms)
+coax/web/room/room-everglade.coax:2026:3: error[E0406]: assertion failed
+    #assert rm_eg_hold_take(v[..],k,SeatId.{value=0}) && v[0].ctl.hold_stamp==77;
+    ^
+  note: in #test paired development holds name one person and refuse public or invalid target commands
+1 of 725 checks (--only 'paired development holds'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

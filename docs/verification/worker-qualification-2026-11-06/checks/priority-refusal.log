@@ -1,0 +1,1 @@
+Timed qualification needs normal process priority (nice 0). Build the tool through the build gate, then run its prebuilt image outside the gate.

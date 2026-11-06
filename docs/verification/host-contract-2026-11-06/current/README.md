@@ -75,6 +75,13 @@ while unrelated jobs consume CPU. These failures remain open in #12981;
 this record does not claim the supplemental command passes. The host-contract
 completion does not replace that separate optimization qualification.
 
+The [worker qualification follow-up](../../worker-qualification-2026-11-06/README.md)
+retains these failures, reproduces the oversized Linux worker, and fixes
+the paired NPC fixture: its two nearest-person selections named different
+people. Both current release artifacts pass all gameplay profiles and
+raids with an observed common target. Their separate 600-microsecond
+qualification still fails; #12980 and #12981 remain open for that gate.
+
 ## Storage and replay
 
 Small immutable observations, profiles and logs are committed alongside this

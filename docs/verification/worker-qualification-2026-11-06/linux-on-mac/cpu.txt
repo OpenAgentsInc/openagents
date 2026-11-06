@@ -1,0 +1,21 @@
+Fri Nov  6 16:31:18 UTC 2026
+91705     1  0  99.6    01:50:32 CrashReportClient
+ 8828     1  0  99.4    01:41:04 CrashReportClient
+20424     1  0  99.4    01:19:57 CrashReportClient
+63335     1  0  99.4    10:00:34 CrashReportClient
+53983     1  0  98.2    10:09:28 CrashReportClient
+  403     1  0  28.0 10-17:23:10 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+51412     1  0   9.1 10-16:15:17 /Applications/Rex Beta.app/Contents/MacOS/Rex
+66254 66227  0   4.4    02:01:04 /Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/156.0.8078.79/Helpers/Codex (Service).app/Contents/MacOS/Codex (Service)
+66688 66227  0   3.5    02:01:02 /Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/156.0.8078.79/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)
+25636 57225  0   2.9    14:17:52 /Users/christopherdavid/.nvm/versions/node/v24.13.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex
+ 8625     1  0   2.8    01:41:33 /Users/christopherdavid/Applications/Lichii Frizti v1.app/Contents/MacOS/lichii
+30935 30436  0   2.4    13:38:29 /Users/christopherdavid/.nvm/versions/node/v24.13.1/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex
+40909     1  0   1.5    12:13:50 coax/web/build/serve
+49078     1  0   1.5    12:07:25 coax/web/build/serve
+18391     1  0   1.3    13:48:11 /Users/christopherdavid/work/oa-valley-preview/coax/web/build/serve
+84865 30935  0   1.3       02:19 /Users/christopherdavid/work/openagents-animlab-a3/coax/web/build/serve
+90744     1  0   1.3 10-15:00:17 /System/Applications/Messages.app/Contents/MacOS/Messages
+51420     1  0   1.0 10-16:15:16 /Applications/Rex Beta.app/Contents/Helpers/Rex Server.app/Contents/MacOS/rex
+ 1827  1377  0   0.9    03:10:21 claude
+75649     1  0   0.9    10:58:33 /Users/christopherdavid/work/oa-valley-controls/coax/web/build/serve

@@ -5,7 +5,9 @@ Issues #12980 and #12981 keep the existing 1,060,000-byte worker budget and
 
 ## Correct the paired spell fixture
 
-The failed 250 ms observation holds person 38 offline and person 40 online.
+The failed 250 ms observation holds person 38
+[offline](mac/original-facts-250-offline.json) and person 40
+[online](mac/original-facts-250-room.json), 25 ms apart.
 Both have condition bits 256. The original fixture independently asks each
 room to hold its nearest living person. Small position differences can
 select different people, so comparing those outcomes does not establish a
@@ -29,6 +31,13 @@ Tests precede the implementation. The isolated authority policies kill
 room-context control mutants, with zero survivors and no equivalents.
 The room-context run retains every room check. It also exposed the unused
 quick-match wrapper tracked in [#12982](quick-wrapper.md).
+
+The native-offline branch also passes its 100 ms paired replay with three
+background players and a real Linux room binary. This separate check runs
+at nice 15 without an optimization timing gate or raids. Its
+[receipt](native/qualification.json) records unchanged inputs and a passing
+gameplay result; the [log](native/replay.log) retains the exact observed
+target. It does not supply a 600-microsecond result.
 
 ## Measure at normal priority
 
@@ -59,6 +68,24 @@ stopped. This is not the documented uncontended target setup. The original
 passing 486/530/491-microsecond record remains in its original location;
 the follow-up retains its failed observations as well.
 
+An instrumented current worker adds the existing seven phase clocks. Its
+100 ms diagnostic replay passes at 505 microseconds across 2,009 samples;
+river and boat setup accounts for most of the previously unassigned time.
+The diagnostic artifact is not substituted for either release artifact.
+The large difference between attempts does not establish the cause of the
+release timing failures. The exact worker hashes and failed observations
+remain the qualification evidence.
+
+The actual Linux release worker also runs on the target Mac at nice 0,
+with three background players and every raid. All gameplay verdicts pass,
+including the observed named target. Its full-sample p95 is 630/555/700
+microseconds across 1,928/2,053/2,045 ticks. Local and 250 ms fail the
+unchanged 600-microsecond limit. See the
+[cross-build replay](linux-on-mac/full-replay.log) and its unchanged-input
+[receipt](linux-on-mac/qualification.json). Both issues remain open for
+timing qualification; fitting bytes and correct gameplay do not close
+their done-when requirements.
+
 ## Build identities
 
 See [build profiles](build-profiles.md) for the original Linux oversize
@@ -77,3 +104,13 @@ Compiling the wrapper at C `-O2` produces a rejected 1,102,285-byte
 candidate. Compiling only strict math at C `-O3` produces exactly the
 existing worker hash, so that change provides no optimization and is
 discarded. Neither experiment changes the supported builder.
+
+## Retained execution artifacts
+
+Large binaries, the generated C/header banks and manifests, original
+compiler/helper/receipt files, raw facts and screenshots are retained under
+`~/.openagents/aethyrforge/worker-qualification-12980-12981/2026-11-06/`.
+Mac artifacts live in `mac/` on the target Mac. Linux artifacts and the
+original oversized reproduction live in `linux/` on coderos-4080. The
+original source revision is `96b81d12ac`; the follow-up implementation is
+`3a1782efa9`, `f15d481971` and `a5ff8ecc14` on the rebased main branch.

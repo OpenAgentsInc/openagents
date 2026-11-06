@@ -1,0 +1,3 @@
+mutation scope: unit coax/web/room/room-hold-control.coax (its procedures; every check retained)
+not reached by any check: rm_quick
+33 mutants, 33 killed, 0 survived

@@ -1,0 +1,85 @@
+qualification process priority (nice): 15
+everglade-drift: room 127.0.0.1:9360, page 127.0.0.1:9361, results in /tmp/oa-worker-native-control-final
+profile 100: round trip 100 ms, jitter 30 ms, 2% lost
+  native room ready after 1 ms
+  step start
+  step crate
+  step strafe
+  step walk
+  step jump
+  step rg
+  gravity placement: you -6300,-56700 mm, Bram -450,-5950 cm, Tilda 180,-4817 cm
+  gravity placement: you -6300,-56700 mm, Bram -450,-5950 cm, Tilda 180,-4825 cm
+  step wos
+  step ww
+  step held
+  scripted Hold Person target: room 38, offline 38
+  step folk
+  step end
+  transmitted inputs: origins 138/133, end steps 1668/1668, identical true
+  (offline room host: 0 stalls, 0 ms of its beat dropped)
+  (native room tick: p95 880 us, p99 1470 us, budget 8000 us at p95: within)
+ok    100 scripted Hold Person selects the same person
+ok    100 background players stayed at least 32 m away
+ok    100 gravity safely reaches and drops a townsperson
+ok    100 movement inputs took effect (mm)
+ok    100 jump inputs took effect (cm)
+ok    100 position (in your heading, since the step)
+ok    100 camera heading
+ok    100 lift height
+ok    100 Reverse Gravity shown
+ok    100 Reverse Gravity particles
+ok    100 Wind Wall shown
+ok    100 Wind Wall particles
+ok    100 Wall of Stone shown
+ok    100 Wall of Stone panels
+ok    100 spell and condition particles
+ok    100 hotbar slots
+ok    100 condition on you
+ok    100 condition on others
+ok    100 conditions on the town's people
+ok    100 your engine conditions
+ok    100 stables down
+ok    100 plate text
+ok    100 status lines
+ok    100 camera jump, offline
+ok    100 camera jump, room
+ok    100 camera turn with no look, offline
+ok    100 camera turn with no look, room
+ok    100 corrections
+ok    100 a townsperson held
+ok    100 NPC speed against clip
+
+| probe | 100 |
+|---|---|
+| scripted Hold Person selects the same person | ok |
+| background players stayed at least 32 m away | ok |
+| gravity safely reaches and drops a townsperson | ok |
+| movement inputs took effect (mm) | ok |
+| jump inputs took effect (cm) | ok |
+| position (in your heading, since the step) | ok |
+| camera heading | ok |
+| lift height | ok |
+| Reverse Gravity shown | ok |
+| Reverse Gravity particles | ok |
+| Wind Wall shown | ok |
+| Wind Wall particles | ok |
+| Wall of Stone shown | ok |
+| Wall of Stone panels | ok |
+| spell and condition particles | ok |
+| hotbar slots | ok |
+| condition on you | ok |
+| condition on others | ok |
+| conditions on the town's people | ok |
+| your engine conditions | ok |
+| stables down | ok |
+| plate text | ok |
+| status lines | ok |
+| camera jump, offline | ok |
+| camera jump, room | ok |
+| camera turn with no look, offline | ok |
+| camera turn with no look, room | ok |
+| corrections | ok |
+| a townsperson held | ok |
+| NPC speed against clip | ok |
+holds

@@ -1,0 +1,14 @@
+scripted=1 observer=1
+ok   #test effect reservations: every source owns a disjoint span and invalid sources own none (1 case, 12369 steps, 0 ms)
+ok   #test effect reservations: available slots also cover all already accepted waiting work (1 case, 197125 steps, 1 ms)
+ok   #test effect reservations: only delayed world transitions need physical service (1 case, 768 steps, 0 ms)
+ok   #test forge NPC targets resolve existing townspeople and live players without guessing a creature (1 case, 220626 steps, 17 ms)
+ok   #test forge NPCs use cultist and villager stat blocks and their explicit target takes real damage (1 case, 6414005 steps, 106 ms)
+ok   #test forge NPCs stop without choosing a raid foe and building blows are ordinary turn actions (1 case, 363722 steps, 19 ms)
+213 checks, 211 passed, 2 failed
+FAIL #test a hold observation refuses missing ambiguous and absent targets (0 ms)
+coax/web/drift-hold.coax:13:20: error[E0406]: assertion failed
+    present[38]=true;#assert drh_person(bits[..],present[..])==38;
+                     ^
+  note: in #test a hold observation refuses missing ambiguous and absent targets
+2 checks, 0 passed, 2 failed
