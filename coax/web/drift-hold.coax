@@ -1,0 +1,39 @@
+// Only an observed, unique, present scripted target can seed the paired hold.
+#authority;
+DRH_FOLK :: 47;
+#forall "each named visible hold target survives the observed person index" person:0..<DRH_FOLK {
+  bits:[DRH_FOLK]int;present:[DRH_FOLK]bool;bits[person]=256;present[person]=true;
+  #assert drh_person(bits[..],present[..])==person;
+  bits[person]|=18432;#assert drh_person(bits[..],present[..])==person;
+}
+#test "a hold observation refuses missing ambiguous and absent targets" {
+  bits:[DRH_FOLK]int;present:[DRH_FOLK]bool;
+  #assert drh_person(bits[..],present[..])== -1;
+  bits[38]=256;#assert drh_person(bits[..],present[..])== -1;
+  present[38]=true;#assert drh_person(bits[..],present[..])==38;
+  bits[40]=256;present[40]=true;#assert drh_person(bits[..],present[..])== -1;
+  #assert drh_person(bits[0..<0],present[..])== -1 && drh_person(bits[..],present[0..<0])== -1;
+  bits[38]=18432;bits[40]=0;#assert drh_person(bits[..],present[..])== -1;
+  present[40]=false;#assert drh_person(bits[..],present[..])== -1;
+  longer:[DRH_FOLK+1]int;seen:[DRH_FOLK+1]bool;longer[40]=256;seen[40]=true;
+  #assert drh_person(longer[..],seen[..])== -1;
+  bits[0]=256;present[0]=true;bits[46]=256;present[46]=true;
+  #assert drh_person(bits[..],present[..])== -1;
+}
+#forall "other condition bits never become a scripted Hold Person target" bit:0..<15 {
+  if bit!=8 {bits:[DRH_FOLK]int;present:[DRH_FOLK]bool;bits[7]=1<<bit;present[7]=true;#assert drh_person(bits[..],present[..])== -1;}
+}
+drh_person :: (bits:[]int,present:[]bool)->int #effects(reads,traps) {
+  if bits.count!=DRH_FOLK || present.count!=DRH_FOLK {return -1;}
+  chosen:= -1;
+  for i:0..<DRH_FOLK {
+    if !present[i] || (bits[i]&256)==0 {continue;}
+    if chosen>=0 {return -1;}
+    chosen=i;
+  }
+  return chosen;
+}
+#forall "timed qualification admits normal priority and refuses altered scheduling" nice:-20..<21, gated:0..<2 {
+  #assert drh_priority_ok(gated==1,nice)==(gated==0 || nice==0);
+}
+drh_priority_ok :: (gated:bool,nice:int)->bool #effects(all) {return !gated || nice==0;}

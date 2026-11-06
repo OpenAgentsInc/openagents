@@ -1,4 +1,5 @@
 #load "../../../aethyr/ids.coax";
+#load "room-hold-control.coax";
 // What the API says about Everglade's rooms, asked every two seconds (#12714; coax/web/api/player.c
 // room_control): "pvp 0|1\nedit STAMP\nkick PID\n...".
 //   - pvp: the realm's row (off unless switched on); the rules let harm reach another player only
@@ -10,9 +11,9 @@
 //     gets no seat.
 //   - hold: "hold CODE SEAT STAMP", a scripted Hold Person in everglade room CODE, once a STAMP (the
 //     drift check's held step, GitHub #12886): the watch's hold on seat SEAT (3 s, no save to end it
-//     sooner or later) and the rules' on the living townsperson nearest it (6 s, no save). The same
-//     line reaches the local host (coax/web/room-worker.js roomHost.control), so both pages of the
-//     check are held by one spell.
+//     sooner or later) and the rules' on the living townsperson nearest it (6 s, no save).
+//     The paired check observes that person and sends "hold-person CODE SEAT STAMP PERSON"
+//     to its development or local host; public rooms refuse the named command.
 //   - place: "place CODE SEAT BOAT STAMP", seat SEAT of everglade room CODE put on the bank beside
 //     rowboat BOAT (0 to 2, the Lantern, Thinking and Fern ponds' boats; river.coax), once a STAMP:
 //     the boat check's two seats at a pond (GitHub #12861). Only a local room takes it, as the dice.
@@ -139,6 +140,7 @@ rm_control :: (v: [] RmServer, text: string) #export_c #effects(all) {
     if line == "oldwire 0" { v[0].ctl.old_shut = true; }
     if line.count > 5 && line[0..<5] == "edit " { edit = rc_num(line[5..<line.count]); }
     if line.count > 5 && line[0..<5] == "hold " { rc_hold(v, line); }
+    if line.count > 12 && line[0..<12] == "hold-person " {rc_hold_named(v,line);}
     if line.count > 6 && line[0..<6] == "place " { rc_place(v, line); }
     if line == "dice fixed" { v[0].ctl.dice_fixed = true; }
     if line == "dice random" { v[0].ctl.dice_fixed = false; }

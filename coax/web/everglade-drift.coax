@@ -53,6 +53,9 @@
 #load "../lib/net/cdp.coax";
 #load "../../aethyr/session/lifecycle.coax";   // each host's room tick budget (#12856)
 #load "../../aethyr/net/record.coax";
+#load "drift-hold.coax";
+#load "../../aethyr/render/tests/qualification-files.coax";
+getpriority :: (which:s32,who:u32)->s32 #foreign #effects(all);
 
 DR_JS_COLS :: 32;         // everglade-drift.js D.cols
 DR_COLS :: 35;            // those, then C_LX, C_LZ and C_ST (dr_local)
@@ -339,7 +342,7 @@ dr_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
 // ctl: the room's control file (the held step's scripted Hold Person); room: the room page's room
 // code; worker: the offline page plays on the local host (?offline=worker)
 // at: the step the last press went in at (dr_both); empty, each page takes a press as it comes
-DrPair :: struct { a: [] Cdp; b: [] Cdp; shots: string; ctl: string; room: int; worker: bool; native: bool; at: [] int; }
+DrPair :: struct { a: [] Cdp; b: [] Cdp; shots: string; ctl: string; room: int; worker: bool; native: bool; at: [] int; hold_target:[]int; }
 DR_SHOT :: 8388608;
 // Both pages as they look now, into SHOTS-NAME-offline.png and -room.png (no SHOTS: none).
 dr_shots :: (p: DrPair, name: string) {
@@ -407,11 +410,11 @@ dr_wait_end :: (p: DrPair) -> bool {
   tool_errln("everglade-drift: an end mark was scheduled but never observed on both pages"); return false;
 }
 
-// The held step's Hold Person, one spell on both pages (#12886): room-control.coax's "hold" line,
-// the watch's hold on you (3 s, no save) and the rules' on the townsperson nearest you (6 s, no save).
-// The room page's room reads it from its control file (re-read every 2 s); the offline page's local
-// host gets the same line (roomHost.control) the moment the room page shows you held, so the two
-// holds start as one.
+// The held step starts the original nearest-person hold in the online room.
+// Observe its unique present target, then name that person in the offline
+// development host. Both apply the existing 3 s player and 6 s NPC holds.
+// The verdict requires the same actual person before comparing conditions;
+// independent nearest-person selection can choose different living people.
 DR_HELD :: "((__dr.probe(52) & 3) || __dr.probe(53) > 0) ? 1 : 0";
 dr_held_move_ms :: () -> int { return 500; }
 // Publish a complete control answer; native hosts watch this rename immediately.
@@ -426,16 +429,6 @@ dr_control_write :: (path:string,text:string)->bool {
   #assert dr_held_move_ms() <= 500 && dr_held_move_ms() > 0;
 }
 dr_hold :: (p: DrPair) {
-  if p.native {
-    // The independent native hosts observe the same atomic control publication.
-    // Remove both lines before their next periodic API read.
-    c:[1]Buf;bput(c[..],DR_CONTROL_PAIR);stamp:=proc_now_ms();
-    bput(c[..],"hold pair-drift-");bint(c[..],p.room);bput(c[..]," ");bint(c[..],dr_int(p.b,"__dr.probe(1)",-1));bput(c[..]," ");bint(c[..],stamp);bput(c[..],"\n");
-    bput(c[..],"hold local-1 ");bint(c[..],dr_int(p.a,"__dr.probe(1)",-1));bput(c[..]," ");bint(c[..],stamp+1);bput(c[..],"\n");
-    _:=dr_control_write(p.ctl,btext(c[..]));deadline:=proc_now_ms()+4000;
-    while proc_now_ms()<deadline && (dr_int(p.a,DR_HELD,0)!=1 || dr_int(p.b,DR_HELD,0)!=1) {proc_sleep(20);}
-    _=dr_control_write(p.ctl,DR_CONTROL_PAIR);return;
-  }
   took := false; tries := 0; asked := 0; stamp := 0;
   while tries < 3 && !took {
     if proc_now_ms() - asked > 6500 {
@@ -447,14 +440,34 @@ dr_hold :: (p: DrPair) {
     took = dr_int(p.b, DR_HELD, 0) == 1;
     if !took { proc_sleep(20); }
   }
-  q: [1] Buf; bput(q[..], "coaxial.roomHost.control('hold local-1 ' + __dr.probe(1) + ' "); bint(q[..], stamp); bput(q[..], "\\n')");
-  held := dr_int(p.a, btext(q[..]), 0);
+  person:= -1;deadline:=proc_now_ms()+2000;
+  while took && person<0 && proc_now_ms()<deadline {person=dr_hold_person(p.b);if person<0 {proc_sleep(20);}}
+  if person<0 {_:=dr_control_write(p.ctl,DR_CONTROL_PAIR);print("  scripted hold: no unique visible target on the room page\n");return;}
+  q:[1]Buf;held:=0;
+  if p.native {
+    bput(q[..],DR_CONTROL_PAIR);bput(q[..],"hold-person local-1 ");bint(q[..],dr_int(p.a,"__dr.probe(1)",-1));bput(q[..]," ");bint(q[..],stamp+1);bput(q[..]," ");bint(q[..],person);bput(q[..],"\n");
+    if dr_control_write(p.ctl,btext(q[..])) {held=1;}
+  } else {
+    bput(q[..],"coaxial.roomHost.control('hold-person local-1 ' + __dr.probe(1) + ' ");bint(q[..],stamp+1);bput(q[..]," ");bint(q[..],person);bput(q[..],"\\n')");
+    held=dr_int(p.a,btext(q[..]),0);
+  }
   w := proc_now_ms();
-  while held == 1 && dr_int(p.a, DR_HELD, 0) != 1 && proc_now_ms() - w < 2000 { proc_sleep(20); }
+  while held==1 && (dr_int(p.a,DR_HELD,0)!=1 || dr_hold_person(p.a)!=person) && proc_now_ms()-w<2000 {proc_sleep(20);}
   held = dr_int(p.a, DR_HELD, 0);
+  actual:=dr_hold_person(p.a);
+  if took && held==1 && actual==person && p.hold_target.count==1 {p.hold_target[0]=person;}
+  print("  scripted Hold Person target: room %, offline %\n",person,actual);
   _ := dr_control_write(p.ctl, DR_CONTROL_PAIR);
   if !took { print("  (the room page was never held: % asks)\n", tries); }
   if held != 1 { print("  (the offline page did not take the hold: %)\n", held); }
+}
+// Read actual condition/presence words; target selection stays in Coax.
+dr_hold_person :: (c:[]Cdp)->int #effects(all) {
+  value:=cdp_evaluate(c,"Array.from({length:47},(_,i)=>[__dr.probe(700+i)===1,__dr.x.coaxial_field_probe(__dr.state,100+i)])");
+  if value<0 {return -1;}d:=cdp_doc(c);if jv_len(d,value)!=DRH_FOLK {return -1;}
+  bits:[DRH_FOLK]int;present:[DRH_FOLK]bool;
+  for i:0..<DRH_FOLK {row:=jv_at(d,value,i);if jv_len(d,row)!=2 {return -1;}present[i]=jv_bool(d,jv_at(d,row,0));bits[i]=jv_int(d,jv_at(d,row,1),-1);if bits[i]<0 {return -1;}}
+  return drh_person(bits[..],present[..]);
 }
 
 dr_rg_margin :: (x: int, z: int, nx: int, nz: int) -> bool {
@@ -1032,8 +1045,9 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
         while !fs_exists(btext(ready_path[..])) && proc_now_ms() < deadline { proc_sleep(100); }
         if !fs_exists(btext(ready_path[..])) { tool_errln("everglade-drift: background players never reached 32 m clearance"); }
         sh: [1] Buf; bput(sh[..], run.dir); bput(sh[..], "/shot-"); bput(sh[..], profile);
-        at: [1] int;
-        gravity_ready := dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker, native=run.native, at = at[..]}, run.dir);
+        at: [1] int;hold_target:=[1]int.[-1];
+        gravity_ready := dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker, native=run.native, at = at[..],hold_target=hold_target[..]}, run.dir);
+        dr_add(rep,"scripted Hold Person selects the same person",DrVerdict.{drifted=hold_target[0]<0,step="held",mine=hold_target[0]});
         ok = dr_pull(ca[..], a, true) && dr_pull(cb[..], b, true);
         ia:[1]DrInputs;ib:[1]DrInputs;ip:[1]Buf;
         bput(ip[..],run.dir);bput(ip[..],"/inputs-");bput(ip[..],profile);bput(ip[..],"-offline.txt");
@@ -1378,6 +1392,10 @@ tool_main :: () -> int #export_c #effects(all) {
   port := args_whole(args_value(a[..], "--port", "8960"));
   offline:=args_value(a[..],"--offline","worker");native:=offline=="native";
   tick_us:=args_whole(args_value(a[..],"--tick-us","0"));
+  nice:=cast(int)getpriority(0,0);
+  if !drh_priority_ok(tick_us>0,nice) {
+    tool_errln("Timed qualification needs normal process priority (nice 0). Build the tool through the build gate, then run its prebuilt image outside the gate.");return 2;
+  }
   near := (port <= 8830 && port + 4 >= 8830) || (port <= 8872 && port + 4 >= 8872);   // the owner's servers (it takes PORT to PORT + 4)
   if !ok || bots < 1 || port < 1024 || near || tick_us<0 || tick_us>1000000 || (offline!="native" && offline!="worker") {
     tool_errln("usage: coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--forest-only] [--offline native|worker] [--tick-us N] [--out DIR] (not on 8830 or 8872)"); return 2;
@@ -1398,6 +1416,13 @@ tool_main :: () -> int #export_c #effects(all) {
   db: [1] Buf; bput(db[..], "coax/web/build/everglade-drift/"); bint(db[..], stamp);
   dir := args_value(a[..], "--out", btext(db[..]));
   _ := fs_mkdir("coax/web/build/everglade-drift"); _ = fs_mkdir(dir);
+  inputs:[1]RtqInputs;
+  for file:[8]string.["coax/web/room/bin/room","apps/openagents-web/build/everglade5e.wasm","apps/openagents-web/build/everglade-room.wasm","coax/web/host.js","coax/web/room-worker.js","coax/web/everglade-drift.js","coax/web/everglade-drift.coax","coax/web/drift-hold.coax"] {
+    if !rtq_input_add(inputs[..],file) {tool_errln("Cannot fence the actual drift inputs.");return 1;}
+  }
+  self:[4096]u8;self_n:=cxproc_self_path(self[..]);
+  if self_n<1 || !rtq_input_add(inputs[..],cast(string)self[0..<self_n]) {return 1;}
+  print("qualification process priority (nice): %\n",nice);
   // the room's --dev directory is DIR: dev/'s world, and its control lines (room-control.txt) this
   // program's to change, as the API's answer is (room-host.c --dev, room-dev.coax)
   wb: [262144] u8; wn := fs_read("coax/web/room/dev/world-everglade.json", wb[..]);
@@ -1477,6 +1502,14 @@ tool_main :: () -> int #export_c #effects(all) {
     }
   }
   dr_stop(ho); dr_stop(hn); dr_stop(hs); dr_stop(hr);
+  stable:=rtq_inputs_match(inputs[..]);all=all && stable;
+  receipt:[65536]u8;o:[1]Jo;jo_start(o[..],receipt[..]);jo_obj(o[..]);
+  jo_key(o[..],"schema");jo_str(o[..],"aethyr.everglade.drift-qualification.v1");
+  jo_key(o[..],"nice");jo_int(o[..],nice);jo_key(o[..],"tick_limit_us");jo_int(o[..],tick_us);
+  jo_key(o[..],"source_fence_unchanged");jo_bool(o[..],stable);jo_key(o[..],"passed");jo_bool(o[..],all);
+  jo_key(o[..],"inputs");rtq_inputs_json(o[..],inputs[..],"");jo_end(o[..]);
+  file:[1]Buf;bput(file[..],dir);bput(file[..],"/qualification.json");
+  if o[0].bad || !fs_write(btext(file[..]),jo_text(o[..])) {return 1;}
   print("%\n", ifx all then "holds" else "fails");
   return ifx all then 0 else 1;
 }

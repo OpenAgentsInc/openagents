@@ -1,0 +1,4 @@
+ok   #test QUICK MATCH: two players asking for a 1v1 land in the same match, a third starts the next; a 2v2 waits, then bots take its empty seats and drive (ol-quick-match) (1 case, 159366107 steps, 6161 ms)
+ok   #test QUICK MATCH: a second player a second later joins the waiting match and its countdown starts (ol-quick-match) (1 case, 7515413 steps, 892 ms)
+2 of 728 checks (--only 'QUICK MATCH'), 2 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
