@@ -163,7 +163,7 @@ int main() {
     char path[] = "/tmp/coax-authority-storage-XXXXXX";
     int fd = mkstemp(path);
     assert(fd >= 0);
-    std::string text = "#authority; answer :: ()->int {return 4;} "
+    std::string text = "#authority; answer :: ()->int #effects(all) {return 4;} "
         "#test \"large\" {words:[1572865]u8; words[1572864]=7; "
         "#assert words[1572864]==7 && answer()==" + std::string(succeeds ? "4" : "5") + ";} main :: () {}";
     assert(write(fd, text.data(), text.size()) == (ssize_t)text.size());

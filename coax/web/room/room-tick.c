@@ -9,6 +9,12 @@
    pump_all), printed with the tick line; each tick's are the room view's workloads too (room-stats.h). */
 enum { PART_MOVE, PART_ABILITIES, PART_TOWN, PART_SPELLS, PART_PEOPLE, PART_RULES, PART_WRITE, PART_SEND, PARTS };
 static int64_t part_us[PARTS];
+#ifdef COAX_ROOM_PROFILE
+static int64_t profile_us[7];
+#define ROOM_PROFILE_PHASE(q,at) do { int64_t stamp=now_us(); profile_us[q]+=stamp-at; at=stamp; } while(0)
+#else
+#define ROOM_PROFILE_PHASE(q,at) ((void)0)
+#endif
 static int64_t room_prepare_us[WORLD_ROOMS];
 static int64_t world_publication_us;
 static const char *part_name[PARTS] = {"move", "abilities", "town", "spells", "people", "rules", "write", "send"};
@@ -23,6 +29,9 @@ static const char *part_name[PARTS] = {"move", "abilities", "town", "spells", "p
 // crimes since into it, a step against every seat, then the guards' blows, WANTED and where everyone is
 // back to the room (the rules', and what the pages hear).
 static void everglade_town(int k) {
+#ifdef COAX_ROOM_PROFILE
+  int64_t phase_start=now_us();
+#endif
   float hp[4], cr[3], seats[WORLD_SEATS * WORLD_SEAT_TOWN], took[2 * WORLD_SEATS], people[WORLD_FOLK * WORLD_PEOPLE], fv[WORLD_VIEW];
   coax_v_f32 hpv = {hp, 4}, crv = {cr, 3}, fvv = {fv, WORLD_VIEW};
   for (int j = 0; j < WORLD_FOLK; j++)
@@ -54,8 +63,12 @@ static void everglade_town(int k) {
   /* a scripted Hold Person (room-control.coax "hold", #12886): the watch's hold on the seat, before the town steps */
   for (int s = 0; s < WORLD_SEATS; s++) if (rm_eg_hold_take(view(), k, (coax_t_SeatId){ s})) world_hold(k, s);
   int64_t t0 = now_us();
+  ROOM_PROFILE_PHASE(4,phase_start);
   world_town(k, 1.0f / WORLD_HZ, (double)wall_ms() / 1000.0, seats, took);
   int64_t t1 = now_us(); part_us[PART_TOWN] += t1 - t0;
+#ifdef COAX_ROOM_PROFILE
+  phase_start=t1;
+#endif
   for (int s = 0; s < WORLD_SEATS; s++) {
     if (seats[s * WORLD_SEAT_TOWN + 3] < 0.5f) continue;
     rm_eg_hurt(view(), k, (coax_t_SeatId){ s}, (int64_t)took[s], (int64_t)took[WORLD_SEATS + s]);
@@ -74,6 +87,7 @@ static void everglade_town(int k) {
   for (;taken<sn;taken++) { if(!rm_eg_strike_current(view(),k,taken))continue;rm_eg_strike(view(),k,taken,skv);if(!world_strike(k,(int)sk[9],(int)sk[0],(int)sk[1],sk+2,sk+5,(int)sk[8]))break; }
   rm_eg_strikes_taken(view(),k,taken);
   int64_t t2 = now_us();
+  ROOM_PROFILE_PHASE(5,phase_start);
   int en = world_spells(k, 1.0f / WORLD_HZ);
   float tree[WORLD_TREE];
   for (int q = 1; q < WORLD_TREES; q++) {
@@ -142,9 +156,13 @@ static bool everglade_prepare(int k) {
 }
 static bool everglade_room_tick(int k) {
   int64_t room_work_start = now_us();
+#ifdef COAX_ROOM_PROFILE
+  int64_t phase_start=room_work_start;
+#endif
   int64_t in[WORLD_IN]; float pose[WORLD_POSE];
   coax_v_s64 inv = {in, WORLD_IN};
   if (!rm_eg_begin(view(), k)) {
+    ROOM_PROFILE_PHASE(0,phase_start);
     /* Placement resolves the capture's standing height, without advancing a
        paused encounter. The initial durable capture must precede gameplay. */
     if (rm_checkpoint_paused(view(), k)) {
@@ -157,11 +175,15 @@ static bool everglade_room_tick(int k) {
     }
     return false;
   }
+  ROOM_PROFILE_PHASE(0,phase_start);
   if (!everglade_prepare(k)) { rm_work_done(view(), k, now_us() - room_work_start); return false; }
+  ROOM_PROFILE_PHASE(1,phase_start);
   if (rm_eg_fresh(view(), k)) world_fresh(k);
   for (int s=0;s<WORLD_SEATS;s++) world_seat_owner(k,s,rm_eg_seat_owner(view(),k,(coax_t_SeatId){s}));
+  ROOM_PROFILE_PHASE(2,phase_start);
   world_dice(k, rm_eg_dice_fixed(view(), k));   /* a local room told "dice fixed": the world's too (room-control.coax) */
   everglade_ability_casts(k);
+  ROOM_PROFILE_PHASE(3,phase_start);
   int64_t tm = now_us();
   for (int s = 0; s < WORLD_SEATS; s++) {
     everglade_place(k, s, pose);

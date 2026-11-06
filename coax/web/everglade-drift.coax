@@ -995,6 +995,24 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
           host := ifx run.native then LIFECYCLE_HOST_NATIVE else LIFECYCLE_HOST_WORKER;
           p95 := dr_int(ca[..], "coaxial.roomHost && coaxial.roomHost.tickP95Us >= 0 ? Math.round(coaxial.roomHost.tickP95Us) : -1", -1);
           p99 := dr_int(ca[..], "coaxial.roomHost && coaxial.roomHost.tickP99Us >= 0 ? Math.round(coaxial.roomHost.tickP99Us) : -1", -1);
+          if !run.native && run.tick_us>0 {
+            raw:[262144]u8;samples:[8192]int;
+            text:=dr_str(ca[..],"__dr.tickSamples.join(',')",raw[..]);
+            count:=dr_tick_parse(text,samples[..]);
+            if dr_int(ca[..],"__dr.tickOverflow ? 1:0",1)!=0 {count= -1;}
+            p95= -1;p99= -1;median:= -1;
+            if count>0 {p95=dr_tick_quantile(samples[0..<count],950);p99=dr_tick_quantile(samples[0..<count],990);median=dr_tick_quantile(samples[0..<count],500);}
+            record:[1]Buf;bput(record[..],run.dir);bput(record[..],"/worker-ticks-");bput(record[..],profile);bput(record[..],".csv");
+            if !fs_write(btext(record[..]),text) {p95= -1;}
+            print("  (worker workload: % ticks in completed cost batches, p50 % us, p95 % us, p99 % us)\n",count,median,p95,p99);
+            part_raw:[65536]u8;parts:[8192]int;part_text:=dr_str(ca[..],"__dr.tickParts.join(',')",part_raw[..]);
+            pn:=dr_tick_parse(part_text,parts[..]);
+            if count>0 && pn>0 && pn%17==0 {
+              names:=[17]string.["move","abilities","town","spells","people","rules","write","send","core","flush","begin","prepare","owners","casts","town_setup","town_results","orbit"];
+              print("  worker mean tick parts (us):");
+              for part:0..<17 {total:=0;for batch:0..<pn/17 {total+=parts[batch*17+part];}print(" %=%",names[part],total/count);}print("\n");
+            }
+          }
           print("  (% room tick: p95 % us, p99 % us, budget % us at p95: %)\n", ifx run.native then "native" else "worker", p95, p99, LIFECYCLE_TICK_US[host], ifx life_tick_ok(host, p95) then "within" else "over");
           if run.tick_us>0 {
             verdict:=DrVerdict.{drifted=!dr_tick_ok(p95,run.tick_us),t=dr_mark_t(a,"start"),step="tick budget",mine=p95,other=run.tick_us,by=p95-run.tick_us};
@@ -1394,3 +1412,40 @@ tool_main :: () -> int #export_c #effects(all) {
   limits:=[2]int.[600,840];limit:=limits[which];#assert dr_tick_ok(sample,limit)==(sample>=0 && sample<=limit);
 }
 dr_tick_ok :: (sample:int,limit:int)->bool {return sample>=0 && sample<=limit;}
+dr_tick_parse :: (text:string,out:[]int)->int {
+  if text.count==0 {return 0;}start:=0;count:=0;
+  for end:0..<text.count+1 {
+    if end<text.count && text[end]!=',' {continue;}
+    if count>=out.count {return -1;}sample:=args_whole(text[start..<end]);
+    if sample<0 {return -1;}out[count]=sample;count+=1;start=end+1;
+  }
+  return count;
+}
+dr_tick_quantile :: (samples:[]const int,per_mille:int)->int {
+  if samples.count<1 || samples.count>8192 || per_mille<1 || per_mille>1000 {return -1;}
+  ordered:[8192]int;
+  for sample,i:samples {
+    if sample<0 {return -1;}at:=i;
+    while at>0 && ordered[at-1]>sample {ordered[at]=ordered[at-1];at-=1;}
+    ordered[at]=sample;
+  }
+  return ordered[(samples.count*per_mille+999)/1000-1];
+}
+
+#test "worker qualification takes the nearest-rank percentile of every collected tick" {
+  values:[100]int;for i:0..<100 {values[i]=100-i;}
+  #assert dr_tick_quantile(values[..],500)==50 && dr_tick_quantile(values[..],950)==95;
+  #assert dr_tick_quantile(values[..],990)==99 && dr_tick_quantile(values[..],1000)==100;
+  #assert dr_tick_quantile(values[0..<0],950)== -1;
+  #assert dr_tick_quantile(values[..],0)== -1 && dr_tick_quantile(values[..],1001)== -1;
+  values[0]= -1;#assert dr_tick_quantile(values[..],950)== -1;
+  out:[3]int;
+  #assert dr_tick_parse("0,600,1000000",out[..])==3 && out[0]==0 && out[1]==600 && out[2]==1000000;
+  #assert dr_tick_parse("",out[..])==0 && dr_tick_parse("600,",out[..])== -1;
+  #assert dr_tick_parse("-1",out[..])== -1 && dr_tick_parse("NaN",out[..])== -1;
+  #assert dr_tick_parse("1,2,3,4",out[..])== -1;
+}
+#forall "one slow tick in twenty fits p95; a second does not" slow:0..<21 {
+  values:[20]int;for i:0..<20 {values[i]=ifx i<slow then 601 else 1;}
+  #assert dr_tick_ok(dr_tick_quantile(values[..],950),600)==(slow<=1);
+}

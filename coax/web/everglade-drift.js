@@ -8,6 +8,21 @@
 (() => {
   const now = () => performance.timeOrigin + performance.now();
   const D = (window.__dr = { x: null, state: 0, rows: null, fr: [], marks: [], texts: [], bars: [], pageT: 0, folk: null, look: 0, conds: [], fcond: null });
+  // Observe all published cost batches. Bounds and percentile decisions live
+  // in the Coax driver; overflow or malformed samples refuse qualification.
+  D.tickSamples = []; D.tickParts = []; D.tickOverflow = false;
+  const NativeWorker = globalThis.Worker;
+  globalThis.Worker = class extends NativeWorker {
+    constructor(...args) {
+      super(...args);
+      this.addEventListener("message", ({data:m}) => {
+        if (m?.t !== "cost" || !Array.isArray(m.tickSamplesUs)) return;
+        if (D.tickSamples.length + m.tickSamplesUs.length > 8192) { D.tickOverflow = true; return; }
+        D.tickSamples.push(...m.tickSamplesUs.map(v => Math.ceil(v)));
+        D.tickParts.push(...m.parts, m.coreUs, m.flushUs, ...m.profileParts);
+      });
+    }
+  };
   // a pointer move this frame (1): the camera may turn only then (the drift check's camera probe)
   addEventListener("pointermove", (e) => { if (e.buttons || document.pointerLockElement) D.look = 1; }, true);
   // each key as the page heard it (wall ms, its code, down or up): when the driver's press reached this page

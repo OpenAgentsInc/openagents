@@ -66,7 +66,7 @@ rb_inputs :: (inputs:[]RenderBuildInputs,compiler:string,file:string,temp:string
   cwd:[FS_PATH_MAX]u8;source_path:[FS_PATH_MAX]u8;carrier_path:[FS_PATH_MAX]u8;
   root:=fs_cwd(cwd[..]);source:=fs_join(root,file,source_path[..]);carrier:=fs_join(temp,"deps.coax",carrier_path[..]);
   text:[8192]u8;writer:[1]Jo;jo_start(writer[..],text[..]);jo_put(writer[..],"#load ");jo_quoted(writer[..],source);
-  jo_put(writer[..],";\nrb_dependency_marker :: () #export_c {}\n");
+  jo_put(writer[..],";\nrb_dependency_marker :: () #export_c #effects(all) {}\n");
   if writer[0].bad || !fs_write(carrier,jo_text(writer[..])) {return false;}
   argv:=[4]string.[compiler,"deps",carrier,"--library"];stdout:[65536]u8;stderr:[65536]u8;
   run:=rb_run(compiler,argv[..],deadline,stdout[..],stderr[..]);if !rb_ok(run) {return false;}

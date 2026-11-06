@@ -19,6 +19,8 @@ function roomWorkerMain() {
   const enc = new TextEncoder(), dec = new TextDecoder();
   let costTicks = 0, costUs = 0, costAt = performance.now(), partsWas = new Array(PARTS).fill(0), lost = 0, stalls = 0;
   let tickTimes = [];
+  let coreUs = 0, flushUs = 0;
+  const profileWas = new Array(7).fill(0);
   const view = () => new DataView(mem.buffer);
   // WASI, as little as the C runtime asks for: clocks, randomness, stdout to the console, nothing else.
   const wasi = {
@@ -63,8 +65,12 @@ function roomWorkerMain() {
     if (now - next > 250) { lost += now - next; stalls++; next = now; }
     while (now >= next) {
       const t0 = performance.now();
-      clock(); x.rw_tick(); flush();
-      const us = (performance.now() - t0) * 1000;
+      clock(); x.rw_tick();
+      const simulated = performance.now();
+      flush();
+      const finished = performance.now();
+      const us = (finished - t0) * 1000;
+      coreUs += (simulated - t0) * 1000; flushUs += (finished - simulated) * 1000;
       costUs += us; tickTimes.push(us); costTicks++;
       next += STEP;
     }
@@ -72,10 +78,15 @@ function roomWorkerMain() {
       x.rw_vitals();
       const parts = [];
       for (let q = 0; q < PARTS; q++) { const v = x.rw_part_us(q); parts.push(v - partsWas[q]); partsWas[q] = v; }
+      const profileParts = new Array(7).fill(0);
+      if (x.rw_profile_us) for (let q=0;q<7;q++) {const v=x.rw_profile_us(q);profileParts[q]=v-profileWas[q];profileWas[q]=v;}
       tickTimes.sort((a,b)=>a-b);
       const q = p => tickTimes[Math.min(tickTimes.length-1,Math.max(0,Math.ceil(tickTimes.length*p)-1))] || 0;
-      postMessage({ t: "cost", ticks: costTicks, us: Math.round(costUs), ms: Math.round(now - costAt), parts, lost: Math.round(lost), stalls, tickP50Us:q(.50),tickP95Us:q(.95),tickP99Us:q(.99) });
+      // Retain each measured duration in the cost batch. A qualifier can then
+      // compute its workload's percentile instead of sampling one second's p95.
+      postMessage({ t: "cost", ticks: costTicks, us: Math.round(costUs), ms: Math.round(now - costAt), parts, profileParts, lost: Math.round(lost), stalls, tickP50Us:q(.50),tickP95Us:q(.95),tickP99Us:q(.99), tickSamplesUs:tickTimes, coreUs:Math.round(coreUs), flushUs:Math.round(flushUs) });
       tickTimes = [];
+      coreUs = 0; flushUs = 0;
       costTicks = 0; costUs = 0; costAt = now;
     }
     if (conns.size) timer = setTimeout(beat, Math.max(0, next - performance.now()));

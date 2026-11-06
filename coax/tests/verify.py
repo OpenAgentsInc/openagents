@@ -13,7 +13,7 @@ from quiet_crash import run as run_quiet_crash
 
 
 ROOT = Path(__file__).resolve().parents[1]
-COMPILER = ROOT / "bin/coax"
+COMPILER = Path(os.environ.get("COAX_TEST_COMPILER", ROOT / "bin/coax")).resolve()
 
 
 def coax(*args, expect_crash=False):
@@ -152,7 +152,7 @@ class Verify(unittest.TestCase):
             "main :: () { }\n")
         r = coax("mutate", path)
         self.assertEqual(r.returncode, 1)
-        self.assertIn(":5:41: mutant survived: '+' became '-'", r.stdout)
+        self.assertIn(":5:55: mutant survived: '+' became '-'", r.stdout)
         self.assertIn("not reached by any check: untested", r.stdout)
         self.assertIn("1 marked equivalent", r.stdout)
         self.assertNotIn(":2:", r.stdout.split("not reached")[0])

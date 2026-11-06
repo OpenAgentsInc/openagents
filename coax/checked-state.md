@@ -164,3 +164,16 @@ existing image tags as the migration path. Each qualified build retains its
 manifests under `coax/web/compat/`; releases archive them and room images include
 them. Before this profile existed, the retained production source supplies the
 baseline. The gate never executes scripts from the old checkout.
+
+## Verification
+
+The component mutations, native/evaluator regressions, production-surface
+comparison and Everglade qualification are recorded in
+[`docs/verification/coax-checked-state-2026-11-06`](../docs/verification/coax-checked-state-2026-11-06/README.md).
+`coax/tests/run.sh --only handles effect_contracts transactions compat` runs the
+focused language/library gates. For tick qualification, `everglade-drift
+--tick-us 600` computes the nearest-rank p95 from every completed worker cost
+batch collected during the script. It retains the raw samples, rounds each
+duration up to microseconds and refuses missing, malformed or overflowing
+observations. `--offline native --tick-us 840` checks a separate native local
+room's reported p95. Both gates refuse an observation above their explicit limit.

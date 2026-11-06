@@ -1,6 +1,6 @@
 // The host side of a Coax command-line tool: argv into Args, stderr, the OS.
 // Effects through coax/platform/tool-native.c, whose main() runs the tool's
-//   tool_main :: () -> int #export_c { ... return 0; }
+//   tool_main :: () -> int #export_c #effects(all) { ... return 0; }
 // on a big stack and exits with what it returns. Build a tool with
 // coax/web/tool.sh (it links tool-native.c and the other platform effects).
 #load "args.coax";

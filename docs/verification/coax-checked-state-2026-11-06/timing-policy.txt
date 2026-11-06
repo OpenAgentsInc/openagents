@@ -1,0 +1,5 @@
+ok   #forall tick qualification refuses missing samples and includes the stated p95 limit (1686 cases, 50572 steps, 0 ms)
+ok   #test worker qualification takes the nearest-rank percentile of every collected tick (1 case, 525496 steps, 2 ms)
+ok   #forall one slow tick in twenty fits p95; a second does not (21 cases, 219634 steps, 1 ms)
+3 of 134 checks (--only 'tick'), 3 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

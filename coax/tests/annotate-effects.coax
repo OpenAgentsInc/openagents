@@ -127,7 +127,7 @@ tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;if !args_load(args[..]) {return 2;}
   write:=false;embedded:=false;literal:="";
   for i:0..<args_count(args[..]) {arg:=args_at(args[..],i);if arg=="--write" {write=true;}else if arg=="--embedded" {embedded=true;}else if (arg.count>3 && arg[arg.count-3..<arg.count]==".py") || (arg.count>5 && arg[arg.count-5..<arg.count]==".coax") {literal=arg;}else {tool_errln("usage: annotate-effects.coax [--write] [--embedded] [FILE.py|FILE.coax]");return 2;}}
-  if literal!="" {return ifx ea_file(literal,write,false,true)<0 then 1 else 0;}
+  if literal!="" {return ifx ea_file(literal,write,embedded,!embedded)<0 then 1 else 0;}
   command:=[7]string.["git","ls-files","--cached","--others","--exclude-standard","--",ifx embedded then "*.py" else "*.coax"];
   paths:[2097152]u8;errors:[4096]u8;r:=proc_run(command[..],120000,paths[..],errors[..]);
   if r.status!=0 || r.cut || r.timed_out {tool_errln(cast(string)errors[0..<r.err_n]);return 2;}

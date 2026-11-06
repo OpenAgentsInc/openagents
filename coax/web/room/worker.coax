@@ -339,6 +339,7 @@ wk_build :: (root: string, coax: string, clang: string, sysroot_dir: string, res
     argv: [4200] string; c := 0;
     for x: [5] string.[clang, "--target=wasm32-wasip1", wk_text(sr[..]), wk_text(rd[..]), "-std=c11"] { argv[c] = x; c += 1; }
     argv[c] = ifx dev then "-O1" else "-Os"; c += 1;
+    if proc_has_env("COAX_ROOM_PROFILE") {argv[c]="-DCOAX_ROOM_PROFILE=1";c+=1;}
     if !dev && jb != 0 { argv[c] = "-flto"; c += 1; }
     for x: [3] string.["-ffp-contract=off", "-fno-fast-math", "-w"] { argv[c] = x; c += 1; }
     for f: [6] string.["sin", "cos", "tan", "exp", "log", "pow"] {

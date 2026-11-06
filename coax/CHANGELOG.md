@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.52.0 — Checked State Changes — 2026-11-06
 
-Commit: [`c96410fdad4c7d8cc6506fdb3fa3ca671386da66`](https://github.com/OpenAgentsInc/openagents/commit/c96410fdad4c7d8cc6506fdb3fa3ca671386da66)
+Commit: [`81cdffe1e0443f9b884f0415894bdefe4747955b`](https://github.com/OpenAgentsInc/openagents/commit/81cdffe1e0443f9b884f0415894bdefe4747955b)
 
 - Add nominal `Handle(T)` and caller-backed `Store(T)` with optional stale
   lookups and generation retirement. Adopt typed lifetimes in Aethyr and in

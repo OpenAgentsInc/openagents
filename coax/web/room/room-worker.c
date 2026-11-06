@@ -59,7 +59,11 @@ EXPORT("rw_kicked") int32_t rw_kicked(int32_t conn) { return rm_relay_kicked(vie
 /* One everglade tick (30 Hz): every live room's step, its D frames queued. */
 EXPORT("rw_tick") int32_t rw_tick(void) {
   int32_t live = 0;
+#ifdef COAX_ROOM_PROFILE
+  int64_t phase_start=now_us();
+#endif
   rm_tick(view());
+  ROOM_PROFILE_PHASE(6,phase_start);
   for (int k = 0; k < WORLD_ROOMS; k++) if (everglade_room_tick(k)) live++;
   return live;
 }
@@ -69,3 +73,6 @@ EXPORT("rw_frame") uint32_t rw_frame(void) { return (uint32_t)(uintptr_t)server-
 EXPORT("rw_to") int32_t rw_to(int32_t conn) { return rm_relay_to(view(), conn) ? 1 : 0; }
 /* Where the tick's time went, microseconds since the start (room-tick.c PART_*). */
 EXPORT("rw_part_us") double rw_part_us(int32_t q) { return q >= 0 && q < PARTS ? (double)part_us[q] : 0; }
+#ifdef COAX_ROOM_PROFILE
+EXPORT("rw_profile_us") double rw_profile_us(int32_t q) { return q>=0 && q<7 ? (double)profile_us[q] : 0; }
+#endif

@@ -1,0 +1,5 @@
+coax: note[E0400]: compile-time steps: 159208984 of 200000000 used (79%), above three quarters of the limit; more than 200000000 fails with E0400
+  top users of compile-time steps:
+    159208984 steps  /Users/christopherdavid/work/oa-entity-handles/coax/web/room/room.coax:411:1  #test 'QUICK MATCH: two players asking for a 1v1 land in the same match, a third starts the next; a 2v2 waits, then bots take its empty seats and drive (ol-quick-match)'
+  fix: run coax test --only 'QUICK MATCH: two players asking for a 1v1 land in the same match, a third starts the next; a 2v2 waits, then bots take its empty seats and drive (ol-quick-match)' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+native Everglade safety: 3 passed

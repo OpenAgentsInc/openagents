@@ -386,6 +386,10 @@ below:
 | [#12954](https://github.com/OpenAgentsInc/openagents/issues/12954) | V10 (`#transaction`) | An action that fails halfway through a tick leaves partial writes or traps the room. Needs #12953. |
 | [#12955](https://github.com/OpenAgentsInc/openagents/issues/12955) | V11 (`coax compat`, `#persisted`) | Rolling deploys across six shards and saved characters break on incompatible changes. |
 
+Their initial implementation ships in Coax 0.52. Its exact limits and
+[qualification record](../docs/verification/coax-checked-state-2026-11-06/README.md)
+are separate from the remaining stages below.
+
 Not yet filed, in order of value to Everglade:
 
 1. **Hardening the room's packet path:** V1, V2, S4 and S6 on the room
@@ -453,6 +457,11 @@ Not yet filed, in order of value to Everglade:
 | S9 | Measure the cost | Realm frame time, Aethyr step time and compile time before and after Stages 3–5 | A record in `coax/perf/` with the numbers | R0, R22 |
 
 ### Dependencies
+
+The 0.52 Everglade slice runs ahead of the complete safe profile: native effect
+summaries remain trusted, and its coarse undo log relies on the existing view
+lifetime rules. The boundary and region dependencies below still apply to the
+full safe profile; the initial slice does not establish memory safety.
 
 - V1 and V2 come before V3, since effects need the boundary to exist.
 - V3 comes before V8 and V10, which restrict effects inside their blocks.

@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-COMPILER = ROOT / 'bin/coax'
+COMPILER = Path(os.environ.get('COAX_TEST_COMPILER', ROOT / 'bin/coax')).resolve()
 SOURCE = '''
 ct_select :: (bit: u64, a: u64, b: u64) -> u64 #export_c #effects(all) {
   mask := value_barrier(sub_wrap(cast(u64) 0, bit));

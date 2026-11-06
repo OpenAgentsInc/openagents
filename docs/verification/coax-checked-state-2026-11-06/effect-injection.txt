@@ -1,0 +1,4 @@
+ok: eg_step_body rejects clock
+ok: eg_step_body rejects io
+ok: e5r_start rejects clock
+ok: e5r_start rejects io
