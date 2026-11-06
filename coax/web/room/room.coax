@@ -221,9 +221,6 @@ rm_find_profile :: (rooms:[]RmRoom,name:string,authoritative:bool)->int {
 // QUICK MATCH (ol-quick-match): "quick-1v1" or "quick-2v2" joins the mode's
 // newest match that is still finding players and has a seat; else a new one,
 // which waits QUICK_WAIT for players before its bots take the empty seats.
-rm_quick :: (v: [] RmServer, name: string) -> int {
-  return rm_quick_profile(v,name,false);
-}
 rm_quick_profile :: (v:[]RmServer,name:string,authoritative:bool)->int {
   seats := ifx name == "quick-2v2" then ROOM_PLAYERS else 2;
   for r: 0..<ROOMS {
