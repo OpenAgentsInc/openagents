@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-12940/psionic/tests/book.py", line 420, in <module>
+    main()
+    ~~~~^^
+  File "/Users/christopherdavid/work/openagents-12940/psionic/tests/book.py", line 414, in main
+    examples = check(args.book)
+  File "/Users/christopherdavid/work/openagents-12940/psionic/tests/book.py", line 173, in check
+    assert listing == expected, f"listing drift: {doc.name} -> {source} {tag}"
+           ^^^^^^^^^^^^^^^^^^^
+AssertionError: listing drift: ch009-a-character-moves.md -> aethyr/locomotion.coax profile

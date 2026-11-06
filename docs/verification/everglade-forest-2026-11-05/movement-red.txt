@@ -1,0 +1,7 @@
+FAIL #test movement coverage rejects idle recordings and measures only the requested interval (25 ms)
+coax/web/everglade-drift.coax:467:3: error[E0406]: assertion failed
+    #assert dr_movement(p[..], 0, 2000) == 5000;
+    ^
+  note: in #test movement coverage rejects idle recordings and measures only the requested interval
+1 of 132 checks (--only 'movement coverage'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

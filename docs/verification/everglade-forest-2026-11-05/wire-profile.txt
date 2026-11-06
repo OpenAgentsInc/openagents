@@ -1,0 +1,61 @@
+ok    identity: version 5, min 5, pins 1.1.1
+ok    forest identity and capacity
+ok    forest whole-record domains
+ok    P P 1 1 1
+ok    H H 5 ranger.2.1.0 druid 2 Ash
+ok    I I 7 0 100 -50 0 15708 1 42
+ok    C C 3 1 1250 -20 300 1005
+ok    C C 4 2 0 0 -100 -1 2
+ok    E E 4 2 17
+ok    R R 5
+ok    L L 6
+ok    T T 8 everglade-2
+ok    O O 5
+ok    K K p-00000000000000aa p-00000000000000bb
+ok    K K -
+ok    y y 12 15 1762190000123 2
+ok    j j 13
+ok    l l 3
+ok    t t 5000 1762190000123
+ok    W W 900 30 59365 120000 3 1400
+ok    D D 900 7 1 0
+ok    s s 1003 0 1027 1 250 9
+ok    s s 1003 2 2098176 -5 1
+ok    s s 1162001 0 4194063 26 -8000 200 -1500 1 7 250 500 1 2 1000 -200 100 40000 34000 600 1500 1
+ok    x x 2017
+ok    n n 2 p-00000000000000aa ranger.1.0.0 warlock 2 Ash Grove
+ok    e cast e cast 0 1 1250 -20 300 77
+ok    e hit e hit 1003 2005 7 1
+ok    e stop e stop 0 0 left
+ok    w w 2 3
+ok    r r 8 full
+ok    g g everglade-2
+ok    o o 7
+ok    e town e town
+ok    malformed: P 1 1
+ok    malformed: H
+ok    malformed: I 7 0 100 -50 0 15708 1
+ok    malformed: C 3 1 1250 -20 300
+ok    malformed: E 4 2
+ok    malformed: W 900 30 59365 120000 3
+ok    malformed: D 900 7 1
+ok    malformed: e hit 1003 2005 7
+ok    malformed: I 7 0 x -50 0 15708 1 42
+ok    malformed: C 3 1 12.5 -20 300 1005
+ok    row: 23 fields in the codec's order
+ok    ticket: owner generation 12, shard 3, HP 14, XP 320, WANTED 3
+ok    ticket refused: another room's
+ok    ticket refused: expired
+ok    ticket refused: a newer owner generation written over the signed one
+ok    ack: I.heard
+ok    ack: D.ack
+ok    ack: s.back
+ok    ack: o.outcomes
+ok    ack: O.outcomes
+ok    lifecycle: y.generation
+ok    lifecycle: s.life
+ok    lifecycle: s.warp
+ok    lifecycle: s.owner
+ok    lifecycle: x.id
+ok    lifecycle: ticket.owner
+profile holds

@@ -1,0 +1,5 @@
+/tmp/oa-12940-patrol250-1/vitals-250.txt:credit drops since start=0
+/tmp/oa-12940-patrol-local/vitals-local.txt:credit drops since start=0
+/tmp/oa-12940-patrol250-2/vitals-250.txt:credit drops since start=0
+/tmp/oa-12940-patrol250-3/vitals-250.txt:credit drops since start=0
+/tmp/oa-12940-patrol-100/vitals-100.txt:credit drops since start=0

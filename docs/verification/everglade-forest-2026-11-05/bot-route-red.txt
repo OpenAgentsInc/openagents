@@ -1,0 +1,10 @@
+FAIL #test background players keep moving on the empty south road, away from the town (0 ms)
+coax/web/room/drift-bots.coax:35:7: error[E0406]: assertion failed
+        #assert abs(goal.x) <= 2 && goal.z <= -124 - f32(i) * 8;
+        ^
+  note: in #test background players keep moving on the empty south road, away from the town
+1 of 232 checks (--only 'background players'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents-12940/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents-12940/coax/build.sh

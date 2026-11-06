@@ -1,0 +1,10 @@
+FAIL #test net: tree tilt and fire age sample the pose clock at boundaries and between rows (0 ms)
+apps/openagents-web/everglade-net.coax:1188:5: error[E0406]: assertion failed
+      #assert abs(p.ax - tilt[i]) < 0.001 && abs(p.az + tilt[i] * 0.2) < 0.001 && abs(p.age - 4 - tilt[i]) < 0.001;
+      ^
+  note: in #test net: tree tilt and fire age sample the pose clock at boundaries and between rows
+1 of 782 checks (--only 'tree tilt and fire age'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents-12940/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents-12940/coax/build.sh

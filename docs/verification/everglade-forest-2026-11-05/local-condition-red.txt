@@ -1,0 +1,83 @@
+everglade-drift: room 127.0.0.1:9000, page 127.0.0.1:9001, results in /tmp/oa-12940-kit-local
+profile local: round trip 0 ms
+  step start
+  step crate
+  step strafe
+  step walk
+  step jump
+  step rg
+  step wos
+  step ww
+  step held
+  step folk
+  step end
+  (offline room host: 0 stalls, 0 ms of its beat dropped)
+  (worker room tick: p95 485 us, p99 630 us, budget 11000 us at p95: within)
+ok    local movement inputs took effect (mm)
+ok    local position (in your heading, since the step)
+ok    local camera heading
+ok    local lift height
+ok    local Reverse Gravity shown
+ok    local Reverse Gravity particles
+ok    local Wind Wall shown
+ok    local Wind Wall particles
+ok    local Wall of Stone shown
+ok    local Wall of Stone panels
+ok    local spell and condition particles
+ok    local hotbar slots
+ok    local condition on you
+ok    local condition on others
+DRIFT local conditions on the town's people: at 21250 ms (step rg): offline 1 against room 0, by 1 (122 frames off)
+ok    local your engine conditions
+ok    local stables down
+ok    local plate text
+ok    local status lines
+ok    local camera jump, offline
+ok    local camera jump, room
+ok    local camera turn with no look, offline
+ok    local camera turn with no look, room
+ok    local corrections
+ok    local a townsperson held
+ok    local NPC speed against clip
+  raid: LEVEL 1 kit ready, bar 222308816 (whole 864523051)
+  step raid
+  step fight
+  step end
+ok    local stables collapse, offline raid
+ok    local stables collapse, room raid
+ok    local level up through XP
+ok    local hotbar follows the level
+
+| probe | local |
+|---|---|
+| movement inputs took effect (mm) | ok |
+| position (in your heading, since the step) | ok |
+| camera heading | ok |
+| lift height | ok |
+| Reverse Gravity shown | ok |
+| Reverse Gravity particles | ok |
+| Wind Wall shown | ok |
+| Wind Wall particles | ok |
+| Wall of Stone shown | ok |
+| Wall of Stone panels | ok |
+| spell and condition particles | ok |
+| hotbar slots | ok |
+| condition on you | ok |
+| condition on others | ok |
+| conditions on the town's people | DRIFT |
+| your engine conditions | ok |
+| stables down | ok |
+| plate text | ok |
+| status lines | ok |
+| camera jump, offline | ok |
+| camera jump, room | ok |
+| camera turn with no look, offline | ok |
+| camera turn with no look, room | ok |
+| corrections | ok |
+| a townsperson held | ok |
+| NPC speed against clip | ok |
+| stables collapse, offline raid | ok |
+| stables collapse, room raid | ok |
+| level up through XP | ok |
+| hotbar follows the level | ok |
+fails

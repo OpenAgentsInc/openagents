@@ -1,0 +1,10 @@
+FAIL #test gravity placement contains both complete patrols, not only Bram's current point (0 ms)
+coax/web/everglade-drift.coax:401:3: error[E0406]: assertion failed
+    #assert !dr_rg_patrols(-6300, -60450);   // Tilda's Inn Street endpoint leaves the cylinder
+    ^
+  note: in #test gravity placement contains both complete patrols, not only Bram's current point
+1 of 139 checks (--only 'both complete patrols'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: this compiler is out of date: /Users/christopherdavid/work/openagents-12940/coax has different compiler sources than the ones it was built from,
+  so the errors above may come from the old compiler. Rebuild it, then run the command again:
+  /Users/christopherdavid/work/openagents-12940/coax/build.sh

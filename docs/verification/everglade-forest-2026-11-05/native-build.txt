@@ -1,0 +1,6 @@
+coax: note[E0400]: compile-time steps: 833675922 of 900000000 used (92%), above three quarters of the limit; more than 900000000 fails with E0400
+  top users of compile-time steps:
+    833675922 steps  apps/openagents-web/everglade-join.coax:522:1  #test 'join: a first visit opens CHARACTER before the socket opens; ENTER sends the look and opens it'
+  fix: run coax test --only 'join: a first visit opens CHARACTER before the socket opens; ENTER sends the look and opens it' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+room: start check: 0 fields off their defaults, the same from any memory
+built /Users/christopherdavid/work/openagents-12940/coax/web/room/bin/room

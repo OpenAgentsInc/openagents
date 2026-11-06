@@ -1,0 +1,5 @@
+coax: note[E0400]: compile-time steps: 21749884 of 28000000 used (77%), above three quarters of the limit; more than 28000000 fails with E0400
+  top users of compile-time steps:
+    21749884 steps  aethyr/walk.coax:728:1  #forall 'speed never passes the top, and changes no faster than ACCEL'
+  fix: run coax test --only 'speed never passes the top, and changes no faster than ACCEL' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+built /Users/christopherdavid/work/openagents-12940/apps/openagents-web/build/everglade-room.wasm (998983 bytes)

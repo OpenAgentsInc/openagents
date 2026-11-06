@@ -1,0 +1,8 @@
+FAIL #test everglade room: a 250 ms link's TCP resend preserves every earned movement input (717 ms)
+coax/web/room/room-everglade.coax:2082:3: error[E0406]: assertion failed
+    #assert v[0].eg[k].seat[0].q_n == 20;
+    ^
+  note: in #test everglade room: a 250 ms link's TCP resend preserves every earned movement input
+1 of 669 checks (--only 'TCP resend'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
+coax: note[E0400]: compile-time value slots: 28402370 of 33554432 used (84%), above three quarters of the limit; more than 33554432 fails with E0400

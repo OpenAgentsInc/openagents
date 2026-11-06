@@ -1,0 +1,78 @@
+everglade-drift: room 127.0.0.1:9000, page 127.0.0.1:9001, results in /tmp/oa-12940-final250-1
+profile 250: round trip 250 ms, jitter 30 ms, 2% lost
+  native room ready after 1 ms
+  step start
+  step crate
+  step strafe
+  step walk
+  step jump
+  step rg
+  gravity placement: you -6300,-60450 mm, first townsperson -154,-6982 cm
+  gravity placement: you -6300,-60450 mm, first townsperson -154,-6978 cm
+  step wos
+  step ww
+  step held
+  step folk
+  step end
+  (offline room host: 0 stalls, 0 ms of its beat dropped)
+  (worker room tick: p95 1060 us, p99 1195 us, budget 11000 us at p95: within)
+ok    250 background players stayed at least 32 m away
+ok    250 gravity safely reaches and drops a townsperson
+ok    250 movement inputs took effect (mm)
+ok    250 position (in your heading, since the step)
+ok    250 camera heading
+ok    250 lift height
+ok    250 Reverse Gravity shown
+ok    250 Reverse Gravity particles
+ok    250 Wind Wall shown
+ok    250 Wind Wall particles
+ok    250 Wall of Stone shown
+ok    250 Wall of Stone panels
+ok    250 spell and condition particles
+ok    250 hotbar slots
+ok    250 condition on you
+ok    250 condition on others
+DRIFT 250 conditions on the town's people: at 32402 ms (step rg): person 1 has condition bits 18432 versus 0
+ok    250 your engine conditions
+ok    250 stables down
+ok    250 plate text
+ok    250 status lines
+ok    250 camera jump, offline
+ok    250 camera jump, room
+ok    250 camera turn with no look, offline
+ok    250 camera turn with no look, room
+ok    250 corrections
+ok    250 a townsperson held
+ok    250 NPC speed against clip
+
+| probe | 250 |
+|---|---|
+| background players stayed at least 32 m away | ok |
+| gravity safely reaches and drops a townsperson | ok |
+| movement inputs took effect (mm) | ok |
+| position (in your heading, since the step) | ok |
+| camera heading | ok |
+| lift height | ok |
+| Reverse Gravity shown | ok |
+| Reverse Gravity particles | ok |
+| Wind Wall shown | ok |
+| Wind Wall particles | ok |
+| Wall of Stone shown | ok |
+| Wall of Stone panels | ok |
+| spell and condition particles | ok |
+| hotbar slots | ok |
+| condition on you | ok |
+| condition on others | ok |
+| conditions on the town's people | DRIFT |
+| your engine conditions | ok |
+| stables down | ok |
+| plate text | ok |
+| status lines | ok |
+| camera jump, offline | ok |
+| camera jump, room | ok |
+| camera turn with no look, offline | ok |
+| camera turn with no look, room | ok |
+| corrections | ok |
+| a townsperson held | ok |
+| NPC speed against clip | ok |
+fails

@@ -1,0 +1,7 @@
+FAIL #test room town: the actual room tick burns and spreads trees as their starter's crime (#12940) (4664 ms)
+apps/openagents-web/everglade-watch.coax:1729:3: error[E0406]: assertion failed
+    #assert spread && v[0].soot[k] == 1 && v[0].bare[k] == 1;
+    ^
+  note: in #test room town: the actual room tick burns and spreads trees as their starter's crime (#12940)
+1 of 774 checks (--only 'actual room tick burns'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)
