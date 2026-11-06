@@ -428,7 +428,7 @@ dr_script :: (p: DrPair, dir: string) -> bool {
 }
 
 // The page's record back from the browser.
-dr_pull :: (c: [] Cdp, pg: [] DrPage) -> bool {
+dr_pull :: (c: [] Cdp, pg: [] DrPage, folk: bool) -> bool {
   n := dr_int(c, "__dr.count()", -1);
   if n < 0 { return false; }
   if n > DR_ROWS { n = DR_ROWS; }
@@ -445,18 +445,21 @@ dr_pull :: (c: [] Cdp, pg: [] DrPage) -> bool {
     at += k;
   }
   pg[0].n = n;
-  if dr_int(c, "__dr.factsOverflow ? 1 : 0", 1) != 0 { return false; }
-  fv := cdp_evaluate(c, "__dr.facts");
-  if fv < 0 { return false; }
-  fd := cdp_doc(c); fe := fd.nodes[fv].first; pg[0].facts_n = 0;
-  while fe != -1 && pg[0].facts_n < DR_FACTS {
-    f := pg[0].facts[pg[0].facts_n..<pg[0].facts_n + 1];
-    f[0].t = jv_int(fd, jv_at(fd, fe, 0), -1); f[0].lo = jv_int(fd, jv_at(fd, fe, 1), 0); f[0].hi = jv_int(fd, jv_at(fd, fe, 2), 0);
-    bits := jv_at(fd, fe, 3);
-    for i: 0..<DR_FOLK { f[0].cond[i] = jv_int(fd, jv_at(fd, bits, i), -1); if f[0].cond[i] < 0 { return false; } }
-    pg[0].facts_n += 1; fe = fd.nodes[fe].next;
+  pg[0].facts_n = 0;
+  if folk {
+    if dr_int(c, "__dr.factsOverflow ? 1 : 0", 1) != 0 { return false; }
+    fv := cdp_evaluate(c, "__dr.facts");
+    if fv < 0 { return false; }
+    fd := cdp_doc(c); fe := fd.nodes[fv].first;
+    while fe != -1 && pg[0].facts_n < DR_FACTS {
+      f := pg[0].facts[pg[0].facts_n..<pg[0].facts_n + 1];
+      f[0].t = jv_int(fd, jv_at(fd, fe, 0), -1); f[0].lo = jv_int(fd, jv_at(fd, fe, 1), 0); f[0].hi = jv_int(fd, jv_at(fd, fe, 2), 0);
+      bits := jv_at(fd, fe, 3);
+      for i: 0..<DR_FOLK { f[0].cond[i] = jv_int(fd, jv_at(fd, bits, i), -1); if f[0].cond[i] < 0 { return false; } }
+      pg[0].facts_n += 1; fe = fd.nodes[fe].next;
+    }
+    if fe != -1 || pg[0].facts_n < 1 { return false; }
   }
-  if fe != -1 || pg[0].facts_n < 1 { return false; }
   v := cdp_evaluate(c, "__dr.marks");
   if v >= 0 {
     d := cdp_doc(c); e := d.nodes[v].first; pg[0].marks_n = 0;
@@ -829,10 +832,22 @@ dr_offline_script :: (run:DrRun,out:[]Buf)->string {
 dr_native_ready :: (run:DrRun,c:[]Cdp)->bool {
   return !run.native || dr_int(c,"coaxial.roomHost?.native === true && __dr.probe(0)===2 && __dr.probe(1)===0 ? 1:0",0)==1;
 }
+dr_room_ready :: (c: [] Cdp, port: int) -> bool {
+  began := proc_now_ms(); deadline := began + 60000;
+  body: [64] u8;
+  while proc_now_ms() < deadline {
+    n := cdp_get(c, port, "/ready", body[..]);
+    if n == 6 && cast(string) body[0..<n] == "ready\n" { print("  native room ready after % ms\n", proc_now_ms() - began); return true; }
+    proc_sleep(100);
+  }
+  tool_errln("everglade-drift: native room never became ready"); return false;
+}
 
 // One paired session on one network profile: its verdicts into rep; false when it couldn't run.
 dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPage, b: [] DrPage) -> bool {
   room := run.port; page := run.port + 1; proxy := run.port + 2;
+  ca: [1] Cdp; cb: [1] Cdp; ok := false;
+  if !dr_room_ready(ca[..], room) { return false; }
   tool := "coax/web/tool.sh";
   q: [1] Buf;
   bput(q[..], "exec "); bput(q[..], tool); bput(q[..], " coax/web/room/net-proxy.coax "); bint(q[..], proxy); bput(q[..], " "); bint(q[..], room);
@@ -850,7 +865,6 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
   proc_sleep(2500);
   ua: [1] Buf; bput(ua[..], "http://127.0.0.1:"); bint(ua[..], run.port + 3); bput(ua[..], "/worlds/everglade?offline=worker&levels=off");
   ub: [1] Buf; bput(ub[..], "http://127.0.0.1:"); bint(ub[..], page); bput(ub[..], "/worlds/everglade?relay=ws://localhost:"); bint(ub[..], proxy); bput(ub[..], "&room=pair-drift-"); bint(ub[..], code);
-  ca: [1] Cdp; cb: [1] Cdp; ok := false;
   if cdp_launch(ca[..], 1280, 800, "coax-drift-a-") {
     if cdp_launch(cb[..], 1280, 800, "coax-drift-b-") {
       script:[1]Buf;
@@ -863,7 +877,7 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
         sh: [1] Buf; bput(sh[..], run.dir); bput(sh[..], "/shot-"); bput(sh[..], profile);
         at: [1] int;
         gravity_ready := dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker, native=run.native, at = at[..]}, run.dir);
-        ok = dr_pull(ca[..], a) && dr_pull(cb[..], b);
+        ok = dr_pull(ca[..], a, true) && dr_pull(cb[..], b, true);
         clearance: [1] DrVerdict;
         clearance[0].drifted = !fs_exists(btext(ready_path[..])) || fs_exists(btext(unsafe_path[..]));
         clearance[0].step = "background players";
@@ -1064,7 +1078,7 @@ dr_raid :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] DrPag
           if fa == 1 && fb == 1 && l2 == 1 { break; }
         }
         dr_mark(p, "end"); proc_sleep(300);
-        ok = dr_pull(ca[..], a) && dr_pull(cc[..], b);
+        ok = dr_pull(ca[..], a, false) && dr_pull(cc[..], b, false);
       } else { tool_errln("everglade-drift: the raid's pages didn't come up"); }
       for side: 0..<2 {
         report: [1] Buf; bput(report[..], run.dir); bput(report[..], "/raid-"); bput(report[..], profile); bput(report[..], ifx side == 0 then "-offline.json" else "-room.json");
@@ -1221,7 +1235,7 @@ tool_main :: () -> int #export_c {
     rb: [1] Buf; bput(rb[..], dir); bput(rb[..], "/rows-"); bput(rb[..], profile);
     ra: [1] Buf; bput(ra[..], btext(rb[..])); bput(ra[..], "-offline.txt"); dr_write_rows(btext(ra[..]), pa[..]);
     rr: [1] Buf; bput(rr[..], btext(rb[..])); bput(rr[..], "-room.txt"); dr_write_rows(btext(rr[..]), pb[..]);
-    if !args_has(a[..], "--no-raid") {
+    if held && !args_has(a[..], "--no-raid") {
       rr0 := reps[np - 1].n;
       whole := dr_bar_at(pb[..], dr_mark_t(pb[..], "end"));   // the session's room page: levels off, the whole bar
       if !dr_raid(run, profile, rtt, reps[np - 1..<np], pa[..], pb[..], whole) { print("DRIFT % raid: it didn't run\n", profile); all = false; }
