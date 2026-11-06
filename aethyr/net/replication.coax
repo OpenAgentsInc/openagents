@@ -9,6 +9,19 @@ NetReplica :: struct {
   gone:int; gone_t:int; gone2:int; gone2_t:int;
   priority:f32; since:int;
 }
+#test "replication: only the complete final state of the current assembly advances receipt or replaces visibility" {
+  #assert net_snapshot_received(2,3,3,true,true);
+  #assert !net_snapshot_received(3,3,3,true,true) && !net_snapshot_received(4,3,3,true,true);
+  #assert !net_snapshot_received(2,3,4,true,true) && !net_snapshot_received(2,3,3,false,true);
+  #assert !net_snapshot_received(2,3,3,true,false) && net_snapshot_received(-1,0,0,true,true);
+  #assert net_snapshot_visible(true,false,false) && !net_snapshot_visible(false,false,false);
+  #assert net_snapshot_visible(false,true,true) && !net_snapshot_visible(true,false,true);
+  #assert net_snapshot_visible(true,true,true) && net_snapshot_visible(false,true,false);
+}
+net_snapshot_received :: (heard:int,tick:int,assembling:int,whole:bool,final:bool)->bool {
+  return final && whole && tick==assembling && tick>heard;
+}
+net_snapshot_visible :: (previous:bool,present:bool,whole:bool)->bool {return present || (previous && !whole);}
 
 #test "replication: a replacement retains both owed removals before its next row" {
   s:=NetReplica.{held=8,base=3,sent=15,last=3,priority=2,since=2};

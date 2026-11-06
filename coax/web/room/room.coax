@@ -53,10 +53,12 @@
 #load "room-work.coax";
 #load "../../../aethyr/net/latency.coax";
 #load "room-latency.coax";
+#load "room-orbit-v2.coax";
 
 ROOMS :: 8;
 CONNS :: 512;
 PATH :: "/api/room/orbit-league/";
+PATH_ORBIT_V2 :: "/api/room/orbit-league-v2/";
 
 QUICK_WAIT :: 10.0;      // a quick match waits this long for players, then bots take the empty seats
 
@@ -71,6 +73,7 @@ RmConn :: struct {
   gen: SeatGeneration;            // an everglade seat's generation when this socket took it (room-relay.coax, #12792)
 }
 RmRoom :: struct {
+  auth:[1]OrbAuthority;
   name: [ROOM_NAME] u8; name_n: int;
   bot_kicks: int;      // the kickoff its bots were last set out for
   paint: [ROOM_PLAYERS] int;   // each seat's paint, as its player last reported it (ol-paint)
@@ -80,6 +83,7 @@ RmRoom :: struct {
   cars: [ROOM_PLAYERS] RigidBody;
 }
 RmServer :: struct {
+  orbit_generation:SeatGeneration;
   bg:[1]BgBudget;
   forge:RmForge;
   quick_n: int;      // quick matches made: each gets its own room name
@@ -123,7 +127,7 @@ rm_init :: (v: [] RmServer) #export_c {
   for r: 0..<RELAYS { v[0].relays[r].live = false; }
   for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].initialized=false;v[0].eg[k].relay = -1; }
   v[0].q_head = 0; v[0].q_n = 0;
-  for r: 0..<ROOMS { v[0].rooms[r].live = false; v[0].rooms[r].s[0] = OrbitLeague.{}; }
+  for r: 0..<ROOMS { v[0].rooms[r].live = false;v[0].rooms[r].auth[0].enabled=false;v[0].rooms[r].auth[0].initialized=false;v[0].rooms[r].s[0] = OrbitLeague.{}; }
 }
 // book:end server-start
 
@@ -168,11 +172,18 @@ rm_ticket_key :: (v: [] RmServer, key: string, must: bool) #export_c {
 // The room name in "GET /api/room/orbit-league/NAME HTTP/1.1": its bytes into
 // name, the count, or 0 when the path isn't a room's.
 rm_path_room :: (req: string, name: [] u8) -> int {
+  return rm_path_room_at(req,name,PATH);
+}
+rm_orbit_v2_path :: (req:string)->bool {
+  prefix:="GET /api/room/orbit-league-v2/";
+  return req.count>=prefix.count && req[0..<prefix.count]==prefix;
+}
+rm_path_room_at :: (req:string,name:[]u8,path:string)->int {
   pre := "GET ";
-  if req.count < pre.count + PATH.count || req[0..<pre.count] != pre { return 0; }
+  if req.count < pre.count + path.count || req[0..<pre.count] != pre { return 0; }
   at := pre.count;
-  if req[at..<at + PATH.count] != PATH { return 0; }
-  i := at + PATH.count; n := 0;
+  if req[at..<at + path.count] != path { return 0; }
+  i := at + path.count; n := 0;
   while i < req.count && n < name.count {
     c := req[i];
     if c >= 'A' && c <= 'Z' { c += 32; }
@@ -184,25 +195,37 @@ rm_path_room :: (req: string, name: [] u8) -> int {
 }
 // The room with this name, made if there is space: its index, or -1.
 rm_find :: (rooms: [] RmRoom, name: string) -> int {
+  return rm_find_profile(rooms,name,false);
+}
+rm_find_profile :: (rooms:[]RmRoom,name:string,authoritative:bool)->int {
   free := -1;
   for i: 0..<rooms.count {
-    if rooms[i].live && cast(string) rooms[i].name[0..<rooms[i].name_n] == name { return i; }
+    if rooms[i].live && rooms[i].auth[0].enabled==authoritative && cast(string) rooms[i].name[0..<rooms[i].name_n] == name { return i; }
     if !rooms[i].live && free < 0 { free = i; }
   }
   if free < 0 { return -1; }
   for i: 0..<name.count { rooms[free].name[i] = name[i]; }
   rooms[free].name_n = name.count; rooms[free].live = true; rooms[free].tick = 0; rooms[free].quick = 0;
+  rooms[free].auth[0]=OrbAuthority.{enabled=authoritative};
   room_reset(rooms[free].s[..]);
+  if authoritative {
+    none:[CARS]bool;room_bots_kickoff(rooms[free].s[..],rooms[free].cars[..],none[..],CARS);
+    rooms[free].bot_kicks=rooms[free].s[0].kicks;
+  }
+  rooms[free].auth[0].initialized=true;
   return free;
 }
 // QUICK MATCH (ol-quick-match): "quick-1v1" or "quick-2v2" joins the mode's
 // newest match that is still finding players and has a seat; else a new one,
 // which waits QUICK_WAIT for players before its bots take the empty seats.
 rm_quick :: (v: [] RmServer, name: string) -> int {
+  return rm_quick_profile(v,name,false);
+}
+rm_quick_profile :: (v:[]RmServer,name:string,authoritative:bool)->int {
   seats := ifx name == "quick-2v2" then ROOM_PLAYERS else 2;
   for r: 0..<ROOMS {
     m := v[0].rooms[r];
-    if !m.live || m.quick != seats || m.s[0].phase != PHASE_KICKOFF || m.s[0].phase_t >= 0.0 { continue; }
+    if !m.live || m.auth[0].enabled!=authoritative || m.quick != seats || m.s[0].phase != PHASE_KICKOFF || m.s[0].phase_t >= 0.0 { continue; }
     if rm_seat(v[0].conns[..], r).value >= 0 && rm_seat(v[0].conns[..], r).value < seats { return r; }
   }
   v[0].quick_n += 1;
@@ -211,7 +234,7 @@ rm_quick :: (v: [] RmServer, name: string) -> int {
   buf[k] = cast(u8) ('0' + seats / 2); k += 1;
   buf[k] = '-'; k += 1;
   k = put_int(buf[..], k, v[0].quick_n);
-  r := rm_find(v[0].rooms[..], cast(string) buf[0..<k]);
+  r := rm_find_profile(v[0].rooms[..],cast(string)buf[0..<k],authoritative);
   if r < 0 { return -1; }
   v[0].rooms[r].quick = seats;
   v[0].rooms[r].s[0].phase_t = -QUICK_WAIT;
@@ -252,10 +275,11 @@ rm_join :: (v: [] RmServer, conn: int, request: string) -> int #export_c {
 rm_join_at :: (v: [] RmServer, conn: int, request: string) -> int {
   if rl_is_path(request) { return rl_join(v, conn, request); }
   name: [ROOM_NAME] u8;
-  n := rm_path_room(request, name[..]);
+  authoritative:=rm_orbit_v2_path(request);
+  n := rm_path_room_at(request,name[..],ifx authoritative then PATH_ORBIT_V2 else PATH);
   if n == 0 { return -1; }
   named := cast(string) name[0..<n];
-  r := ifx named == "quick-1v1" || named == "quick-2v2" then rm_quick(v, named) else rm_find(v[0].rooms[..], named);
+  r := ifx named == "quick-1v1" || named == "quick-2v2" then rm_quick_profile(v,named,authoritative) else rm_find_profile(v[0].rooms[..],named,authoritative);
   if r < 0 { return -1; }
   seat := rm_seat(v[0].conns[..], r).value;
   if seat < 0 || seat >= rm_seats(v[0].rooms[r]) { return -1; }
@@ -264,6 +288,7 @@ rm_join_at :: (v: [] RmServer, conn: int, request: string) -> int {
   b := vehicle_body(v[0].rooms[r].s[0].spec, CAR_MASS, d3(cast(f64) (seat / 2) * 6.0, 1.0, -SPAWN_Z), DQ.{});
   v[0].rooms[r].cars[seat] = room_view(b, seat);
   v[0].rooms[r].paint[seat] = 0;
+  if authoritative && !rm_orbit_join(v,r,seat,conn) {v[0].conns[conn]=RmConn.{};return -1;}
   // a full quick match stops waiting
   if v[0].rooms[r].quick > 0 {
     free := rm_seat(v[0].conns[..], r).value;
@@ -276,6 +301,7 @@ rm_heard :: (v: [] RmServer, conn: int, text: string) #export_c {
   if conn < 0 || conn >= CONNS || !v[0].conns[conn].live { return; }
   if v[0].conns[conn].relay >= 0 { rl_heard(v, conn, text); return; }
   c := v[0].conns[conn];
+  if v[0].rooms[c.room].auth[0].enabled {rm_orbit_heard(v,conn,text);return;}
   v[0].rooms[c.room].cars[c.seat] = room_report(text, v[0].rooms[c.room].cars[c.seat]);
   e := room_report_clock(text);
   if e >= 0 { v[0].conns[conn].echo = e; }
@@ -290,8 +316,9 @@ rm_left :: (v: [] RmServer, conn: int) #export_c {
 // Orbit League steps every beat, its ball twice (120 Hz physics); a client reports its own car, and
 // the room steps the ball. Everglade steps every other beat, its seats earning their steps by the
 // clock (rm_eg_begin), and its progression waits for the API's receipts (room-vitals.coax).
-RM_REALM_ORBIT :: 0; RM_REALM_EVERGLADE :: 1;
+RM_REALM_ORBIT :: 0; RM_REALM_EVERGLADE :: 1;RM_REALM_ORBIT_AUTH :: 2;
 rm_profile :: (realm: int) -> NetProfile {
+  if realm==RM_REALM_ORBIT_AUTH {return orb_realm().beat;}
   if realm == RM_REALM_EVERGLADE {
     return NetProfile.{hz = EG_HZ, substeps = 1, trust = NET_TRUST_AUTHORITY, durable = NET_DURABLE_RECEIPTS, fair = NET_FAIR_EARNED};
   }
@@ -300,6 +327,7 @@ rm_profile :: (realm: int) -> NetProfile {
   return NetProfile.{hz = cast(int) ROOM_HZ, substeps = cast(int) (1.0 / (ROOM_HZ * STEP) + 0.5), trust = NET_TRUST_PRESENCE};
 }
 rm_realm :: (realm:int)->NetRealm {
+  if realm==RM_REALM_ORBIT_AUTH {return orb_realm();}
   if realm==RM_REALM_EVERGLADE {
     return NetRealm.{beat=rm_profile(realm),collision=NET_COLLIDE_CAPSULE,fields=WIRE_SF,
       public_fields=(1<<WIRE_SF)-1,owner_fields=(1<<WIRE_SF)-1,party_fields=(1<<WS_HP)|(1<<WS_MAX)};
@@ -317,6 +345,7 @@ rm_realm_due :: (v: [] RmServer, realm: int, beat: int) -> bool #export_c { retu
 rm_tick :: (v: [] RmServer) #export_c {
   for r: 0..<ROOMS {
     if !v[0].rooms[r].live { continue; }
+    if v[0].rooms[r].auth[0].enabled {rm_orbit_tick(v,r);continue;}
     cars: [ROOM_PLAYERS] RigidBody; n := 0;
     for i: 0..<CONNS { if v[0].conns[i].live && v[0].conns[i].relay < 0 && v[0].conns[i].room == r { cars[n] = v[0].rooms[r].cars[v[0].conns[i].seat]; n += 1; } }
     if n == 0 { v[0].rooms[r].live = false; continue; }
@@ -345,6 +374,7 @@ rm_state :: (v: [] RmServer, conn: int) -> int #export_c {
   if conn < 0 || conn >= CONNS || !v[0].conns[conn].live || v[0].conns[conn].relay >= 0 { return 0; }
   r := v[0].conns[conn].room;
   if !v[0].rooms[r].live { return 0; }
+  if v[0].rooms[r].auth[0].enabled {return rm_orbit_state(v,conn);}
   cars: [ROOM_PLAYERS] RigidBody; seats: [ROOM_PLAYERS] int; n := 0;
   for i: 0..<CONNS {
     // its seat + 8 x its paint: a client reads the seat's side as before
@@ -383,11 +413,26 @@ rm_players :: (v: [] RmServer) -> int #export_c {
   for t:0..<30 {rm_clock(v[..],t*1000/60,1762190000000+t*1000/60);rm_tick(v[..]);}
   #assert v[0].rooms[r].cars[0].pos.z>before.pos.z+0.1;
   n=rm_state(v[..],0);#assert n>0 && v[0].out[0]=='S';
+  snapshot:=orb_snapshot_read(cast(string)v[0].out[0..<n]);
+  #assert snapshot.ok && snapshot.h[3]==1 && snapshot.h[4]==10 && snapshot.present[0] && snapshot.present[1] && !snapshot.present[2];
+  #assert snapshot.v[ORB_FIELDS+13]==3 && cast(int)snapshot.v[ORB_FIELDS+ORB_LIFE]==v[0].conns[0].gen.value;
+  place:=v[0].rooms[r].cars[0].pos;input_buf:[128]u8;
+  for seq:2..<1002 {
+    fields:=[7]int.[seq,1000,0,0,3,20,0];count:=net_record_write('I',fields[..],input_buf[..]);
+    rm_heard(v[..],0,cast(string)input_buf[0..<count]);
+  }
+  #assert v[0].rooms[r].auth[0].ack[0]==1 && v[0].rooms[r].cars[0].pos.z==place.z;
+  rm_tick(v[..]);#assert v[0].rooms[r].auth[0].ack[0]==1001 && v[0].rooms[r].auth[0].accepted==2;
+  #assert d3_dist(v[0].rooms[r].cars[0].pos,place)<2;
+  rm_heard(v[..],0,"I 2 -1000 0 0 3 20 0");#assert v[0].rooms[r].auth[0].input[0].throttle==1000;
   // The same room name on the frozen profile has a separate world and retains its reported body.
   #assert rm_join(v[..],1,"GET /api/room/orbit-league/qualified HTTP/1.1\r\n\r\n")==0;
   old:=v[0].conns[1].room;#assert old!=r;
   rm_heard(v[..],1,cast(string)buf[0..<room_put_body(buf[..],1,forged)]);
   #assert v[0].rooms[old].cars[0].pos.x==100;
+  #assert rm_join(v[..],2,"GET /api/room/orbit-league-v2/qualified HTTP/1.1\r\n\r\n")==1;
+  rm_heard(v[..],2,"H 2 1 2 1");n=rm_state(v[..],2);
+  #assert cast(string)v[0].out[0..<n]=="R 2";
 }
 
 #test "profiles: Orbit League and Everglade run by their own profiles on the one beat" {

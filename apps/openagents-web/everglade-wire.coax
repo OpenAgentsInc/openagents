@@ -539,7 +539,7 @@ wire_mirror_d :: (m: [] WireMirror, d: WireD) -> bool {
 }
 // After a D's entries: its tick is heard once its last part came, every part in order and read.
 wire_mirror_end :: (m: [] WireMirror, d: WireD) {
-  if (d.f & 2) == 0 && m[0].whole && d.tick == m[0].tick && d.tick > m[0].heard { m[0].heard = d.tick; }
+  if net_snapshot_received(m[0].heard,d.tick,m[0].tick,m[0].whole,(d.f&2)==0) {m[0].heard=d.tick;}
 }
 // A row ("s ...") at tick: its entity's place in the mirror, its newest row now this one; -1 unread.
 wire_mirror_s :: (m: [] WireMirror, tick: int, t: string) -> int {

@@ -24,7 +24,7 @@
   "server": {
     "state": "S TICK SEAT GENERATION ACK ECHO PHASE PHASE_MS CLOCK_MS BLUE MAGENTA KICKS PLAYERS;ENTRIES",
     "row": "s ID BACK MASK VALUES",
-    "removal": "x ID",
+    "removal": "a body absent from a complete snapshot is removed; partial snapshots retain the prior world",
     "refusal": "R REASON",
     "row_id": "0 ball; 1 + seat for cars",
     "fields": ["x", "y", "z", "qx", "qy", "qz", "qw", "vx", "vy", "vz", "wx", "wy", "wz", "paint", "fuel", "life"],
@@ -34,7 +34,7 @@
     "party_fields": [],
     "replication": "complete snapshots; every row is absolute (BACK 0)",
     "receipt_ring": 32,
-    "identity": "a seat reused or a kickoff advances life; an old removal cannot erase its successor",
+    "identity": "a new connection advances its car's life; KICKS identifies a kickoff discontinuity; stale snapshots cannot erase a successor",
     "baseline": "this small-room profile selects absolute rows; only complete snapshots are applied or acknowledged"
   },
   "limits": {"players": 4, "client_frame": 256, "server_frame": 2048},

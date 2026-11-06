@@ -51,6 +51,22 @@ OrbInput :: struct {ok:bool;seq:int;throttle:int;steer:int;flags:int;paint:int;c
   #assert orb_input(cast(string)b[0..<256]).ok;
   #assert !orb_input(cast(string)b[..]).ok;
 }
+#test "Orbit v2: controls bind to admission and generation, expire by the host clock and cannot buy steps" {
+  i:=OrbInput.{ok=true,seq=2};one:=SeatGeneration.{value=1};two:=SeatGeneration.{value=2};
+  #assert orb_input_takes(true,one,one,i,1,1);
+  #assert !orb_input_takes(false,one,one,i,1,1) && !orb_input_takes(true,one,two,i,1,1);
+  #assert !orb_input_takes(true,one,one,i,2,1) && !orb_input_takes(true,one,one,i,1,2);
+  i.flags=8;#assert !orb_input_takes(true,one,one,i,1,1);i.flags=0;
+  #assert orb_controls_active(i,100,100) && orb_controls_active(i,100,1099);
+  #assert !orb_controls_active(i,100,1100) && !orb_controls_active(i,100,99);
+  i.ok=false;#assert !orb_controls_active(i,100,100);
+  #assert orb_next_generation(SeatGeneration.{}).value==1;
+  #assert orb_next_generation(SeatGeneration.{value=NET_RECORD_MAX-1}).value==NET_RECORD_MAX;
+  #assert orb_next_generation(SeatGeneration.{value=NET_RECORD_MAX}).value==0;
+  #assert orb_next_generation(SeatGeneration.{value=-1}).value==0;
+  #assert orb_next_input(0)==1 && orb_next_input(NET_RECORD_MAX-1)==NET_RECORD_MAX;
+  #assert orb_next_input(-1)==0 && orb_next_input(NET_RECORD_MAX)==0;
+}
 
 orb_realm :: ()->NetRealm {
   return NetRealm.{beat=NetProfile.{hz=60,substeps=2,trust=NET_TRUST_AUTHORITY,durable=NET_DURABLE_NONE,fair=NET_FAIR_BEAT},
@@ -76,4 +92,17 @@ orb_input :: (text:string)->OrbInput {
 orb_input_write :: (i:OrbInput,out:[]u8)->int {
   if !orb_input_valid(i) {return 0;}
   v:=[7]int.[i.seq,i.throttle,i.steer,i.flags,i.paint,i.clock,i.heard];return net_record_write('I',v[..],out);
+}
+orb_input_takes :: (admitted:bool,expected:SeatGeneration,actual:SeatGeneration,i:OrbInput,accepted:int,pending:int)->bool {
+  return admitted && net_session_current(expected,actual) && orb_input_valid(i) && net_command_newer(i.seq,accepted,pending);
+}
+orb_controls_active :: (i:OrbInput,heard_ms:int,now:int)->bool {
+  return i.ok && now>=heard_ms && now-heard_ms<ORB_INPUT_STALE_MS;
+}
+orb_next_generation :: (previous:SeatGeneration)->SeatGeneration {
+  if previous.value<0 || previous.value>=NET_RECORD_MAX {return SeatGeneration.{};}
+  return SeatGeneration.{value=add_sat(previous.value,1)};
+}
+orb_next_input :: (previous:int)->int {
+  if previous<0 || previous>=NET_RECORD_MAX {return 0;}return add_sat(previous,1);
 }

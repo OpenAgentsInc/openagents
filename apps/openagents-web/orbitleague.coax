@@ -32,6 +32,7 @@
 #load "../../aethyr/loop.coax";   // Aethyr's one clock: fixed 120 Hz steps
 #load "socket.coax";
 #load "../../aethyr/budget.coax";
+#load "orbit-snapshot.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 24000;
@@ -183,7 +184,7 @@ CAM_BACK :: 9.5; CAM_UP :: 3.4; FOV :: 1.15;
 ROOM_NAME :: 32;
 ROOM_PLAYERS :: 4;
 LAG_FRAMES :: 48;        // ?lag=MS: frames held each way (48 at 60 Hz: up to 800 ms)
-LAG_BYTES :: 768;
+LAG_BYTES :: 2048;        // the v2 profile's complete bounded snapshot
 PREDICT_MAX :: 72;       // the ball is replayed at most this many steps (0.6 s)
 HIST :: 128;             // your car's last steps, for the replay
 SMOOTH :: 0.12;          // a correction fades over about this many seconds
@@ -270,6 +271,8 @@ OrbitLeague :: struct {
   spin_now: f64 = 1.0;            // the spin now, 0 to 1 (spin_share)
   // ?room=NAME: online (ol-room): the room server owns the ball, the clock and the score
   online: bool; room: [ROOM_NAME] u8; room_n: int; origin: [128] u8; origin_n: int;
+  room_authority:bool;room_generation:SeatGeneration;room_tick:int=-1;room_seq:int #counter;room_ack:int;
+  room_present:[ROOM_PLAYERS]bool;
   pipe: [1] Pipe; sock: int = -1; sock_open: bool; sock_state: int;   // ROOM_*
   seat: int; kicks: int; send_t: f64; heard: int;   // heard: server states taken
   // ol-prediction: the round trip, the ball's and the other car's smoothing,
@@ -438,8 +441,13 @@ pad_wait_of :: (i: int) -> f64 { return ifx pad_at(i).y > 0.5 then PAD_BIG_WAIT 
 
 // A car on the floor over a ready pad takes it, unless its tank is full.
 take_pads :: (s: [] OrbitLeague, dt: f64) {
+  active:[CARS]bool;for c:0..<s[0].cars_n {active[c]=true;}
+  take_pads_masked(s,dt,active);
+}
+take_pads_masked :: (s:[]OrbitLeague,dt:f64,active:[CARS]bool) {
   for i: 0..<PADS { s[0].pad_wait[i] = fmax(0.0, s[0].pad_wait[i] - dt); }
   for c: 0..<s[0].cars_n {
+    if !active[c] {continue;}
     b := s[0].bodies[c + 1];
     // its height off the floor (in the drum: in from the rim)
     off := clearance(s, b.pos);
@@ -525,6 +533,7 @@ struct_defaults :: (s: [] OrbitLeague) {
   s[0].bot_path_at = -100.0; s[0].bot_path_goal = -1;
   s[0].spin_every = SPIN_EVERY; s[0].spin_g = 1.0; s[0].spin_now = 1.0;
   s[0].sock = -1; s[0].oth_gap = 1.0 / 60.0;
+  s[0].room_tick=-1;
 }
 // The station's spin, 0 to 1, after `played` seconds of play: full for
 // `every` seconds, then a spin-down of SPIN_DOWN (RAMP down, zero-g, RAMP
@@ -851,12 +860,17 @@ ball_arena :: (s: [] OrbitLeague) {
 }
 
 physics_step :: (s: [] OrbitLeague, drives: [CARS] Drive) {
+  active:[CARS]bool;for c:0..<s[0].cars_n {active[c]=true;}
+  physics_step_masked(s,drives,active);
+}
+physics_step_masked :: (s:[]OrbitLeague,drives:[CARS]Drive,active:[CARS]bool) {
   dt := STEP;
   set_spin(s);
   cp := car_planes();
   bp := ball_planes();
   dm := arena_drum();
   for c: 0..<s[0].cars_n {
+    if !active[c] {continue;}
     i := c + 1;
     dp := ifx s[0].sphere then sphere_planes(arena_sphere(), s[0].bodies[i].pos) else drum_planes(dm, s[0].bodies[i].pos);
     st := vehicle_step(s[0].bodies[i], s[0].spec, s[0].cars[c], drives[c].input, ifx curved(s) then dp[..] else cp[..], gravity_at(s[0].field, s[0].bodies[i].pos), dt);
@@ -873,20 +887,24 @@ physics_step :: (s: [] OrbitLeague, drives: [CARS] Drive) {
       s[0].tanks[c].fuel = fmin(100.0, s[0].tanks[c].fuel + BOOST_REGEN * dt);
     }
   }
-  take_pads(s, dt);
+  take_pads_masked(s,dt,active);
   bl := s[0].bodies[BALL];
   bl.force = d3_add(bl.force, d3_scale(gravity_at(s[0].field, bl.pos), bl.mass));
   bl.force = d3_sub(bl.force, d3_scale(bl.vel, bl.mass * BALL_DRAG));
   s[0].bodies[BALL] = bl;
+  inactive:[CARS]RigidBody;for c:0..<CARS {if !active[c] {inactive[c]=s[0].bodies[c+1];}}
   w := rigid_world(dt, s[0].bodies[..]);
   w = rigid_step(w, D3_ZERO);
+  for c:0..<CARS {if !active[c] {s[0].bodies[c+1]=inactive[c];}}
   // the cars against the arena, the ball, each other
   for c: 0..<s[0].cars_n {
+    if !active[c] {continue;}
     dp := ifx s[0].sphere then sphere_planes(arena_sphere(), s[0].bodies[c + 1].pos) else drum_planes(dm, s[0].bodies[c + 1].pos);
     s[0].bodies[c + 1] = vehicle_collide(s[0].bodies[c + 1], s[0].spec, ifx curved(s) then dp[..] else cp[..], 0.1, CAR_WALL_MU);
   }
   ball_arena(s);
   for c: 0..<s[0].cars_n {
+    if !active[c] {continue;}
     car := s[0].bodies[c + 1];
     ct := contact_sphere_box(s[0].bodies[BALL].pos, BALL_R, car.pos, car.orientation, s[0].spec.half);
     if ct.hit {
@@ -910,6 +928,7 @@ physics_step :: (s: [] OrbitLeague, drives: [CARS] Drive) {
   if sp > BALL_MAX { s[0].bodies[BALL].vel = d3_scale(s[0].bodies[BALL].vel, BALL_MAX / sp); }
   for a: 0..<s[0].cars_n {
     for b: a + 1..<s[0].cars_n {
+      if !active[a] || !active[b] {continue;}
       cc := contact_sphere_sphere(s[0].bodies[a + 1].pos, 1.6, s[0].bodies[b + 1].pos, 1.6);
       if !cc.hit { continue; }
       pair := contact_resolve(s[0].bodies[a + 1], s[0].bodies[b + 1], cc, 0.3, 0.2);
@@ -919,6 +938,7 @@ physics_step :: (s: [] OrbitLeague, drives: [CARS] Drive) {
   // a car on its wheels pressed into the glass turns where you steer: the
   // tyres alone can't swing it while its nose is pinned
   for c: 0..<s[0].cars_n {
+    if !active[c] {continue;}
     i := c + 1; b := s[0].bodies[i];
     if s[0].cars[c].wheels < 3 || drives[c].input.steer == 0.0 || drives[c].input.throttle == 0.0 { continue; }
     if abs(vehicle_forward_speed(b)) > PINNED_SPEED || !at_glass(s, b.pos) { continue; }
@@ -930,6 +950,7 @@ physics_step :: (s: [] OrbitLeague, drives: [CARS] Drive) {
   }
   // a car on its roof or side, or leaning on the glass, slow, for STUCK_TIME: set back on its wheels
   for c: 0..<s[0].cars_n {
+    if !active[c] {continue;}
     i := c + 1;
     // the count holds while it tumbles fast, and starts over once it is back on its wheels
     up := up_at(s, s[0].bodies[i].pos);
@@ -952,6 +973,7 @@ physics_step :: (s: [] OrbitLeague, drives: [CARS] Drive) {
   // online only your own car (the room owns the ball, and parks a missing
   // player's car under the floor)
   for i: 0..<BODIES {
+    if i>0 && !active[i-1] {continue;}
     if (s[0].online && i != YOU) || i > s[0].cars_n { continue; }
     p := s[0].bodies[i].pos;
     if out_of_arena(s, p) && !s[0].replaying { kickoff(s); return; }
@@ -993,6 +1015,7 @@ goal_scored :: (s: [] OrbitLeague, team: int) {
 
 game_step :: (s: [] OrbitLeague, dt: f64) {
   if s[0].golden { return; }
+  if s[0].online && s[0].room_authority {return;}
   s[0].sim = loop_accept(s[0].sim, dt);
   due := loop_due(s[0].sim);
   s[0].sim = loop_ran(s[0].sim);
@@ -1294,20 +1317,28 @@ room_kickoff :: (s: [] OrbitLeague) {
 // One STEP of the room: the clock and phases, then the ball against the
 // arena and the reported cars (they push it; it doesn't push them back).
 room_step :: (s: [] OrbitLeague, cars: [] RigidBody, players: int) {
+  if !room_step_begin(s,players) {return;}
+  s[0].spin_now = spin_share(s[0].played, s[0].spin_every); s[0].field.scale = s[0].spin_now * s[0].spin_g;
+  ball_step(s,cars,players);
+  room_step_end(s);
+}
+// Shared match boundaries: each profile supplies its own admitted physics in between.
+room_step_begin :: (s:[]OrbitLeague,players:int)->bool {
   s[0].phase_t += STEP;
   if s[0].phase == PHASE_KICKOFF && s[0].phase_t >= KICKOFF { s[0].phase = PHASE_PLAY; s[0].phase_t = 0.0; }
   if s[0].phase == PHASE_GOAL && s[0].phase_t >= CELEBRATE {
     if s[0].clock <= 0.0 { s[0].score[0] = 0; s[0].score[1] = 0; s[0].clock = MATCH_TIME; s[0].played = 0.0; }
     room_kickoff(s);
   }
-  if s[0].phase == PHASE_KICKOFF { return; }
+  if s[0].phase == PHASE_KICKOFF { return false; }
   if s[0].phase == PHASE_PLAY && players > 0 {
     s[0].played += STEP; s[0].clock = fmax(0.0, s[0].clock - STEP);
     // full time: a pause like a goal's, then a new match
     if s[0].clock <= 0.0 { s[0].phase = PHASE_GOAL; s[0].phase_t = 0.0; s[0].last_goal = -1; }
   }
-  s[0].spin_now = spin_share(s[0].played, s[0].spin_every); s[0].field.scale = s[0].spin_now * s[0].spin_g;
-  ball_step(s, cars, players);
+  return true;
+}
+room_step_end :: (s:[]OrbitLeague) {
   if s[0].phase == PHASE_PLAY {
     z := s[0].bodies[BALL].pos.z;
     team := goal_past(s, z);
@@ -1444,6 +1475,9 @@ room_join :: (s: [] OrbitLeague, url: string) {
   }
   if n == 0 { return; }
   s[0].room_n = n;
+  s[0].room_authority=!has_text(url,"room-profile=legacy");
+  s[0].room_generation=SeatGeneration.{};s[0].room_tick=-1;s[0].room_seq=0;s[0].room_ack=0;
+  if s[0].room_authority && (s[0].drum || s[0].sphere) {set_arena_kind(s,ARENA_BOX);}
   // the origin: scheme and host
   sl := 0; k := 0;
   while k < url.count && sl < 3 { if url[k] == '/' { sl += 1; } if sl < 3 { k += 1; } }
@@ -1457,7 +1491,8 @@ room_join :: (s: [] OrbitLeague, url: string) {
   s[0].online = true; s[0].no_bot = true; s[0].cars_n = 2; s[0].sock_state = ROOM_JOINING;
   buf: [256] u8; m := 0;
   for q: 0..<o { buf[m] = s[0].origin[q]; m += 1; }
-  for b: "/api/room/orbit-league/" { buf[m] = b; m += 1; }
+  path:=ifx s[0].room_authority then "/api/room/orbit-league-v2/" else "/api/room/orbit-league/";
+  for b:path { buf[m] = b; m += 1; }
   for q: 0..<n { buf[m] = s[0].room[q]; m += 1; }
   ok := pipe_open(s[0].pipe[..], cast(string) buf[0..<m]);
   kickoff(s);
@@ -1470,13 +1505,21 @@ room_socket :: (s: [] OrbitLeague, kind: int, text: string) -> bool {
   e := socket_event(kind);
   if e.id < 0 { return false; }
   if e.id != s[0].sock { return true; }
-  if e.event == SOCKET_OPENED { s[0].sock_open = true; }
+  if e.event == SOCKET_OPENED {
+    s[0].sock_open = true;
+    if s[0].room_authority {
+      s[0].room_generation=SeatGeneration.{};s[0].room_tick=-1;s[0].room_seq=0;s[0].room_ack=0;
+      s[0].in_n=0;s[0].in_head=0;s[0].lag_on=0;s[0].lag_ohead=0;
+      sent:=pipe_send(s[0].pipe[..],s[0].sock,"H 2 1 1 1");
+    }
+  }
   if e.event == SOCKET_FRAME { room_heard(s, text); }
   if e.event == SOCKET_CLOSED || e.event == SOCKET_ERROR { s[0].sock_open = false; s[0].sock = -1; s[0].sock_state = ROOM_LOST; }
   return true;
 }
 // A state from the server: the ball, the other car, the score and the phase.
 room_take :: (s: [] OrbitLeague, text: string) {
+  if s[0].room_authority {room_authority_take(s,text);return;}
   if text.count < 2 || text[0] != 's' { return; }
   at: [1] int; at[0] = 1; ok: [1] bool; ok[0] = true;
   tick := room_int(text, at[..], ok[..]); seat := room_int(text, at[..], ok[..]);
@@ -1557,15 +1600,62 @@ room_send :: (s: [] OrbitLeague, dt: f64) {
   if s[0].send_t < 1.0 / ROOM_HZ - 0.002 { return; }
   s[0].send_t = 0.0;
   buf: [256] u8; k := 0;
-  buf[k] = 'c'; k += 1;
-  k = room_put_body(buf[..], k, room_view(s[0].bodies[YOU], s[0].seat));
-  k = room_put_int(buf[..], k, cast(int) (s[0].net_t * 1000.0));
-  k = room_put_int(buf[..], k, s[0].paint);
+  if s[0].room_authority {
+    seq:=orb_next_input(s[0].room_seq);if seq==0 {room_authority_end(s);return;}
+    drive:=you_drive(s);flags:=0;
+    if drive.input.handbrake {flags+=1;}if drive.input.jump {flags+=2;}if drive.boost {flags+=4;}
+    i:=OrbInput.{ok=true,seq=seq,throttle=cast(int)floor(drive.input.throttle*1000+0.5),steer=cast(int)floor(drive.input.steer*1000+0.5),
+      flags=flags,paint=s[0].paint,clock=cast(int)floor(s[0].net_t*1000),heard=ifx s[0].room_tick<0 then 0 else s[0].room_tick};
+    k=orb_input_write(i,buf[..]);if k==0 {room_authority_end(s);return;}s[0].room_seq=seq;
+  } else {
+    buf[k] = 'c'; k += 1;
+    k = room_put_body(buf[..], k, room_view(s[0].bodies[YOU], s[0].seat));
+    k = room_put_int(buf[..], k, cast(int) (s[0].net_t * 1000.0));
+    k = room_put_int(buf[..], k, s[0].paint);
+  }
   if s[0].lag <= 0.0 { ok := pipe_send(s[0].pipe[..], s[0].sock, cast(string) buf[0..<k]); return; }
   if s[0].lag_on >= LAG_FRAMES { return; }
   slot := (s[0].lag_ohead + s[0].lag_on) % LAG_FRAMES;
   for i: 0..<k { s[0].lag_oq[slot][i] = buf[i]; }
   s[0].lag_olen[slot] = k; s[0].lag_odue[slot] = s[0].net_t + s[0].lag * 0.5; s[0].lag_on += 1;
+}
+room_authority_end :: (s:[]OrbitLeague) {
+  if s[0].sock>=0 {closed:=pipe_close(s[0].pipe[..],s[0].sock);}
+  s[0].sock_open=false;s[0].sock=-1;s[0].sock_state=ROOM_LOST;
+}
+room_authority_body :: (v:[]s32,old:RigidBody)->RigidBody {
+  b:=old;b.pos=d3(f64(cast(int)v[0])/1000,f64(cast(int)v[1])/1000,f64(cast(int)v[2])/1000);
+  q:=dq(f64(cast(int)v[3])/1000000,f64(cast(int)v[4])/1000000,f64(cast(int)v[5])/1000000,f64(cast(int)v[6])/1000000);
+  b.orientation=ifx dq_len(q)>0.5 then dq_unit(q) else DQ.{};
+  b.vel=d3(f64(cast(int)v[7])/1000,f64(cast(int)v[8])/1000,f64(cast(int)v[9])/1000);
+  b.omega=d3(f64(cast(int)v[10])/1000,f64(cast(int)v[11])/1000,f64(cast(int)v[12])/1000);return b;
+}
+room_authority_take :: (s:[]OrbitLeague,text:string) {
+  if !s[0].sock_open || s[0].sock<0 {return;}
+  if text.count>0 && text[0]=='R' {r:=net_record_read(text);if r.ok && r.n==1 && r.v[0]>0 {room_authority_end(s);}return;}
+  frame:=orb_snapshot_read(text);if !orb_snapshot_takes(frame,s[0].room_generation,s[0].room_tick,s[0].room_seq) {return;}
+  seat:=frame.h[1];side:=seat%2;kicked:=s[0].kicks!=frame.h[10];
+  mine:=ifx side==0 then frame.h[8] else frame.h[9];theirs:=ifx side==0 then frame.h[9] else frame.h[8];
+  if frame.h[5]==PHASE_GOAL && s[0].phase!=PHASE_GOAL && mine+theirs>s[0].score[0]+s[0].score[1] {
+    goal_scored(s,ifx mine>s[0].score[0] then BLUE else MAGENTA);
+  }
+  s[0].seat=seat;s[0].room_generation=SeatGeneration.{value=frame.h[2]};s[0].room_tick=frame.h[0];s[0].room_ack=frame.h[3];
+  s[0].heard+=1;s[0].sock_state=ROOM_IN;s[0].phase=frame.h[5];s[0].phase_t=f64(frame.h[6])/1000;s[0].clock=f64(frame.h[7])/1000;
+  s[0].score[0]=mine;s[0].score[1]=theirs;s[0].kicks=frame.h[10];s[0].ball_err=D3_ZERO;s[0].oth_n=0;
+  s[0].bodies[BALL]=room_view(room_authority_body(frame.v[0..<ORB_FIELDS],s[0].bodies[BALL]),seat);
+  fourth:=false;
+  for c:0..<ROOM_PLAYERS {
+    slot:=ifx c==seat then YOU else ifx c%2==side then MATE else ifx c<2 then BOT else RIVAL;
+    visible:=net_snapshot_visible(s[0].room_present[c],frame.present[c+1],true);s[0].room_present[c]=visible;
+    if !visible {s[0].bodies[slot]=vehicle_body(s[0].spec,CAR_MASS,d3(0,-1000-f64(slot)*10,0),DQ.{});continue;}
+    at:=(c+1)*ORB_FIELDS;
+    s[0].bodies[slot]=room_view(room_authority_body(frame.v[at..<at+ORB_FIELDS],s[0].bodies[slot]),seat);
+    s[0].paints[slot-1]=cast(int)frame.v[at+13];if slot==MATE || slot==RIVAL {fourth=true;}
+    if slot==YOU {s[0].tanks[0].fuel=f64(cast(int)frame.v[at+ORB_FUEL])/1000;}
+  }
+  s[0].cars_n=ifx fourth then CARS else 2;
+  if kicked {clear_trails(s);s[0].cam_ready=false;}
+  if frame.h[4]>=0 {trip:=s[0].net_t-f64(frame.h[4])/1000;if trip>=0 && trip<2 {s[0].rtt=ifx s[0].rtt<=0 then trip else s[0].rtt+(trip-s[0].rtt)*0.1;}}
 }
 // Every frame online (ol-prediction): the clock, the fading corrections, and
 // ?lag's held frames let through when due; then your car's report.
@@ -1939,6 +2029,7 @@ game_blur :: (s: [] OrbitLeague) #export_c {
   s[0].held = 0; s[0].stick = false; s[0].stick_dx = 0; s[0].stick_dy = 0;
   for b: 0..<BUTTONS { s[0].button_id[b] = -1; }
   track_blur(s[0].track[..]);
+  if s[0].online && s[0].room_authority {s[0].send_t=1;room_send(s,0);}
 }
 
 button_at :: (s: [] OrbitLeague, x: f32, y: f32) -> int {
@@ -3030,6 +3121,22 @@ drum_game :: (s: [] OrbitLeague) {
 
 // ---- the online room's checks (ol-room)
 
+#test "Orbit authority (#12845): an unadmitted car neither steps, takes a pad nor collides with the ball" {
+  s:[1]OrbitLeague;game_reset(s[..]);s[0].cars_n=CARS;s[0].phase=PHASE_PLAY;
+  pad:=pad_world(s[..],0);s[0].bodies[YOU].pos=d3_add(pad,d3(0,1,0));s[0].bodies[YOU].vel=d3(5,0,0);s[0].tanks[0].fuel=0;
+  before:=s[0].bodies[YOU];wait:=s[0].pad_wait[0];active:[CARS]bool;drives:[CARS]Drive;
+  physics_step_masked(s[..],drives,active);
+  #assert s[0].bodies[YOU].pos.x==before.pos.x && s[0].bodies[YOU].pos.y==before.pos.y && s[0].bodies[YOU].vel.x==before.vel.x;
+  #assert s[0].tanks[0].fuel==0 && s[0].pad_wait[0]==wait;
+  active[0]=true;physics_step_masked(s[..],drives,active);
+  #assert s[0].bodies[YOU].pos.x!=before.pos.x;
+  a:[1]OrbitLeague;b:[1]OrbitLeague;game_reset(a[..]);game_reset(b[..]);
+  a[0].bodies[YOU].pos=d3(20,1,0);b[0].bodies[YOU].pos=b[0].bodies[BALL].pos;
+  b[0].bodies[YOU].vel=d3(0,0,100);active[0]=false;
+  physics_step_masked(a[..],drives,active);physics_step_masked(b[..],drives,active);
+  #assert a[0].bodies[BALL].pos.x==b[0].bodies[BALL].pos.x && a[0].bodies[BALL].vel.z==b[0].bodies[BALL].vel.z;
+}
+
 #test "a car's report and the room's state read back as sent, and a magenta seat sees the arena turned round" {
   s: [1] OrbitLeague;
   room_reset(s[..]);
@@ -3072,9 +3179,40 @@ drum_game :: (s: [] OrbitLeague) {
   for i: 0..<cast(int) (CELEBRATE / STEP + 2.0) { room_step(s[..], cars[..], 1); }
   #assert s[0].kicks == k + 1 && s[0].phase == PHASE_KICKOFF && s[0].bodies[BALL].pos.z == 0.0;
 }
+#test "Orbit v2 page (#12845): the default room sends a pinned hello before bounded controls" {
+  s:[1]OrbitLeague;game_reset(s[..]);
+  game_message(s[..],HOST_FACTS,"url=https://openagents.com/worlds/orbit-league?room=authority\n");
+  #assert s[0].room_authority && pipe_bytes(s[0].pipe[..],0)=="wss://openagents.com/api/room/orbit-league-v2/authority";
+  pipe_drained(s[0].pipe[..]);game_socket_opened(s[..],2);game_message(s[..],SOCKET_KIND+4*2+SOCKET_OPENED,"");
+  #assert s[0].pipe[0].n==1 && pipe_bytes(s[0].pipe[..],0)=="H 2 1 1 1";
+  pipe_drained(s[0].pipe[..]);s[0].phase=PHASE_PLAY;s[0].held=HOLD_UP|HOLD_BOOST;
+  room_send(s[..],0.02);i:=orb_input(pipe_bytes(s[0].pipe[..],0));
+  #assert i.ok && i.seq==1 && i.throttle==1000 && i.flags==4;
+  pipe_drained(s[0].pipe[..]);game_blur(s[..]);i=orb_input(pipe_bytes(s[0].pipe[..],0));
+  #assert i.ok && i.seq==2 && i.throttle==0 && i.flags==0;
+}
+#test "Orbit v2 page (#12845): complete snapshots own every pose; partial, stale and foreign generations change nothing" {
+  s:[1]OrbitLeague;game_reset(s[..]);s[0].online=true;s[0].room_authority=true;s[0].room_seq=17;
+  s[0].room_tick=-1;s[0].sock=2;s[0].sock_open=true;
+  room_take(s[..],ORB_SNAPSHOT_FIXTURE);
+  #assert s[0].heard==1 && s[0].room_tick==9 && s[0].room_generation.value==7 && s[0].room_ack==17;
+  #assert abs(s[0].bodies[YOU].pos.x+1.234)<0.0001 && abs(s[0].bodies[YOU].pos.z-36)<0.0001;
+  #assert s[0].tanks[0].fuel==42.5 && s[0].paints[1]==5;
+  before:=s[0].bodies[YOU];s[0].held=HOLD_UP;game_step(s[..],0.2);
+  #assert s[0].bodies[YOU].pos.x==before.pos.x && s[0].bodies[YOU].pos.z==before.pos.z;
+  room_take(s[..],"S 10 1 7 17 12345 1 1500 299000 3 4 2 2;s 0 0 32834 1000 1000000 1");
+  room_take(s[..],ORB_SNAPSHOT_FIXTURE);#assert s[0].heard==1 && s[0].bodies[YOU].pos.x==before.pos.x;
+  room_take(s[..],"S 10 1 8 17 12345 1 1500 299000 3 4 2 1;s 0 0 32834 1000 1000000 1;s 2 0 32768 8");
+  room_take(s[..],"S 8 1 7 17 12345 1 1500 299000 3 4 2 1;s 0 0 32834 1000 1000000 1;s 2 0 32768 7");
+  future:="S 10 1 7 18 12345 1 1500 299000 3 4 2 1;s 0 0 32834 1000 1000000 1;s 2 0 32768 7";
+  room_take(s[..],future);#assert s[0].heard==1 && s[0].room_present[0] && s[0].room_generation.value==7;
+  s[0].room_seq=18;room_take(s[..],future);
+  #assert s[0].heard==2 && s[0].room_tick==10 && !s[0].room_present[0] && s[0].bodies[BOT].pos.y< -100;
+}
+
 #test "?room=NAME opens a socket to this site's room, and reports your car 60 times a second once it opens" {
   s: [1] OrbitLeague;
-  game_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league?room=Topher-1\n");
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league?room=Topher-1&room-profile=legacy\n");
   #assert s[0].online && s[0].no_bot && s[0].pipe[0].n == 1 && s[0].pipe[0].op[0] == PIPE_OPEN;
   #assert pipe_bytes(s[..][0].pipe[..], 0) == "wss://openagents.com/api/room/orbit-league/topher-1";
   pipe_drained(s[0].pipe[..]);
@@ -3087,7 +3225,7 @@ drum_game :: (s: [] OrbitLeague) {
   game_message(s[..], SOCKET_KIND + 4 * 2 + SOCKET_CLOSED, "");
   #assert s[0].sock_state == ROOM_LOST && !s[0].sock_open;
   t: [1] OrbitLeague;
-  game_message(t[..], HOST_FACTS, "url=http://127.0.0.1:8894/realms/orbit-league?arena=drum&room=a\n");
+  game_message(t[..], HOST_FACTS, "url=http://127.0.0.1:8894/realms/orbit-league?arena=drum&room=a&room-profile=legacy\n");
   #assert pipe_bytes(t[0].pipe[..], 0) == "ws://127.0.0.1:8894/api/room/orbit-league/a";
 }
 
@@ -3247,7 +3385,7 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
 #test "with 150 ms of latency your car answers the first frame you press, and the ball you hit is drawn without a jump (ol-prediction)" #steps 170000000 {
   room: [1] OrbitLeague; room_reset(room[..]);
   c: [1] OrbitLeague;
-  game_message(c[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league?room=lag&lag=150\n");
+  game_message(c[..], HOST_FACTS, "url=https://openagents.com/worlds/orbit-league?room=lag&lag=150&room-profile=legacy\n");
   game_socket_opened(c[..], 2);
   game_message(c[..], SOCKET_KIND + 4 * 2 + SOCKET_OPENED, "");
   #assert c[0].lag == 0.15;

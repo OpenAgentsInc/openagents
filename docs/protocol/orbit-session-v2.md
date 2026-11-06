@@ -35,7 +35,9 @@ Each `S` frame contains one complete tick. This small-room profile selects
 absolute rows (`BACK 0`) with explicit integer field masks. Public recipients receive body,
 paint and life fields. Only the owner receives fuel. No struct field is
 sent by default. A partial snapshot is neither applied nor acknowledged.
-Removals remain owed until a complete tick acknowledges them.
+A body absent from the next complete snapshot is removed. This profile has
+no separate removal queue or delta history. New connections advance car
+life; the match's `KICKS` counter identifies kickoff discontinuities.
 
 Both this profile and Everglade use the Coax contracts in `aethyr/net/`.
 Each realm keeps its rules and codec; hosts retain sockets, clocks and

@@ -739,7 +739,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     for k: 0..<wire_entries(t, from) { net_entry(s, n, wire_entry(t, from, k), d); }
     wire_mirror_end(n[0].mir[..], d);
     if (d.f & 1) != 0 && (d.f & 2) == 0 {
-      for e: 0..<NET_ENTS { if n[0].ents[e].live && n[0].ents[e].seen != d.tick { n[0].ents[e].live = false; } }
+      for e: 0..<NET_ENTS {n[0].ents[e].live=net_snapshot_visible(n[0].ents[e].live,n[0].ents[e].live && n[0].ents[e].seen==d.tick,true);}
       for q:0..<16 {if n[0].party_seen[q]!=d.tick {n[0].party_only[q]=false;}}
     }
     return;
