@@ -18,7 +18,9 @@ RTT, 30 ms jitter and 2% simulated read loss. A real Produce Flame command
 ignited tree 1783. Both pages observed fire, then one burnt tree, no active
 fire or falling trunk, and settled digest 897021801 on three successive
 polls. Raw screenshots and page diagnostics remain in
-`/tmp/oa-12940-final-forest250/`.
+`/tmp/oa-12940-current-forest250/`. This final rehearsal uses the current
+artifacts and merged browser host. The previous sampler receipt is
+`pre-movement-shared-fire.txt`.
 
 ## Input coverage and resend recovery
 
@@ -194,6 +196,18 @@ checks pass. Raw records remain in `/tmp/oa-12940-patrol250-1/` through
 `/tmp/oa-12940-patrol250-3/`. The final local profile also passes all 32
 checks, at 785 microseconds worker tick p95, with no offline stalls or
 dropped milliseconds. Its raw records are in `/tmp/oa-12940-patrol-local/`.
+The final 100 ms profile passes all 32 checks at 615 microseconds worker
+tick p95, with zero offline stalls, dropped milliseconds and credit drops.
+Its raw records are in `/tmp/oa-12940-patrol-100/`. Both profiles observe
+the eight-slot LEVEL 1 kit before combat and the nine-slot LEVEL 2 kit
+afterward. `input-credit.txt` retains all five credit-drop readings.
+
+The final rebase onto `021c7e7c8a` adds the other agents' renderer and
+development body-replacement integration. It changes none of the
+Everglade Coax simulation sources or the forest bridge. Ordinary native
+builds leave the new development hooks disabled; the browser's new blend
+selection is opt-in through an export this page does not provide. The
+shared forest rehearsal below exercises the merged browser host.
 
 ## Evidence scope
 

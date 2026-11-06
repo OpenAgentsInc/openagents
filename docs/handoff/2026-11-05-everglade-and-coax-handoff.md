@@ -129,8 +129,8 @@ Books: #12610 stays open and paused. Approved books work is #12947 and the runna
 | #12944 | Closed by `6414ba56c4`. The room server fails to link on main, with 21 duplicate `cb_*` symbols, since `010c25bbed` (Codex lane). This blocks room builds, the API room checks, the drift check and the #12936 release. The #12936 agent knows. |
 | #12945 | Closed by `c8319bb8ac`. The cache oracle uses the current staging signature, split C includes integer helpers, and reviewed evidence bindings are current. All 1,358 cache-policy checks, 209 room-rules checks, 211 Aethyr listings and the default split page build pass. No traversal budget was raised. |
 | #12946 | Closed by `e00925f958`. The smoke counted doors and boats as gravity cylinders, rejected a valid landing on the 4.5 m palisade, and counted the invited visitor as the blocked player. It now observes each spell's kind and caster, grounded landings, and the blocked seat. Verification is below. |
-| #12941 | Closed by `8ba4376dc1`. A delayed world header dated server ticks at receipt, leaving buffered states ahead after clock synchronization. It now recovers the header's authored time from its server day. Three consecutive 250 ms runs, local and 100 ms runs pass with raids; 773 page checks pass. Verification is below. |
-| #12940 | Next in the current burn-down. Tree fires never burn or spread on the room server; only pages step them. |
+| #12941 | Closed by `8ba4376dc1`. A delayed world header dated server ticks at receipt, leaving buffered states ahead after clock synchronization. It now recovers the header's authored time from its server day. The original drift receipts qualify autonomous NPC timing and raids; corrected-input movement and spell qualification is under #12940. All 773 page checks pass. Verification is below. |
+| #12940 | Closed by `cb8aa439fa`, with resend recovery in `0a660b7d7f`. The room steps and replicates forest fire, spread and motion; pages apply that state. The room regression and two-page burn-down pass. Corrected-input local, 100 ms and three consecutive 250 ms gameplay/raid runs pass. Verification is below. |
 | #12947 | Completed: current-code overviews for Aethyr 49, 50, 58, 84 and 85; contradictory follow-up status text corrected; Coax 6, 19 and 41 updated. Verification below. |
 | #12948 | Completed by `0265cd16df` and `d53cc8a8b9`: nominal integer IDs, engine/room/API/ledger adoption, generation admission, chapter 8 and qualified seeds. The books, room/API checks, drift and Wasm budgets pass. Verification below. |
 | #12956 | Completed by `d53cc8a8b9`: canonical entity handles and checked ID exhaustion; no slot is allocated on refusal. |
@@ -140,11 +140,53 @@ Books: #12610 stays open and paused. Approved books work is #12947 and the runna
 | #12961 | Completed by `eae6049b87`: Coax 0.51.2 measures peaks against each phase's limits. Retained live storage still counts; sequential, parallel and reused notes agree. Verification below. |
 | #12960 | Completed: a real shared door-rule edit reaches the native room and page in 899.5 ms median over ten runs on the merged host. Both replaced and full builds pass all three drift profiles with raids; failed checks appear in the session and block the guarded commit. Verification below. |
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
-| #12845 | Open, with no agent. It still needs commands, accepted results and replication behind shared interfaces, profiles for collision and per-recipient fields, Orbit League sharing more than the timing profile, and the book's adoption inventory. |
+| #12845 | Next for this burn-down agent after #12940. It still needs commands, accepted results and replication behind shared interfaces, profiles for collision and per-recipient fields, Orbit League sharing more than the timing profile, and an adoption inventory. Book edits remain outside this run's scope. |
 | #12910 | Nostr chapter 104 on signet. Blocked on the signet faucet's captcha, which is in NEEDS_OWNER.md. |
 | #12718, #12833 | Epics. Close each when its children close. |
 | #12610 | The book epic, paused by the owner. |
 | #12864–#12867 | Excluded; left for Codex. |
+
+## #12940 verification (2026-11-06, 01:52 Chicago)
+
+The new room-tick test fails before the fix, then burns down and spreads a
+tree as the original starter's crime, independently of the latest caster.
+Session profile v5 carries whole finite forest records through ordinary
+entity replication. Published v4 is unchanged. Room pages render the state
+without advancing tree damage or spread. Tests cover lost multipart
+snapshots, late joiners, blocked starters, rebuild and sparse-record reuse.
+
+The page gameplay suite passes 782 checks and the room suite passes 670.
+The current physical page build passes 1,377 render-unit checks; the shared
+movement update passes 317. Forest policy kills 103 mutants and input
+policy kills eight, both with zero survivors. The rehearsal driver passes
+139 checks and its background-player helper passes 233.
+
+The corrected keyboard driver requires real movement, observed spell
+conditions and 32 m clearance from all three background players. Its
+condition comparison matches the same person while both pages have that
+row; it does not assert identical interest sets. All 32 gameplay and raid
+checks pass at local and 100 ms, and in three consecutive 250 ms runs.
+Worker tick p95 is 785, 615, 720, 840 and 970 microseconds respectively,
+below the unchanged 11,000-microsecond limit. All five report zero offline
+stalls, dropped milliseconds and credit drops. The raid observes eight
+LEVEL 1 slots before combat and nine LEVEL 2 slots afterward.
+
+On the final merged browser host, two pages at 250 ms RTT, 30 ms jitter
+and 2% simulated read loss both see fire, then one burnt tree and settled
+digest 897021801 on three successive observations. The page is 2,019,949
+bytes against 2,150,000; the worker is 998,983 against 1,060,000. Native
+startup reports zero fields off their defaults. `tools-check` passes.
+
+The concurrent `599558ee03` locomotion change leaves a stale chapter 9
+source listing; the current Aethyr structure check reports that failure.
+The earlier 211-listing pass covers the source before that change. Book
+files remain untouched under the paused scope. Receipts distinguish these
+versions and retain the failed rehearsals that led to the driver fixes.
+
+Evidence and source/artifact hashes are in
+[the forest verification record](../verification/everglade-forest-2026-11-05/README.md).
+Binaries and compilers remain in `/tmp/oa-12940-qualified-artifacts/`.
+The remote build worktree is removed. No production deployment ran.
 
 ## #12941 verification (2026-11-05, 21:09 Chicago)
 
@@ -169,6 +211,13 @@ values were 395, 345 and 375 microseconds, against the existing 11,000
 microsecond budget. Local and 100 ms profiles also passed with raids. All
 five runs reported zero offline stalls and zero dropped milliseconds.
 Recorded load readings during the three 250 ms runs were about 2–9.
+
+Coverage correction from #12940: the old synthetic keys targeted `Window`.
+The accessibility listener threw before forwarding them. These original
+receipts establish autonomous NPC timing and raids, but not movement or
+keyboard spells. The corrected-input rehearsals and positive movement
+checks under #12940 supersede those coverage claims. The delayed-header
+regression and its clock fix remain valid.
 
 The page Wasm is 1,990,798 bytes, within its 2,150,000-byte budget. The
 native room and 988,275-byte worker retain the unchanged simulation and
@@ -216,6 +265,9 @@ checks passed. The headless local pair passed, including the BLOCK click
 with an unrelated visitor still present. The local API does not store
 blocks, so reload persistence was checked through the native ticket path.
 The complete drift run held at local, 100 ms and 250 ms, including raids.
+Its old keyboard driver had the coverage limitation recorded under #12941;
+use #12940's corrected-input receipts for movement and keyboard spells.
+The trusted-CDP pair and BLOCK checks above are unaffected.
 The page was 2,021,551 bytes against 2,150,000; the room worker was 988,275
 against 1,060,000. `tools-check` passed.
 
