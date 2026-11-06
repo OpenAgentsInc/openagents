@@ -1,0 +1,179 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/arrange.coax:61:12: mutant survived: the assignment was removed
+    a.centre = centre;
+             ^
+aethyr/arrange.coax:63:16: mutant survived: the assignment was removed
+    a.hover_stem = -1;
+                 ^
+aethyr/arrange.coax:63:18: mutant survived: -1 became 0
+    a.hover_stem = -1;
+                   ^
+aethyr/arrange.coax:71:17: mutant survived: '&&' became '||'
+    if !next.open && next.blend <= 0 { next.yaw = ifx finite(yaw) then wrap_angle(yaw) else 0.0f32; }
+                  ^
+aethyr/arrange.coax:79:14: mutant survived: the assignment was removed
+    next.hover = ARRANGE_NONE; next.hover_stem = -1;
+               ^
+aethyr/arrange.coax:79:16: mutant survived: 0 became 1
+    next.hover = ARRANGE_NONE; next.hover_stem = -1;
+                 ^
+aethyr/arrange.coax:79:46: mutant survived: the assignment was removed
+    next.hover = ARRANGE_NONE; next.hover_stem = -1;
+                                               ^
+aethyr/arrange.coax:79:48: mutant survived: -1 became 0
+    next.hover = ARRANGE_NONE; next.hover_stem = -1;
+                                                 ^
+aethyr/arrange.coax:95:96: mutant survived: '>=' became '>'
+  verse_arrange_ready :: (a: Arrange) -> bool #export_c #effects(all) { return a.open && a.blend >= 0.9; }
+                                                                                                 ^
+aethyr/arrange.coax:119:12: mutant survived: '||' became '&&'
+    if i < 0 || i >= a.count { return a.centre; }
+             ^
+aethyr/arrange.coax:119:17: mutant survived: '>=' became '>'
+    if i < 0 || i >= a.count { return a.centre; }
+                  ^
+aethyr/arrange.coax:125:12: mutant survived: '||' became '&&'
+    if i < 0 || i >= a.count { return a.centre; }
+             ^
+aethyr/arrange.coax:125:17: mutant survived: '>=' became '>'
+    if i < 0 || i >= a.count { return a.centre; }
+                  ^
+aethyr/arrange.coax:127:24: mutant survived: '*' became '+'
+    up := v3(sin(s.lean) * sin(s.toward), cos(s.lean), sin(s.lean) * cos(s.toward));
+                         ^
+aethyr/arrange.coax:127:66: mutant survived: '*' became '+'
+    up := v3(sin(s.lean) * sin(s.toward), cos(s.lean), sin(s.lean) * cos(s.toward));
+                                                                   ^
+aethyr/arrange.coax:137:8: mutant survived: '<' became '<='
+    if h < 0 { return -1; }
+         ^
+aethyr/arrange.coax:138:11: mutant survived: '-' became '+'
+    t := -b - sqrt(h);
+            ^
+aethyr/arrange.coax:139:8: mutant survived: '<' became '<='
+    if t < 0 { return -1; }
+         ^
+aethyr/arrange.coax:148:39: mutant survived: '||' became '&&'
+    if !next.open || !finite3(ray.from) || !finite3(ray.dir) { return next; }
+                                        ^
+aethyr/arrange.coax:148:17: mutant survived: '||' became '&&'
+    if !next.open || !finite3(ray.from) || !finite3(ray.dir) { return next; }
+                  ^
+aethyr/arrange.coax:152:10: mutant survived: '>=' became '>'
+      if t >= 0 && t < best { best = t; next.hover_stem = i; }
+           ^
+aethyr/arrange.coax:152:20: mutant survived: '<' became '<='
+      if t >= 0 && t < best { best = t; next.hover_stem = i; }
+                     ^
+aethyr/arrange.coax:152:34: mutant survived: the assignment was removed
+      if t >= 0 && t < best { best = t; next.hover_stem = i; }
+                                   ^
+aethyr/arrange.coax:154:70: mutant survived: the assignment was removed
+    if next.hover_stem >= 0 { next.hover = ARRANGE_TAKE; next.hover_at = verse_arrange_tip(next, next.hover_stem); return next; }
+                                                                       ^
+aethyr/arrange.coax:155:16: mutant survived: '>' became '>='
+    if ray.dir.y > -0.0001 { return next; }
+                 ^
+aethyr/arrange.coax:157:8: mutant survived: '<' became '<='
+    if t < 0 { return next; }
+         ^
+aethyr/arrange.coax:159:17: mutant survived: '-' became '+'
+    off := v3(p.x - next.centre.x, 0, p.z - next.centre.z);
+                  ^
+aethyr/arrange.coax:159:41: mutant survived: '-' became '+'
+    off := v3(p.x - next.centre.x, 0, p.z - next.centre.z);
+                                          ^
+aethyr/arrange.coax:161:8: mutant survived: '>' became '>='
+    if d > next.radius * f32(ARRANGE_REACH) { return next; }
+         ^
+aethyr/arrange.coax:163:8: mutant survived: '>' became '>='
+    if d > room { off = times(off, room / d); }
+         ^
+aethyr/arrange.coax:174:33: mutant survived: '&&' became '||'
+    if next.hover == ARRANGE_TAKE && next.hover_stem >= 0 && next.hover_stem < next.count {
+                                  ^
+aethyr/arrange.coax:174:76: mutant survived: '<' became '<='
+    if next.hover == ARRANGE_TAKE && next.hover_stem >= 0 && next.hover_stem < next.count {
+                                                                             ^
+aethyr/arrange.coax:175:41: mutant survived: '-' became '+'
+      for i: next.hover_stem..<next.count - 1 { next.stems[i] = next.stems[i + 1]; }
+                                          ^
+aethyr/arrange.coax:175:43: mutant survived: 1 became 2
+      for i: next.hover_stem..<next.count - 1 { next.stems[i] = next.stems[i + 1]; }
+                                            ^
+aethyr/arrange.coax:175:61: mutant survived: the assignment was removed
+      for i: next.hover_stem..<next.count - 1 { next.stems[i] = next.stems[i + 1]; }
+                                                              ^
+aethyr/arrange.coax:175:76: mutant survived: '+' became '-'
+      for i: next.hover_stem..<next.count - 1 { next.stems[i] = next.stems[i + 1]; }
+                                                                             ^
+aethyr/arrange.coax:175:78: mutant survived: 1 became 2
+      for i: next.hover_stem..<next.count - 1 { next.stems[i] = next.stems[i + 1]; }
+                                                                               ^
+aethyr/arrange.coax:177:16: mutant survived: the assignment was removed
+      next.hover = ARRANGE_NONE; next.hover_stem = -1;
+                 ^
+aethyr/arrange.coax:177:18: mutant survived: 0 became 1
+      next.hover = ARRANGE_NONE; next.hover_stem = -1;
+                   ^
+aethyr/arrange.coax:177:48: mutant survived: the assignment was removed
+      next.hover = ARRANGE_NONE; next.hover_stem = -1;
+                                                 ^
+aethyr/arrange.coax:177:50: mutant survived: -1 became 0
+      next.hover = ARRANGE_NONE; next.hover_stem = -1;
+                                                   ^
+aethyr/arrange.coax:180:48: mutant survived: '>=' became '>'
+    if next.hover != ARRANGE_PLACE || next.count >= ARRANGE_STEMS { return next; }
+                                                 ^
+aethyr/arrange.coax:180:51: mutant survived: 24 became 25
+    if next.hover != ARRANGE_PLACE || next.count >= ARRANGE_STEMS { return next; }
+                                                    ^
+aethyr/arrange.coax:182:25: mutant survived: '-' became '+'
+    s.x = next.hover_at.x - next.centre.x;
+                          ^
+aethyr/arrange.coax:183:25: mutant survived: '-' became '+'
+    s.z = next.hover_at.z - next.centre.z;
+                          ^
+aethyr/arrange.coax:184:47: mutant survived: '/' became '*'
+    out := clamp01(flat_length(v3(s.x, 0, s.z)) / next.radius);
+                                                ^
+aethyr/arrange.coax:185:10: mutant survived: the assignment was removed
+    s.lean = 0.08 + 0.5 * out;
+           ^
+aethyr/arrange.coax:186:12: mutant survived: the assignment was removed
+    s.toward = ifx out > 0.05 then yaw_of(s.x, s.z) else f32(next.count) * 2.4;
+             ^
+aethyr/arrange.coax:186:22: mutant survived: '>' became '>='
+    s.toward = ifx out > 0.05 then yaw_of(s.x, s.z) else f32(next.count) * 2.4;
+                       ^
+aethyr/arrange.coax:186:72: mutant survived: '*' became '+'
+    s.toward = ifx out > 0.05 then yaw_of(s.x, s.z) else f32(next.count) * 2.4;
+                                                                         ^
+aethyr/arrange.coax:187:18: mutant survived: '+' became '-'
+    s.height = 0.4 + 0.07 * sin(f32(next.count) * 2.399 + 1);
+                   ^
+aethyr/arrange.coax:187:25: mutant survived: '*' became '+'
+    s.height = 0.4 + 0.07 * sin(f32(next.count) * 2.399 + 1);
+                          ^
+aethyr/arrange.coax:187:55: mutant survived: '+' became '-'
+    s.height = 0.4 + 0.07 * sin(f32(next.count) * 2.399 + 1);
+                                                        ^
+aethyr/arrange.coax:187:47: mutant survived: '*' became '+'
+    s.height = 0.4 + 0.07 * sin(f32(next.count) * 2.399 + 1);
+                                                ^
+aethyr/arrange.coax:191:14: mutant survived: the assignment was removed
+    next.hover = ARRANGE_NONE;
+               ^
+aethyr/arrange.coax:191:16: mutant survived: 0 became 1
+    next.hover = ARRANGE_NONE;
+                 ^
+aethyr/arrange.coax:201:10: mutant survived: 0 became 1
+    for i: 0..<30 { a = verse_arrange_step(a, 0.05, false); }
+           ^
+aethyr/arrange.coax:201:14: mutant survived: 30 became 31
+    for i: 0..<30 { a = verse_arrange_step(a, 0.05, false); }
+               ^
+aethyr/arrange.coax:201:51: mutant survived: false became true
+    for i: 0..<30 { a = verse_arrange_step(a, 0.05, false); }
+                                                    ^
+145 mutants, 86 killed, 59 survived

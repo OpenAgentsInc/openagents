@@ -2,7 +2,7 @@
   "schema": 1,
   "issue": 12610,
   "chapter": 78,
-  "source_commit": "a5543ba23e7b38fa8c6104b8c0b92292c3b1ac63",
+  "source_commit": "b7c843788e85ae356581dc681a2e39a32440adc9",
   "compiler": {
     "version": "Coax 0.52.0",
     "sha256": "23dfc150fa0d21dd199b2da382b9c2dd0762e8183e3f576657fe1341d327117e"
@@ -82,5 +82,18 @@
     "staged page captures, not saved-session video",
     "root mutation scopes, not full legacy mutation qualification",
     "no production deployment"
-  ]
+  ],
+  "pre_rebase_source_commit": "a5543ba23e7b38fa8c6104b8c0b92292c3b1ac63",
+  "merged_host_input": {
+    "exit_status": 0,
+    "receipt": "merged-host-input.log"
+  },
+  "staged_frames": {
+    "normal_motion": true,
+    "frames": 30,
+    "matching": 30,
+    "distinct": 22,
+    "receipt": "clip-motion-comparison.json",
+    "saved_realm_replay": false
+  }
 }

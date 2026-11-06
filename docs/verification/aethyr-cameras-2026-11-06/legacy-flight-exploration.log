@@ -1,0 +1,212 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/cinematic.coax:37:11: mutant survived: the if condition was negated
+    if kind == EASE_SMOOTH { return t * t * t * (t * (t * 6 - 15) + 10); }
+            ^
+aethyr/cinematic.coax:37:11: mutant survived: '==' became '!='
+    if kind == EASE_SMOOTH { return t * t * t * (t * (t * 6 - 15) + 10); }
+            ^
+aethyr/cinematic.coax:37:14: mutant survived: 1 became 2
+    if kind == EASE_SMOOTH { return t * t * t * (t * (t * 6 - 15) + 10); }
+               ^
+aethyr/cinematic.coax:38:11: mutant survived: the if condition was negated
+    if kind == EASE_IN { return t * t; }
+            ^
+aethyr/cinematic.coax:38:11: mutant survived: '==' became '!='
+    if kind == EASE_IN { return t * t; }
+            ^
+aethyr/cinematic.coax:38:14: mutant survived: 2 became 3
+    if kind == EASE_IN { return t * t; }
+               ^
+aethyr/cinematic.coax:38:33: mutant survived: '*' became '+'
+    if kind == EASE_IN { return t * t; }
+                                  ^
+aethyr/cinematic.coax:39:11: mutant survived: the if condition was negated
+    if kind == EASE_OUT { return 1 - (1 - t) * (1 - t); }
+            ^
+aethyr/cinematic.coax:39:11: mutant survived: '==' became '!='
+    if kind == EASE_OUT { return 1 - (1 - t) * (1 - t); }
+            ^
+aethyr/cinematic.coax:39:14: mutant survived: 3 became 4
+    if kind == EASE_OUT { return 1 - (1 - t) * (1 - t); }
+               ^
+aethyr/cinematic.coax:39:39: mutant survived: '-' became '+'
+    if kind == EASE_OUT { return 1 - (1 - t) * (1 - t); }
+                                        ^
+aethyr/cinematic.coax:39:49: mutant survived: '-' became '+'
+    if kind == EASE_OUT { return 1 - (1 - t) * (1 - t); }
+                                                  ^
+aethyr/cinematic.coax:45:11: mutant survived: '*' became '+'
+    t2 := t * t; t3 := t2 * t;
+            ^
+aethyr/cinematic.coax:45:25: mutant survived: '*' became '+'
+    t2 := t * t; t3 := t2 * t;
+                          ^
+aethyr/cinematic.coax:47:5: mutant survived: the assignment was removed
+    p = add(p, times(sub(c, a), t));
+      ^
+aethyr/cinematic.coax:48:5: mutant survived: the assignment was removed
+    p = add(p, times(add(sub(times(a, 2), times(b, 5)), sub(times(c, 4), d)), t2));
+      ^
+aethyr/cinematic.coax:49:5: mutant survived: the assignment was removed
+    p = add(p, times(add(sub(times(b, 3), a), sub(d, times(c, 3))), t3));
+      ^
+aethyr/cinematic.coax:54:100: mutant survived: '&&' became '||'
+    return finite(s.eye.x) && finite(s.eye.y) && finite(s.eye.z) && finite(s.at.x) && finite(s.at.y) && finite(s.at.z);
+                                                                                                     ^
+aethyr/cinematic.coax:54:82: mutant survived: '&&' became '||'
+    return finite(s.eye.x) && finite(s.eye.y) && finite(s.eye.z) && finite(s.at.x) && finite(s.at.y) && finite(s.at.z);
+                                                                                   ^
+aethyr/cinematic.coax:54:64: mutant survived: '&&' became '||'
+    return finite(s.eye.x) && finite(s.eye.y) && finite(s.eye.z) && finite(s.at.x) && finite(s.at.y) && finite(s.at.z);
+                                                                 ^
+aethyr/cinematic.coax:54:45: mutant survived: '&&' became '||'
+    return finite(s.eye.x) && finite(s.eye.y) && finite(s.eye.z) && finite(s.at.x) && finite(s.at.y) && finite(s.at.z);
+                                              ^
+aethyr/cinematic.coax:54:26: mutant survived: '&&' became '||'
+    return finite(s.eye.x) && finite(s.eye.y) && finite(s.eye.z) && finite(s.at.x) && finite(s.at.y) && finite(s.at.z);
+                           ^
+aethyr/cinematic.coax:64:16: mutant survived: 0 became 1
+    if f.count > 0 && at <= f.keys[f.count - 1].at { return f; }
+                 ^
+aethyr/cinematic.coax:64:24: mutant survived: '<=' became '<'
+    if f.count > 0 && at <= f.keys[f.count - 1].at { return f; }
+                         ^
+aethyr/cinematic.coax:76:34: mutant survived: the assignment was removed
+    next.start = now; next.backing = false;
+                                   ^
+aethyr/cinematic.coax:77:28: mutant survived: 0 became 1
+    next.running = f.count > 0 && !reduced;
+                             ^
+aethyr/cinematic.coax:83:17: mutant survived: 0 became 1
+    if f.count == 0 { return 0; }
+                  ^
+aethyr/cinematic.coax:91:17: mutant survived: '||' became '&&'
+    if !f.running || f.backing { return -1; }
+                  ^
+aethyr/cinematic.coax:91:39: mutant survived: -1 became 0
+    if !f.running || f.backing { return -1; }
+                                        ^
+aethyr/cinematic.coax:92:16: mutant survived: '-' became '+'
+    t := f32(now - f.start);
+                 ^
+aethyr/cinematic.coax:93:8: mutant survived: '>=' became '>'
+    if t >= verse_flight_length(f) { return -1; }
+         ^
+aethyr/cinematic.coax:94:11: mutant survived: 0 became 1
+    take := 0;
+            ^
+aethyr/cinematic.coax:95:10: mutant survived: 0 became 1
+    for i: 0..<f.count { if f.keys[i].cut && f.keys[i].at <= t { take = i; } }
+           ^
+aethyr/cinematic.coax:95:57: mutant survived: '<=' became '<'
+    for i: 0..<f.count { if f.keys[i].cut && f.keys[i].at <= t { take = i; } }
+                                                          ^
+aethyr/cinematic.coax:101:17: mutant survived: 0 became 1
+    if f.count == 0 { return Shot.{eye = v3(0, 0, 0), at = v3(0, 0, 1)}; }
+                  ^
+aethyr/cinematic.coax:102:8: mutant survived: '<=' became '<'
+    if t <= f.keys[0].at { return f.keys[0].shot; }
+         ^
+aethyr/cinematic.coax:104:15: mutant survived: '<' became '<='
+    while i + 1 < f.count && f.keys[i + 1].at <= t { i += 1; }
+                ^
+aethyr/cinematic.coax:104:11: mutant survived: '+' became '-'
+    while i + 1 < f.count && f.keys[i + 1].at <= t { i += 1; }
+            ^
+aethyr/cinematic.coax:104:13: mutant survived: 1 became 2
+    while i + 1 < f.count && f.keys[i + 1].at <= t { i += 1; }
+              ^
+aethyr/cinematic.coax:105:12: mutant survived: '>=' became '>'
+    if i + 1 >= f.count { return f.keys[f.count - 1].shot; }
+             ^
+aethyr/cinematic.coax:105:8: mutant survived: '+' became '-'
+    if i + 1 >= f.count { return f.keys[f.count - 1].shot; }
+         ^
+aethyr/cinematic.coax:105:47: mutant survived: '-' became '+'
+    if i + 1 >= f.count { return f.keys[f.count - 1].shot; }
+                                                ^
+aethyr/cinematic.coax:105:49: mutant survived: 1 became 2
+    if i + 1 >= f.count { return f.keys[f.count - 1].shot; }
+                                                  ^
+aethyr/cinematic.coax:109:43: mutant survived: '-' became '+'
+    u := fl_ease(c.ease, (t - b.at) / (c.at - b.at));
+                                            ^
+aethyr/cinematic.coax:110:18: mutant survived: '&&' became '||'
+    a := ifx i > 0 && !b.cut then f.keys[i - 1].shot else b.shot;
+                   ^
+aethyr/cinematic.coax:110:14: mutant survived: '>' became '>='
+    a := ifx i > 0 && !b.cut then f.keys[i - 1].shot else b.shot;
+               ^
+aethyr/cinematic.coax:110:16: mutant survived: 0 became 1
+    a := ifx i > 0 && !b.cut then f.keys[i - 1].shot else b.shot;
+                 ^
+aethyr/cinematic.coax:110:42: mutant survived: '-' became '+'
+    a := ifx i > 0 && !b.cut then f.keys[i - 1].shot else b.shot;
+                                           ^
+aethyr/cinematic.coax:111:28: mutant survived: '&&' became '||'
+    d := ifx i + 2 < f.count && !f.keys[i + 2].cut then f.keys[i + 2].shot else c.shot;
+                             ^
+aethyr/cinematic.coax:111:18: mutant survived: '<' became '<='
+    d := ifx i + 2 < f.count && !f.keys[i + 2].cut then f.keys[i + 2].shot else c.shot;
+                   ^
+aethyr/cinematic.coax:111:14: mutant survived: '+' became '-'
+    d := ifx i + 2 < f.count && !f.keys[i + 2].cut then f.keys[i + 2].shot else c.shot;
+               ^
+aethyr/cinematic.coax:111:16: mutant survived: 2 became 3
+    d := ifx i + 2 < f.count && !f.keys[i + 2].cut then f.keys[i + 2].shot else c.shot;
+                 ^
+aethyr/cinematic.coax:111:43: mutant survived: 2 became 3
+    d := ifx i + 2 < f.count && !f.keys[i + 2].cut then f.keys[i + 2].shot else c.shot;
+                                            ^
+aethyr/cinematic.coax:111:66: mutant survived: 2 became 3
+    d := ifx i + 2 < f.count && !f.keys[i + 2].cut then f.keys[i + 2].shot else c.shot;
+                                                                   ^
+aethyr/cinematic.coax:118:46: mutant survived: '<' became '<='
+    if f.backing { return f32(now - f.back_at) < f32(HANDBACK); }
+                                               ^
+aethyr/cinematic.coax:119:29: mutant survived: '<' became '<='
+    return f32(now - f.start) < verse_flight_length(f) + f32(HANDBACK);
+                              ^
+aethyr/cinematic.coax:119:18: mutant survived: '-' became '+'
+    return f32(now - f.start) < verse_flight_length(f) + f32(HANDBACK);
+                   ^
+aethyr/cinematic.coax:124:56: mutant survived: '<' became '<='
+    return f.running && !f.backing && f32(now - f.start) < verse_flight_length(f);
+                                                         ^
+aethyr/cinematic.coax:124:45: mutant survived: '-' became '+'
+    return f.running && !f.backing && f32(now - f.start) < verse_flight_length(f);
+                                              ^
+aethyr/cinematic.coax:131:40: mutant survived: '-' became '+'
+    next.back_from = fl_flown(f, f32(now - f.start));
+                                         ^
+aethyr/cinematic.coax:143:10: mutant survived: '<' became '<='
+      if t < verse_flight_length(f) { return fl_flown(f, t); }
+           ^
+aethyr/cinematic.coax:147:13: mutant survived: '||' became '&&'
+    if u >= 1 || !fl_finite(live) { return live; }
+              ^
+aethyr/cinematic.coax:147:8: mutant survived: '>=' became '>'
+    if u >= 1 || !fl_finite(live) { return live; }
+         ^
+aethyr/cinematic.coax:157:59: mutant survived: false became true
+    f = verse_flight_key(f, 0, v3(0, 10, -20), v3(0, 0, 0), false, EASE_LINEAR);
+                                                            ^
+aethyr/cinematic.coax:157:66: mutant survived: 0 became 1
+    f = verse_flight_key(f, 0, v3(0, 10, -20), v3(0, 0, 0), false, EASE_LINEAR);
+                                                                   ^
+aethyr/cinematic.coax:158:66: mutant survived: 1 became 2
+    f = verse_flight_key(f, 2, v3(10, 8, -10), v3(0, 0, 0), false, EASE_SMOOTH);
+                                                                   ^
+aethyr/cinematic.coax:159:64: mutant survived: 1 became 2
+    f = verse_flight_key(f, 4, v3(10, 4, 0), v3(0, 1, 5), false, EASE_SMOOTH);
+                                                                 ^
+aethyr/cinematic.coax:160:65: mutant survived: 0 became 1
+    f = verse_flight_key(f, 5, v3(-5, 3, 20), v3(0, 1, 25), true, EASE_LINEAR);
+                                                                  ^
+aethyr/cinematic.coax:161:59: mutant survived: false became true
+    f = verse_flight_key(f, 8, v3(-5, 2, 10), v3(0, 1, 25), false, EASE_OUT);
+                                                            ^
+aethyr/cinematic.coax:161:66: mutant survived: 3 became 4
+    f = verse_flight_key(f, 8, v3(-5, 2, 10), v3(0, 1, 25), false, EASE_OUT);
+                                                                   ^
+170 mutants, 100 killed, 70 survived
