@@ -53,13 +53,19 @@ are TF0130[4..22], TF0145[3..21], TF0250[19..40], every8s with.15s fades.
 - Ambient timing and non-face local-pose preservation checks pass.
 - Current Wasm is91,877 bytes within96,000. The original80,000 budget was
   raised explicitly for shared facial playback and the source-shot view.
-- **Default GPU recovery is red:** both new shot and face observations exceed
+- **Earlier default GPU recovery failure, now superseded:** both new shot and face observations exceeded
   the legacy host's10-second replacement deadline under the observed machine
   load. Earlier face-only recovery passed before the shot extension; that
   result does not qualify this package. [The shot failure is retained](shot-gpu-red.txt).
   A separately labeled60s diagnostic recovered in9,697ms with identical
   pixels/state, then passed ambient locomotion and the390x844 phone viewport.
   [Its receipt](diagnostic-gpu.txt) does not qualify the unchanged default10s fence.
+  The [retained-source fix and visible-capture record](../valley-recovery-2026-11-06/README.md)
+  now qualify the unchanged default deadline with Coax 0.52: face recovery in
+  9,032 ms and source-shot recovery in 8,289 ms. The latter makes the private
+  source unavailable after its first request and verifies no second request.
+  Both retain exact producer state and measured GPU pixels. These observations
+  replace the recovery limitation only; the cinematic differences below remain.
 
 The source project disables bloom. The source orb mesh and its original texture layers now use Coax panning,
 normal distortion, source Fresnel/tint/HDR/desaturation arithmetic and an

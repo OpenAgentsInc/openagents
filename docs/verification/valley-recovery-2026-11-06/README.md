@@ -77,6 +77,48 @@ Coax 0.51.2. The visibility helper and its PNG checks compile with the actual
 native observer. [Tools-check](tools-check.log) reports zero new files
 without a firm reason.
 
+## Integration with Coax 0.52
+
+After integrating `b2e866b1c3`, a fresh ordinary Valley build with the
+checked Coax 0.52 compiler produces the exact same 91,877-byte Wasm and SHA
+above. The unchanged 96,000-byte gate passes. The fixed-frame facial and
+source-shot probes then pass again on November 6, approximately **06:11–06:13
+Chicago time (CST)**. Face recovery takes 9,032 ms; source-shot recovery takes
+8,289 ms. Both use the ordinary 10,000 ms deadline. The shot probe denies any
+second source download and verifies that exactly one request occurred.
+
+The [face receipt](face-052.log) retains distinct neutral/frame-12/frame-28
+hashes, unchanged pause/replacement hashes, exact neutral restoration and
+next-clip selection. The [shot receipt](shot-052.log) retains frame stepping,
+body/face clock agreement, replacement state/pixel identity, ambient
+locomotion and the phone viewport. The new [source-shot image](shot-052.png)
+was visually inspected. The original baseline failure receipt has only its
+trailing whitespace normalized for repository checks; its failure values
+are unchanged.
+
+The [shared-host regression](host-drift-052.log) passes local, 100 ms and
+250 ms profiles, including the gameplay and raid comparisons. It uses the
+new host and independently rebuilt [native room](room-build-052.log) and
+[worker](worker-build-052.log). Their SHA-256 identities exactly match the
+Coax 0.52 final delivery: native
+`83161c8267d24647cc2d9e9015fadf8183ce456becd43ded7a31113dd267bec2`, worker
+`1189ca302eef79e6bca10b0dbb3280944b0747043bf8cc35d55cff4e0df5974c`.
+The reused SRD page also has that record's exact artifact identity. Valley,
+SRD and worker byte-budget commands exit zero. Builds use
+`COAX_NEAR_LIMIT=100`, the final delivery's informational-diagnostic setting;
+their checks, authority coverage and resource limits remain enabled.
+[Tools-check](tools-check-052.log) reports no new tool without a reason.
+All owned browsers and servers close after these observations.
+
+Reproduce from a fresh worktree with the private pack installed:
+
+```sh
+mkdir -p /tmp/slay-face /tmp/slay-shot
+# With an own dev server on an allowed port:
+coax/web/tool.sh coax/web/valley-face-check.coax 'http://127.0.0.1:9027/worlds/valley-canyon?pack=valley-slay' /tmp/slay-face
+coax/web/tool.sh coax/web/valley-slay-shot-check.coax 'http://127.0.0.1:9027/worlds/valley-canyon?pack=valley-slay' /tmp/slay-shot --source-once
+```
+
 These results do not qualify mobile hardware memory or performance. The
 extended shot still has its documented lighting, skin/eye, strand, camera
 shake, source orb/flare and scenery differences. The earlier source export
