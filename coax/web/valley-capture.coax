@@ -2,7 +2,35 @@
 #import "Basic";
 #load "../lib/net/cdp.coax";
 #load "../lib/sys/fs.coax";
+#load "../lib/image/png.coax";
+#test "face capture refuses blank pixels, a flat clear and a tiny status notice" {
+ pixels:[40000]u8;
+ for i:0..<10000 {pixels[i*4+3]=255;}
+ #assert !fc_visible(pixels[..]) && !fc_visible(pixels[0..<0]) && !fc_visible(pixels[0..<7]);
+ for i:0..<99 {pixels[i*4]=128;pixels[i*4+1]=128;pixels[i*4+2]=128;}
+ #assert !fc_visible(pixels[..]);
+ for i:0..<900 {pixels[i*4]=128;pixels[i*4+1]=96;pixels[i*4+2]=64;}
+ #assert fc_visible(pixels[..]);
+ for i:0..<10000 {pixels[i*4]=255;pixels[i*4+1]=255;pixels[i*4+2]=255;}
+ #assert !fc_visible(pixels[..]);
+}
+fc_visible :: (pixels:[]u8)->bool {
+ if pixels.count<4 || pixels.count%4!=0 {return false;}
+ low:=2550;high:=0;bright:=0;count:=pixels.count/4;
+ for i:0..<count {at:=i*4;luma:=cast(int)pixels[at]*3+cast(int)pixels[at+1]*6+cast(int)pixels[at+2];
+   if luma<low {low=luma;}if luma>high {high=luma;}if luma>80 {bright+=1;}}
+ return high-low>=320 && bright>=(ifx count<100 then 1 else count/100);
+}
 fc_eval :: (c:[]Cdp,label:string,js:string)->bool {n:=cdp_evaluate(c,js);if n>=0 && jv_raw(c[0].doc[0],n)=="true" {return true;}print("FAIL %: %\n",label,cdp_error(c));n=cdp_evaluate(c,"JSON.stringify({ready:coaxial?.sceneReady,probes:Array.from({length:5},(_,i)=>coaxial?.guardProbe(87+i)),errors:faceErrors,recovery:coaxial?.gpuRecovery,hashes:faceHashes})");if n>=0 {print("%\n",jv_raw(c[0].doc[0],n));}return false;}
 fc_key :: (c:[]Cdp,key:string)->bool {b:[256]u8;j:[1]Jo;for phase:[2]string.["keyDown","keyUp"] {jo_start(j[..],b[..]);jo_obj(j[..]);jo_key(j[..],"type");jo_str(j[..],phase);jo_key(j[..],"key");jo_str(j[..],key);jo_end(j[..]);if cdp_call(c,"Input.dispatchKeyEvent",jo_text(j[..]),30000)<0 {return false;}}return true;}
 fc_hash :: (c:[]Cdp)->bool {return fc_eval(c,"actual face GPU crop","(async()=>{coaxial.renderCapture=null;coaxial.captureFrame();await coaxialClipStep(1,60);for(let i=0;i<100&&!coaxial.renderCapture;i++)await new Promise(r=>setTimeout(r,10));let r=coaxial.renderCapture;if(!r?.bytes)return false;let x=Math.floor(r.width*.34),y=Math.floor(r.height*.42),w=Math.floor(r.width*.32),h=Math.floor(r.height*.50),b=new Uint8Array(w*h*4);for(let j=0;j<h;j++)b.set(r.bytes.slice(((y+j)*r.width+x)*4,((y+j)*r.width+x+w)*4),j*w*4);let hash=await crypto.subtle.digest('SHA-256',b);faceHashes.push(Array.from(new Uint8Array(hash),x=>x.toString(16).padStart(2,'0')).join(''));return true})()");}
-fc_shot :: (c:[]Cdp,root:string,name:string)->bool {bytes:[8388608]u8;path:[4096]u8;n:=cdp_screenshot(c,bytes[..]);return n>0 && fs_write(fs_join(root,name,path[..]),cast(string)bytes[0..<n]);}
+fc_shot :: (c:[]Cdp,root:string,name:string)->bool {
+ // Numerical capture uses an offscreen GPU target. Present those actual RGBA
+ // bytes on a temporary 2D surface; the page's original canvas is not that target.
+ if !fc_eval(c,"present measured GPU pixels","(()=>{const r=coaxial.renderCapture;if(!r?.bytes||r.bytes.length!==r.width*r.height*4)return false;globalThis.faceShotCanvas?.remove();const canvas=document.createElement('canvas');canvas.width=r.width;canvas.height=r.height;canvas.style.cssText='position:fixed;inset:0;width:100vw;height:100vh;z-index:2147483647;pointer-events:none';canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(r.bytes),r.width,r.height),0,0);document.body.append(canvas);globalThis.faceShotCanvas=canvas;return true})()") {return false;}
+ defer {ignored:=cdp_evaluate(c,"globalThis.faceShotCanvas?.remove();delete globalThis.faceShotCanvas;true");}
+ bytes:[8388608]u8;path:[4096]u8;n:=cdp_screenshot(c,bytes[..]);if n<=0 {return false;}
+ info:=png_info(bytes[0..<n]);work:[33554432]u8;pixels:[16777216]u8;
+ if info.status!=PNG_OK || info.work>work.count || info.w*info.h*4>pixels.count || png_decode(bytes[0..<n],work[..],pixels[..])!=PNG_OK || !fc_visible(pixels[0..<info.w*info.h*4]) {print("FAIL visible face screenshot: empty or flat image\n");return false;}
+ return fs_write(fs_join(root,name,path[..]),cast(string)bytes[0..<n]);
+}
