@@ -101,7 +101,7 @@ world_hold :: (s:[]ValleyWorld,key:int,down:bool)->bool #export_c #effects(all) 
  if down && (key==82 || key==114) {s[0].started=false;s[0].canyon[0].portrait=false;s[0].canyon[0].closeup=false;canyon_blur(s[0].canyon[..]);world_echo_reset(s);world_start(s);return true;}
  return canyon_hold(s[0].canyon[..],key,down);
 }
-world_echo_reset :: (s:[]ValleyWorld) {s[0].canyon[0].walking=true;s[0].canyon[0].portrait=false;s[0].canyon[0].closeup=false;e:=s[0].canyon[0].echo[..];e[0].input_on=false;e[0].run_requested=false;echo_reset(e);echo_advance(e,0,0,true,0);}
+world_echo_reset :: (s:[]ValleyWorld) {s[0].canyon[0].walking=true;s[0].canyon[0].portrait=false;s[0].canyon[0].closeup=false;e:=s[0].canyon[0].echo[..];e[0].input_on=false;e[0].run_requested=false;character_reset(e);character_locomote(e,s[0].canyon[0].pack[..],0,0,true,0);}
 world_pointer :: (s:[]ValleyWorld,x:f32,y:f32,phase:int,kind:int,id:int)->bool #export_c #effects(all) {
  c:=s[0].canyon[..];if phase==0 {cx:=x/c[0].d;cy:=y/c[0].d;width:=c[0].width/c[0].d;height:=c[0].height/c[0].d;
   if cy<72 {if cx>width-110 {return world_hold(s,82,true);}if cx<100 && cy<48 {return world_hold(s,49,true);}return true;}
@@ -118,14 +118,14 @@ world_step :: (s:[]ValleyWorld,dt:f32,still:bool) #export_c #effects(all) {
  walls:=[24]f32.[-114,-128,-114,-111,256,146,143,-128,-114,146,256,146,-114,-128,-114,146,256,-111,-114,-128,143,146,256,146];
  w:=pc.World.{ground= -128,room=150,heightfields=field[..],walls=walls[..],collision=collision.collision_profile_lookup("valley-canyon").profile,locomotion=locomotion.LocomotionProfile.{source_velocity=true,walk_speed=1.47,run_speed=4.27,gravity=9.8,jump_speed=6,acceleration=5,turn_rate=10}};
  trace:=pc.advance_traced(w,p,dt);next:=trace.player;blocked:=!world_safe(s,next.pos.x,next.pos.z);if blocked {next.pos=p.pos;next.prev_pos=p.pos;next.vel=pc.Vec3.{};next.target=p.target;next.prev_target=p.target;next.on_ground=p.on_ground;next.act=pc.Act.idle;}c[0].you=next;wish:=pc.wish(p);want:=pc.atan2(wish.x,wish.z);
- for step:0..<trace.count {target:=trace.targets[step];c[0].echo[0].drive_inputs=true;c[0].echo[0].input_on=!blocked && (target.act==1 || target.act==2);c[0].echo[0].run_requested=target.act==2;echo_advance(c[0].echo[..],1.0/64.0,ifx blocked then 0.0f32 else sqrt(target.velocity.x*target.velocity.x+target.velocity.z*target.velocity.z),target.act!=3,pc.wrap_angle(want-target.face));}
+ for step:0..<trace.count {target:=trace.targets[step];c[0].echo[0].drive_inputs=true;c[0].echo[0].input_on=!blocked && (target.act==1 || target.act==2);c[0].echo[0].run_requested=target.act==2;character_locomote(c[0].echo[..],c[0].pack[..],1.0/64.0,ifx blocked then 0.0f32 else sqrt(target.velocity.x*target.velocity.x+target.velocity.z*target.velocity.z),target.act!=3,pc.wrap_angle(want-target.face));}
  c[0].now+=cast(f64)(trace.count)/64;c[0].look_x=0;c[0].look_y=0;c[0].thumbs=verse_sticks_used(t);
 }
 world_asset :: (s:[]ValleyWorld,index:int,bytes:int) #export_c #effects(all) {
  if index<0 || index>3 {return;}s[0].assets[index]=bytes;if bytes==0 {s[0].failed=true;return;}
  if index==0 {
-  if bytes<VW_RIG_BYTES || bytes>s[0].canyon[0].echo[0].data.count {s[0].failed=true;return;}
-  trailer:=s[0].canyon[0].echo[0].data[VW_RIG_BYTES..<bytes];if !vw_catalog_valid(trailer) || !echo_admit(s[0].canyon[0].echo[..],VW_RIG_BYTES) {s[0].failed=true;return;}
+  if bytes<VW_RIG_BYTES || bytes>s[0].canyon[0].pack[0].data.count {s[0].failed=true;return;}
+  trailer:=s[0].canyon[0].pack[0].data[VW_RIG_BYTES..<bytes];if !vw_catalog_valid(trailer) || !character_pack_rig(s[0].canyon[0].pack[..],0,VW_RIG_BYTES) || !echo_spawn(s[0].canyon[0].echo[..],s[0].canyon[0].pack[..],0) {s[0].failed=true;return;}
   s[0].catalog_bytes=bytes;s[0].source_count=cast(int)scan_u32(trailer,8);s[0].vertices=cast(int)scan_u32(trailer,12);s[0].indices=cast(int)scan_u32(trailer,16);s[0].layers=cast(int)scan_u32(trailer,20);
   s[0].vertex_word=cast(int)scan_u32(trailer,44);s[0].matrix_word=cast(int)scan_u32(trailer,48);s[0].material_word=cast(int)scan_u32(trailer,52);
   for k:0..<VW_POINTS {s[0].heights[k]=scan_float(trailer,VW_HEADER+k*4);}
@@ -152,7 +152,7 @@ world_catalog :: (s:[]ValleyWorld,b:[]u8) #export_c #effects(all) {
  n:=cast(int)scan_u32(b,VW_RIG_BYTES+8);if n<1 || n>VW_DRAWS {world_asset(s,0,0);return;}
  core:=VW_RIG_BYTES+VW_HEADER+VW_POINTS*4+n*32;if core>b.count || !vw_catalog_valid(b[VW_RIG_BYTES..<core]) {world_asset(s,0,0);return;}
  // Legacy VWD1 is still read unchanged; the larger VWH1 carrier never enlarges Echo's arena.
- for k:0..<core {s[0].canyon[0].echo[0].data[k]=b[k];}world_asset(s,0,core);s[0].assets[0]=b.count;
+ for k:0..<core {s[0].canyon[0].pack[0].data[k]=b[k];}world_asset(s,0,core);s[0].assets[0]=b.count;
  s[0].hierarchy_at=0;s[0].hierarchy_bytes=0;s[0].hierarchy_leaves=0;s[0].hierarchy_nodes=0;
  if b.count>core && wh_valid(b[core..<b.count],n,s[0].indices/4) {
   h:=b[core..<b.count];if wh_bindings(h,s[0].source[0..<n*4]) {s[0].hierarchy_at=core;s[0].hierarchy_bytes=b.count-core;s[0].hierarchy_nodes=cast(int)scan_u32(h,12);for m:0..<cast(int)scan_u32(h,8) {s[0].hierarchy_leaves+=cast(int)scan_u32(h,32+m*24+20);}}

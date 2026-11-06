@@ -1,93 +1,41 @@
-// Echo's original local poses, played through shared Aethyr pose arithmetic. Raw data stays private.
+// Echo as an Aethyr character (aethyr/character/): her catalog admission, her orb-hand capsules and
+// her idle face segments. The runtime is shared; only Echo's declarations live here. Raw data stays private.
 #load "echo-rig-policy.coax";
-#load "../../aethyr/anim/pose.coax";
-#load "../../aethyr/anim/face.coax";
+#load "../../aethyr/character/character.coax";
 #load "slay-lights.coax";
 // Platform upload scratch is outside the persistent simulation state.
 EchoCatalogScratch :: struct {bytes:[ECHO_CATALOG_CAP]u8;}
-Echo :: struct {
- data:[ECHO_RIG_CAP]u8;face_data:[FACE_RUNTIME_CAP]u8;bytes:int;rig_at:int;rig_bytes:int;face_bytes:int;face:[1]FacePlayback;ready:bool;joints:int;tracks:int;
- parent:[ECHO_JOINTS]int;bind:[ECHO_JOINTS*12]f32;rest:[ECHO_JOINTS]SkinLocal;
- body:[ECHO_JOINTS]SkinLocal;pose:[ECHO_JOINTS]SkinLocal;from:[ECHO_JOINTS]SkinLocal;gq:[ECHO_JOINTS]Quat;gt:[ECHO_JOINTS]Point;palette:[ECHO_JOINTS*12+256+ECHO_CAPSULES*8]f32;
- drive_inputs:bool;input_on:bool;run_requested:bool;blending:bool;clip:int= -1;time:f32;age:f32;moving:bool;grounded:bool=true;revision:int;
-}
-echo_pose_at :: (b:[]u8,at:int)->SkinLocal {return SkinLocal.{t=scan_point(b,at),q=Quat.{x=f32_from_bits(scan_u32(b,at+12)),y=f32_from_bits(scan_u32(b,at+16)),z=f32_from_bits(scan_u32(b,at+20)),w=f32_from_bits(scan_u32(b,at+24))}};}
-echo_rig_bytes :: (s:[]Echo)->[]u8 {return s[0].data[s[0].rig_at..<s[0].rig_at+s[0].rig_bytes];}
-echo_face_bytes :: (s:[]Echo)->[]u8 {return s[0].face_data[0..<s[0].face_bytes];}
-echo_admit :: (s:[]Echo,n:int)->bool {
- if n<0 || n>s[0].data.count || !echo_rig_valid(s[0].data[0..<n]) {s[0].ready=false;return false;}s[0].ready=true;s[0].bytes=n;s[0].rig_at=0;s[0].rig_bytes=n;s[0].face_bytes=0;
- rig:=echo_rig_bytes(s);s[0].joints=cast(int)scan_u32(rig,8);s[0].tracks=cast(int)scan_u32(rig,24);
- for k:0..<s[0].joints {at:=416+k*80;s[0].parent[k]=cast(int)scan_u32(rig,at)-1;for word:0..<12 {s[0].bind[k*12+word]=f32_from_bits(scan_u32(rig,at+4+word*4));}s[0].rest[k]=echo_pose_at(rig,at+52);s[0].body[k]=s[0].rest[k];s[0].pose[k]=s[0].rest[k];}
- echo_reset(s);echo_advance(s,0,0,true,0);return true;
-}
-echo_catalog_admit :: (s:[]Echo,b:[]u8)->bool {
- if !echo_catalog_valid(b) {s[0].ready=false;return false;}
+// Admit an Echo catalog (ECH1, ECP2 or ECP3) into packs[pack]: the rig, then the face projected
+// for the CPU. ECP3's shot is admitted by the caller.
+echo_catalog_admit :: (packs:[]CharacterPack,pack:int,b:[]u8)->bool {
+ if !echo_catalog_valid(b) {packs[pack].ready=false;return false;}
  start:=ifx scan_u32(b,0)==0x31484345 then 0 else echo_catalog_header(b);n:=ifx start>0 then cast(int)scan_u32(b,4) else b.count;
- for k:0..<n {s[0].data[k]=b[start+k];}if !echo_admit(s,n) {return false;}
- if start>0 {face_n:=cast(int)scan_u32(b,8);s[0].face_bytes=face_project_admitted(s[0].face_data[..],b[start+n..<start+n+face_n]);if s[0].face_bytes==0 {s[0].ready=false;return false;}}
+ for k:0..<n {packs[pack].data[k]=b[start+k];}if !character_pack_rig(packs,pack,n) {return false;}
+ if start>0 {face_n:=cast(int)scan_u32(b,8);if !character_pack_face(packs,pack,b[start+n..<start+n+face_n],true) {return false;}}
  return true;
 }
-echo_reset :: (s:[]Echo) {s[0].clip= -1;s[0].time=0;s[0].age=0;s[0].moving=false;s[0].grounded=true;s[0].face[0].enabled=false;}
-echo_duration :: (s:[]Echo,clip:int)->f32 {return f32_from_bits(scan_u32(echo_rig_bytes(s),32+clip*16+8));}
-echo_start_clip :: (run:bool,angle:f32)->int {
- // The source graph chooses 90-degree starts in (45,135], 180-degree starts beyond 135.
- degrees:=angle*57.295779513;left:=degrees<0;magnitude:=abs(degrees);
- if magnitude>135 {return ifx run then (ifx left then 16 else 17) else (ifx left then 12 else 13);}
- if magnitude>45 {return ifx run then (ifx left then 14 else 15) else (ifx left then 10 else 11);}
- return ifx run then 7 else 5;
+// Spawn Echo from packs[pack] with her capsules and idle face segments.
+echo_spawn :: (c:[]Character,packs:[]CharacterPack,pack:int)->bool {
+ c[0].capsules=ECHO_CAPSULES;c[0].capsule=ECHO_CAPSULE;c[0].cycle=ECHO_IDLE_FACE;
+ return character_spawn(c,packs,pack);
 }
-echo_advance :: (s:[]Echo,dt:f32,speed:f32,grounded:bool,turn:f32) {
- if !s[0].ready {return;}moving:=ifx s[0].drive_inputs then s[0].input_on else speed>0.05;run:=ifx s[0].drive_inputs then s[0].run_requested else speed>2;clip:=s[0].clip;chosen:=clip;
- if clip<0 {chosen=ifx grounded then 0 else 3;}
- if !grounded {chosen=3;}else if !s[0].grounded {chosen=4;}
- else if moving && !s[0].moving {chosen=echo_start_clip(run,turn);}
- else if !moving && s[0].moving {chosen=ifx clip==2 || clip==7 || (clip>=14 && clip<=17) then 8 else 6;}
- else if clip==1 || clip==2 {chosen=ifx moving then (ifx run then 2 else 1) else 0;}
- else if clip>=0 && s[0].time>=echo_duration(s,clip)-0.1 {chosen=ifx moving then (ifx run then 2 else 1) else 0;}
- if chosen!=clip {s[0].blending=clip>=0;for k:0..<s[0].joints {s[0].from[k]=s[0].body[k];}s[0].time=ifx chosen==6 then 0.1f32 else ifx chosen==8 then 0.15f32 else ifx chosen==12 then 0.2f32 else ifx chosen==13 then 0.25f32 else 0.0f32;s[0].age=0;}
- s[0].clip=chosen;s[0].time+=dt*(ifx chosen==1 then speed/1.47 else ifx chosen==2 then speed/4.27 else 1.0f32);s[0].age+=dt;
- rig:=echo_rig_bytes(s);descriptor:=32+chosen*16;first:=cast(int)scan_u32(rig,descriptor);frames:=cast(int)scan_u32(rig,descriptor+4);duration:=echo_duration(s,chosen);looping:=chosen==0 || chosen==1 || chosen==2 || chosen==18 || chosen==19 || chosen==22;
- time:=ifx looping then s[0].time-duration*floor(s[0].time/duration) else lo(s[0].time,duration);frame:=lo(time*30,cast(f32)(frames-1));a:=cast(int)floor(frame);b:=ifx a+1<frames then a+1 else a;share:=frame-cast(f32)a;fade:=ifx s[0].blending then pose_fade(s[0].age,0.1) else 1.0f32;
- for k:0..<s[0].joints {p:=s[0].rest[k];if k<s[0].tracks {p=pose_blend(echo_pose_at(rig,first+(a*s[0].tracks+k)*28),echo_pose_at(rig,first+(b*s[0].tracks+k)*28),share);}s[0].body[k]=pose_blend(s[0].from[k],p,fade);}
- s[0].moving=moving;s[0].grounded=grounded;echo_face_clock(s,dt);
-}
-echo_present :: (s:[]Echo) {
- for k:0..<s[0].joints {s[0].pose[k]=s[0].body[k];}
- if s[0].face_bytes>0 {face_layer(s[0].face[..],echo_face_bytes(s),s[0].pose[..]);}
- for k:0..<s[0].joints {pose_chain(s[0].gq[..],s[0].gt[..],s[0].parent[k],k,s[0].pose[k]);pose_palette(s[0].gq[k],s[0].gt[k],s[0].bind[..],k,s[0].palette[..]);}
- for k:0..<256 {s[0].palette[ECHO_JOINTS*12+k]=ifx s[0].face[0].enabled then s[0].face[0].weights[k] else 0.0f32;}echo_capsules(s);s[0].revision+=1;
-}
-// Capsules for the orb hand (left), after the palette and morph weights: model-space ends and a
-// radius in metres, 8 floats each, so the shader can shadow the orb's light with the hand.
-// Joint ids are Echo's source skin order; a rig without them leaves every radius 0.
+// Capsules for the orb hand (left), after the palette and morph weights, so the shader can shadow
+// the orb's light with the hand. Joint ids are Echo's source skin order.
 ECHO_CAPSULES :: SLAY_HAND_CAPSULES;
-ECHO_CAPSULE_WORD :: ECHO_JOINTS*12+256;
-ECHO_CAPSULE_JOINTS :: [20]int.[9,10,10,10,10,12,13,14,16,17,18,24,25,26,20,21,22,27,28,29];
-ECHO_CAPSULE_ENDS :: [20]int.[10,12,16,24,20,13,14,-1,17,18,-1,25,26,-1,21,22,-1,28,29,-1];
-ECHO_CAPSULE_RADII :: [20]f32.[0.032,0.018,0.018,0.017,0.015,0.0095,0.0085,0.008,0.0095,0.0085,0.008,0.009,0.008,0.0075,0.008,0.0075,0.007,0.012,0.0105,0.0095];
-echo_capsules :: (s:[]Echo) {
- for k:0..<ECHO_CAPSULES {at:=ECHO_CAPSULE_WORD+k*8;for w:0..<8 {s[0].palette[at+w]=0;}
-  a:=ECHO_CAPSULE_JOINTS[k];e:=ECHO_CAPSULE_ENDS[k];parent:=ifx a<s[0].joints then s[0].parent[a] else -1;if s[0].joints<30 || parent<0 {continue;}
-  p:=s[0].gt[a];q:=ifx e>=0 then s[0].gt[e] else add(p,times(sub(p,s[0].gt[parent]),0.8));
-  s[0].palette[at]=p.x;s[0].palette[at+1]=p.y;s[0].palette[at+2]=p.z;s[0].palette[at+4]=q.x;s[0].palette[at+5]=q.y;s[0].palette[at+6]=q.z;s[0].palette[at+3]=ECHO_CAPSULE_RADII[k];
- }
-}
-echo_face_clock :: (s:[]Echo,dt:f32) {if s[0].face_bytes>0 {face_tick(s[0].face[..],echo_face_bytes(s),dt);}echo_present(s);}
-echo_face_start :: (s:[]Echo,clip:int,first:int,last:int,looping:bool)->bool {if !s[0].ready || s[0].face_bytes==0 {return false;}return face_begin(s[0].face[..],echo_face_bytes(s),clip,first,last,looping);}
-#test "Echo animation samples source local keys and preserves the inverse bind" #steps 1000000000 {
- s:[1]Echo;n:=echo_rig_fixture(s[0].data[..],1);first:=496;scan_put(s[0].data[..],first+28+4,f32_bits(2));#assert echo_admit(s[..],n);echo_advance(s[..],1.0/60.0,0,true,0);#assert abs(s[0].palette[7]-1)<0.00001 && abs(quat_dot(s[0].pose[0].q,s[0].pose[0].q)-1)<0.000001;
- echo_reset(s[..]);echo_advance(s[..],0,0,true,0);#assert s[0].clip==0 && s[0].time==0;
-}
-#test "Echo locomotion chooses source starts stops jog threshold and landing" #steps 1000000000 {
- s:[1]Echo;n:=echo_rig_fixture(s[0].data[..],1);#assert echo_admit(s[..],n);echo_advance(s[..],0,1.47,true,0);#assert s[0].clip==5;echo_advance(s[..],0,0,true,0);#assert s[0].clip==6;
- echo_advance(s[..],0,4.27,true,0);#assert s[0].clip==7;echo_advance(s[..],0,4.27,false,0);#assert s[0].clip==3;echo_advance(s[..],0,0,true,0);#assert s[0].clip==4;
- #assert echo_start_clip(false,-1.57)==10 && echo_start_clip(false,1.57)==11 && echo_start_clip(true,-3)==16 && echo_start_clip(true,3)==17;
+ECHO_CAPSULE :: [20]CharacterCapsule.[CharacterCapsule.{joint=9,end=10,radius=0.032},CharacterCapsule.{joint=10,end=12,radius=0.018},CharacterCapsule.{joint=10,end=16,radius=0.018},CharacterCapsule.{joint=10,end=24,radius=0.017},CharacterCapsule.{joint=10,end=20,radius=0.015},
+ CharacterCapsule.{joint=12,end=13,radius=0.0095},CharacterCapsule.{joint=13,end=14,radius=0.0085},CharacterCapsule.{joint=14,end= -1,radius=0.008},CharacterCapsule.{joint=16,end=17,radius=0.0095},CharacterCapsule.{joint=17,end=18,radius=0.0085},
+ CharacterCapsule.{joint=18,end= -1,radius=0.008},CharacterCapsule.{joint=24,end=25,radius=0.009},CharacterCapsule.{joint=25,end=26,radius=0.008},CharacterCapsule.{joint=26,end= -1,radius=0.0075},CharacterCapsule.{joint=20,end=21,radius=0.008},
+ CharacterCapsule.{joint=21,end=22,radius=0.0075},CharacterCapsule.{joint=22,end= -1,radius=0.007},CharacterCapsule.{joint=27,end=28,radius=0.012},CharacterCapsule.{joint=28,end=29,radius=0.0105},CharacterCapsule.{joint=29,end= -1,radius=0.0095}];
+// Short source blinks and glances: TF0130 4..22, TF0145 3..21, TF0250 19..40, all at source 24 fps.
+ECHO_IDLE_FACE :: CharacterFaceCycle.{period=8,count=3,clip=[4]int.[6,9,14,0],first=[4]int.[4,3,19,0],last=[4]int.[22,21,40,0]};
+#test "Echo's palette layout is the one the Valley shader reads" {
+ #assert CHARACTER_PALETTE_CAPSULES==SLAY_HAND_CAPSULE_WORD && CHARACTER_CAPSULES==ECHO_CAPSULES && CHARACTER_JOINTS==ECHO_JOINTS;
 }
 #test "Orb-hand capsules follow the posed joints, extend fingertips and stay empty without the source rig" #steps 1000000000 {
- #assert ECHO_CAPSULE_WORD==SLAY_HAND_CAPSULE_WORD;
- s:[1]Echo;s[0].joints=30;for k:0..<30 {s[0].parent[k]=k-1;s[0].gt[k]=v3(cast(f32)k,0,0);}
- echo_capsules(s[..]);at:=ECHO_CAPSULE_WORD;
- #assert s[0].palette[at]==9 && s[0].palette[at+4]==10 && s[0].palette[at+3]==0.032f32;
- tip:=ECHO_CAPSULE_WORD+7*8;#assert s[0].palette[tip]==14 && abs(s[0].palette[tip+4]-14.8)<0.00001 && s[0].palette[tip+3]==0.008f32;
- s[0].joints=1;echo_capsules(s[..]);for k:0..<ECHO_CAPSULES*8 {#assert s[0].palette[ECHO_CAPSULE_WORD+k]==0;}
+ packs:[1]CharacterPack;n:=echo_rig_fixture(packs[0].data[..],30);#assert character_pack_rig(packs[..],0,n);c:[1]Character;#assert echo_spawn(c[..],packs[..],0);
+ for k:0..<30 {c[0].parent[k]=k-1;c[0].gt[k]=v3(cast(f32)k,0,0);}
+ character_capsules(c[..]);at:=CHARACTER_PALETTE_CAPSULES;
+ #assert c[0].palette[at]==9 && c[0].palette[at+4]==10 && c[0].palette[at+3]==0.032f32;
+ tip:=CHARACTER_PALETTE_CAPSULES+7*8;#assert c[0].palette[tip]==14 && abs(c[0].palette[tip+4]-14.8)<0.00001 && c[0].palette[tip+3]==0.008f32;
+ c[0].joints=1;character_capsules(c[..]);for k:0..<ECHO_CAPSULES*8 {#assert c[0].palette[CHARACTER_PALETTE_CAPSULES+k]==0;}
 }

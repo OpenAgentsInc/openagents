@@ -1,9 +1,9 @@
-// Play admitted Slay body/camera samples; the source actor transform track is disabled.
+// Play admitted Slay body/camera samples on Echo; the source actor transform track is disabled.
 #load "echo.coax";
 #test "Shot playback clamps and interpolates source locals without changing other joints" #steps 1000000000 {
  s:[1]SlayShot;names:[64]u8;shot_fixture(s[0].data[0..<620],names[..]);s[0].bytes=620;s[0].ready=true;s[0].frame=0.5;
- face_put(s[0].data[..],132+244,f32_bits(2.0f32));e:[1]Echo;e[0].ready=true;e[0].joints=2;e[0].body[1].t.x=9;
- slay_shot_present(s[..],e[..]);#assert e[0].body[0].t.x==1 && e[0].body[1].t.x==9;
+ face_put(s[0].data[..],132+244,f32_bits(2.0f32));packs:[1]CharacterPack;e:[1]Character;e[0].ready=true;e[0].joints=2;e[0].body[1].t.x=9;
+ slay_shot_present(s[..],e[..],packs[..]);#assert e[0].body[0].t.x==1 && e[0].body[1].t.x==9;
  s[0].frame=99;#assert slay_shot_frame(s[..])==1;s[0].frame= -1;#assert slay_shot_frame(s[..])==0;
 }
 slay_shot_frame :: (s:[]SlayShot)->f32 {f:=shot_info(s[0].data[0..<s[0].bytes]);return lo(hi(s[0].frame,0),cast(f32)(f.frames-1));}
@@ -18,12 +18,14 @@ slay_face_source :: (source:f32,start:int,end:int)->f32 {return lo(hi(source,cas
 #test "The shot face holds its first expression before its source range and its last after it" {
  #assert slay_face_source(1001,1121,1159)==1121 && slay_face_source(1140.5,1121,1159)==1140.5 && slay_face_source(1200,1121,1159)==1159;
 }
-slay_shot_present :: (s:[]SlayShot,e:[]Echo) {
+// Write the shot's frame into the character's body and face, then present. The character's own
+// step leaves the body alone while the shot holds it (CHARACTER_HELD) or between shot frames.
+slay_shot_present :: (s:[]SlayShot,e:[]Character,packs:[]CharacterPack) {
  if !s[0].ready || !e[0].ready {return;}b:=s[0].data[0..<s[0].bytes];f:=shot_info(b);frame:=slay_shot_frame(s);a:=cast(int)floor(frame);c:=ifx a+1<f.frames then a+1 else a;
  for k:0..<f.bones {joint:=cast(int)face_word(b,f.names+k*68+64);e[0].body[joint]=pose_blend(face_local(b,f.data+a*f.stride+k*28),face_local(b,f.data+c*f.stride+k*28),frame-cast(f32)a);}
  e[0].face[0].enabled=false;source:=frame+cast(f32)f.source_first;
- if e[0].face_bytes>0 {
-  face:=echo_face_bytes(e);info:=face_info(face);frames:=cast(int)face_word(face,info.clip_table+f.face_clip*80+64);held:=slay_face_source(source,f.face_start,f.face_end);
-  _:=echo_face_start(e,f.face_clip,0,frames-1,true);e[0].face[0].playing=false;e[0].face[0].blend=FACE_BLEND;e[0].face[0].time=(held-cast(f32)f.face_start)/f.rate;e[0].face[0].age=0.15;face_tick(e[0].face[..],face,0);
- }echo_present(e);
+ if character_has_face(e,packs) {
+  face:=character_face_bytes(e,packs);info:=face_info(face);frames:=cast(int)face_word(face,info.clip_table+f.face_clip*80+64);held:=slay_face_source(source,f.face_start,f.face_end);
+  _:=character_face_start(e,packs,f.face_clip,0,frames-1,true);e[0].face[0].playing=false;e[0].face[0].blend=FACE_BLEND;e[0].face[0].time=(held-cast(f32)f.face_start)/f.rate;e[0].face[0].age=0.15;face_tick(e[0].face[..],face,0);
+ }character_present(e,packs);
 }

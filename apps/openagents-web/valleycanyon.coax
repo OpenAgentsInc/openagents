@@ -8,7 +8,6 @@
 #load "../../aethyr/sticks.coax";
 #load "../../verse/valley/slay-shot-play.coax";
 #load "../../verse/valley/slay-lights.coax";
-#load "../../verse/valley/face-ambient.coax";
 #load "../../verse/valley/echo-orbit.coax";
 #load "../../aethyr/locomotion.coax" as locomotion;
 #load "../../aethyr/walk.coax" as pc;
@@ -29,9 +28,9 @@ canyon_pixel_budget :: ()->int #export_c #effects(all) {return 2097152;}
 // The private original-source bundle, GPU streams and 35 mipmapped 4K texture layers.
 CANYON_BUDGET :: FrameBudget.{steps=8,vertices=50000000,draws=12,bytes=4600000000};
 canyon_storage_limit :: ()->int #export_c #effects(all) {return slay_gpu_storage();}
-ValleyCanyon :: struct {walking:bool=true;blonde:bool;hair_share:f32;portrait:bool;closeup:bool;performance:bool;source_shot:bool;shot:[1]SlayShot;ambient:bool=true;ambient_clock:[1]EchoAmbient;face_cycle:f32;started:bool;you:pc.Player;keys:int;look_x:f32;look_y:f32;thumbs:Sticks;active:[4]bool;ids:[4]int;now:f64;drag_id:int;echo:[1]Echo;ready:bool;pack_digest:[32]u8;pack_verified:bool;pack_checks:int;pose_words:[48]u32;assets:[4]int;failed:bool;orbit:f32=0.65;tilt:f32=0.12;distance:f32=14;mode:int;solo:int=2;drag:bool;x:f32;y:f32;d:f32=1;width:f32=1280;height:f32=800;eye:Point;draws:[20]u32;meter:[1]BudgetMeter;action:int;outbox:[64]u8;out_n:int;spell:bool;spell_t:f32;eorbit:bool;eorbit_t:f32;eorbit_run:bool;matte:bool;spell_eye:Point;spell_look:Point;spell_head:Point;spell_lens:f32;}
+ValleyCanyon :: struct {walking:bool=true;blonde:bool;hair_share:f32;portrait:bool;closeup:bool;performance:bool;source_shot:bool;shot:[1]SlayShot;face_cycle:f32;started:bool;you:pc.Player;keys:int;look_x:f32;look_y:f32;thumbs:Sticks;active:[4]bool;ids:[4]int;now:f64;drag_id:int;echo:[1]Character;pack:[1]CharacterPack;ready:bool;pack_digest:[32]u8;pack_verified:bool;pack_checks:int;pose_words:[48]u32;assets:[4]int;failed:bool;orbit:f32=0.65;tilt:f32=0.12;distance:f32=14;mode:int;solo:int=2;drag:bool;x:f32;y:f32;d:f32=1;width:f32=1280;height:f32=800;eye:Point;draws:[20]u32;meter:[1]BudgetMeter;action:int;outbox:[64]u8;out_n:int;spell:bool;spell_t:f32;eorbit:bool;eorbit_t:f32;eorbit_run:bool;matte:bool;spell_eye:Point;spell_look:Point;spell_head:Point;spell_lens:f32;}
 #test "Canyon requires the source geometry maps and admitted Echo rig before drawing" #steps 1000000000 {
- s:[1]ValleyCanyon;s[0].pack_verified=true;#assert !canyon_ready(s[..]);n:=echo_rig_fixture(s[0].echo[0].data[..],1);canyon_asset(s[..],0,n);canyon_asset(s[..],1,187564308);canyon_asset(s[..],2,73674948);#assert !canyon_ready(s[..]);canyon_asset(s[..],3,35);#assert canyon_ready(s[..]);canyon_asset(s[..],2,4);#assert !canyon_ready(s[..]) && s[0].failed;
+ s:[1]ValleyCanyon;s[0].pack_verified=true;#assert !canyon_ready(s[..]);n:=echo_rig_fixture(s[0].pack[0].data[..],1);canyon_asset(s[..],0,n);canyon_asset(s[..],1,187564308);canyon_asset(s[..],2,73674948);#assert !canyon_ready(s[..]);canyon_asset(s[..],3,35);#assert canyon_ready(s[..]);canyon_asset(s[..],2,4);#assert !canyon_ready(s[..]) && s[0].failed;
 }
 #test "Canyon pointer orbit mode isolation and two full source draws stay bounded" {
   s:[1]ValleyCanyon;s[0].walking=false;s[0].width=390;s[0].height=844;#assert canyon_key(s[..],86) && s[0].mode==1;#assert canyon_key(s[..],73) && s[0].solo==0;
@@ -85,21 +84,20 @@ canyon_hold :: (s:[]ValleyCanyon,key:int,down:bool)->bool #export_c #effects(all
   return down && canyon_key(s,key);
 }
 canyon_step :: (s:[]ValleyCanyon,dt:f32,still:bool) #export_c #effects(all) {
- canyon_start(s);if still || !s[0].walking {return;}if s[0].eorbit && s[0].eorbit_run {s[0].eorbit_t=pc.lo(cast(f32)ECHO_ORBIT_SECONDS,s[0].eorbit_t+pc.lo(pc.hi(dt,0),0.125));}if s[0].source_shot && s[0].spell {if s[0].shot[0].playing {s[0].spell_t=pc.lo(SPELL_SECONDS,s[0].spell_t+pc.lo(pc.hi(dt,0),0.125));if s[0].spell_t>=SPELL_SECONDS {s[0].shot[0].playing=false;}}s[0].shot[0].frame=canyon_spell_frame(s);slay_shot_present(s[0].shot[..],s[0].echo[..]);return;}if s[0].source_shot {if s[0].shot[0].playing {s[0].shot[0].frame+=pc.lo(pc.hi(dt,0),0.125)*24;last:=canyon_shot_last(s);if s[0].shot[0].frame>=last {s[0].shot[0].frame=last;s[0].shot[0].playing=false;}slay_shot_present(s[0].shot[..],s[0].echo[..]);}return;}if s[0].portrait {if s[0].performance && s[0].echo[0].ready {echo_face_clock(s[0].echo[..],pc.lo(pc.hi(dt,0),0.125));}return;}k:=s[0].keys;t:=s[0].thumbs;p:=pc.walk_input(s[0].you,cast(f32)((ifx (k&8)!=0 then 1 else 0)-(ifx (k&4)!=0 then 1 else 0)),cast(f32)((ifx (k&1)!=0 then 1 else 0)-(ifx (k&2)!=0 then 1 else 0)),t.pad_x,t.pad_y,pc.walk_runs((k&32)!=0,t.run,t.pad_x,t.pad_y),(k&16)!=0 || t.jump,s[0].look_x+t.dyaw,s[0].look_y+t.dpitch);
+ canyon_start(s);if still || !s[0].walking {return;}if s[0].eorbit && s[0].eorbit_run {s[0].eorbit_t=pc.lo(cast(f32)ECHO_ORBIT_SECONDS,s[0].eorbit_t+pc.lo(pc.hi(dt,0),0.125));}if s[0].source_shot && s[0].spell {if s[0].shot[0].playing {s[0].spell_t=pc.lo(SPELL_SECONDS,s[0].spell_t+pc.lo(pc.hi(dt,0),0.125));if s[0].spell_t>=SPELL_SECONDS {s[0].shot[0].playing=false;}}s[0].shot[0].frame=canyon_spell_frame(s);slay_shot_present(s[0].shot[..],s[0].echo[..],s[0].pack[..]);return;}if s[0].source_shot {if s[0].shot[0].playing {s[0].shot[0].frame+=pc.lo(pc.hi(dt,0),0.125)*24;last:=canyon_shot_last(s);if s[0].shot[0].frame>=last {s[0].shot[0].frame=last;s[0].shot[0].playing=false;}slay_shot_present(s[0].shot[..],s[0].echo[..],s[0].pack[..]);}return;}if s[0].portrait {if s[0].performance && s[0].echo[0].ready {character_face_clock(s[0].echo[..],s[0].pack[..],pc.lo(pc.hi(dt,0),0.125));}return;}k:=s[0].keys;t:=s[0].thumbs;p:=pc.walk_input(s[0].you,cast(f32)((ifx (k&8)!=0 then 1 else 0)-(ifx (k&4)!=0 then 1 else 0)),cast(f32)((ifx (k&1)!=0 then 1 else 0)-(ifx (k&2)!=0 then 1 else 0)),t.pad_x,t.pad_y,pc.walk_runs((k&32)!=0,t.run,t.pad_x,t.pad_y),(k&16)!=0 || t.jump,s[0].look_x+t.dyaw,s[0].look_y+t.dpitch);
  walls:[12]f32;canyon_walls(walls[..]);declaration:=collision.collision_profile_lookup("valley-canyon");w:=pc.World.{ground=canyon_ground(),room=80,walls=walls[..],collision=declaration.profile,locomotion=locomotion.LocomotionProfile.{source_velocity=true,walk_speed=1.47,run_speed=4.27,gravity=9.8,jump_speed=6,acceleration=5,turn_rate=10}};
  trace:=pc.advance_traced(w,p,dt);s[0].you=trace.player;wish:=pc.wish(p);want:=pc.atan2(wish.x,wish.z);
- for step:0..<trace.count {if s[0].ambient {echo_ambient(s[0].ambient_clock[..],s[0].echo[..],1.0/64.0);}target:=trace.targets[step];s[0].echo[0].drive_inputs=true;s[0].echo[0].input_on=target.act==1 || target.act==2;s[0].echo[0].run_requested=target.act==2;echo_advance(s[0].echo[..],1.0/64.0,sqrt(target.velocity.x*target.velocity.x+target.velocity.z*target.velocity.z),target.act!=3,pc.wrap_angle(want-target.face));}
+ for step:0..<trace.count {target:=trace.targets[step];e:=s[0].echo[..];e[0].drive_inputs=true;e[0].input_on=target.act==1 || target.act==2;e[0].run_requested=target.act==2;e[0].speed=sqrt(target.velocity.x*target.velocity.x+target.velocity.z*target.velocity.z);e[0].falling=target.act==3;e[0].turn=pc.wrap_angle(want-target.face);character_step(e,s[0].pack[..],1.0/64.0);}
  s[0].now+=cast(f64)(trace.count)/64;s[0].look_x=0;s[0].look_y=0;s[0].thumbs=verse_sticks_used(t);
 }
 canyon_ready :: (s:[]ValleyCanyon)->bool #export_c #effects(all) {return s[0].pack_verified && !s[0].failed && s[0].echo[0].ready && s[0].assets[0]>0 && s[0].assets[1]==187564308 && s[0].assets[2]==73674948 && s[0].assets[3]==35;}
-canyon_face_select :: (s:[]ValleyCanyon,clip:int) {
- e:=s[0].echo[..];if e[0].face_bytes==0 {return;}b:=echo_face_bytes(e);f:=face_info(b);if clip<0 || clip>=f.clips {return;}frames:=cast(int)face_word(b,f.clip_table+clip*80+64);_:=echo_face_start(e,clip,0,frames-1,true);echo_present(e);
-}
-canyon_catalog :: (s:[]ValleyCanyon,b:[]u8) #export_c #effects(all) {s[0].assets[0]=b.count;if !echo_catalog_admit(s[0].echo[..],b) {s[0].failed=true;return;}if scan_u32(b,0)==0x33504345 {at:=20+cast(int)scan_u32(b,4)+cast(int)scan_u32(b,8);if !shot_admit(s[0].shot[..],b[at..<b.count],echo_face_bytes(s[0].echo[..])) {s[0].failed=true;}else {_:=canyon_key(s,74);}}}
+canyon_face_select :: (s:[]ValleyCanyon,clip:int) {_:=character_face_play(s[0].echo[..],s[0].pack[..],clip);}
+canyon_echo_restart :: (s:[]ValleyCanyon) {character_reset(s[0].echo[..]);character_locomote(s[0].echo[..],s[0].pack[..],0,0,true,0);}
+canyon_catalog :: (s:[]ValleyCanyon,b:[]u8) #export_c #effects(all) {s[0].assets[0]=b.count;if !echo_catalog_admit(s[0].pack[..],0,b) || !echo_spawn(s[0].echo[..],s[0].pack[..],0) {s[0].failed=true;return;}if scan_u32(b,0)==0x33504345 {at:=20+cast(int)scan_u32(b,4)+cast(int)scan_u32(b,8);if !shot_admit(s[0].shot[..],b[at..<b.count],character_face_bytes(s[0].echo[..],s[0].pack[..])) {s[0].failed=true;}else {_:=canyon_key(s,74);}}}
 canyon_catalog_capacity :: (scratch:[]EchoCatalogScratch)->int #export_c #effects(all) {return scratch[0].bytes.count;}
 canyon_asset :: (s:[]ValleyCanyon,index:int,bytes:int) #export_c #effects(all) {
  if index<0 || index>3 {return;}s[0].assets[index]=bytes;if bytes==0 {s[0].failed=true;return;}
- if index==0 && !echo_admit(s[0].echo[..],bytes) {s[0].failed=true;}
+ if index==0 && !(character_pack_rig(s[0].pack[..],0,bytes) && echo_spawn(s[0].echo[..],s[0].pack[..],0)) {s[0].failed=true;}
  if (index==1 && bytes!=187564308) || (index==2 && bytes!=73674948) || (index==3 && bytes!=35) {s[0].failed=true;}
 }
 #test "G and the HAIR button swap Echo's hair between the source brown and blonde" #steps 1000000000 {
@@ -168,7 +166,7 @@ canyon_rect_light :: (u:[]f32,q:[]SlayShot,at:Point) {
  x:=slay_shot_meta(q,51);y:=slay_shot_meta(q,52);z:=slay_shot_meta(q,53);u[11]=slay_oct_x(x,y,z);u[127]=slay_oct_y(x,y,z);
 }
 canyon_shot_last :: (s:[]ValleyCanyon)->f32 {if !s[0].shot[0].ready {return 0;}return cast(f32)(shot_info(s[0].shot[0].data[0..<s[0].shot[0].bytes]).frames-1);}
-canyon_shot_replay :: (s:[]ValleyCanyon) {if !s[0].shot[0].ready {return;}s[0].shot[0].frame=0;s[0].shot[0].playing=true;slay_shot_present(s[0].shot[..],s[0].echo[..]);}
+canyon_shot_replay :: (s:[]ValleyCanyon) {if !s[0].shot[0].ready {return;}s[0].shot[0].frame=0;s[0].shot[0].playing=true;slay_shot_present(s[0].shot[..],s[0].echo[..],s[0].pack[..]);}
 canyon_replay_box :: (w:f32,h:f32)->HudBox {return HudBox.{x=w-176,y=h-140,width=160,height=44};}
 // G or the HAIR button swaps Echo's source brown groom for the sample's blonde hair colours.
 // Echo's head height on screen in CSS pixels, from the frame's camera (u[8..22], u[19]).
@@ -187,10 +185,10 @@ canyon_hair_box :: (w:f32,h:f32)->HudBox {return HudBox.{x=w-176,y=h-192,width=1
 canyon_shows_echo :: (s:[]ValleyCanyon)->bool {return s[0].portrait || s[0].source_shot;}
 canyon_key :: (s:[]ValleyCanyon,key:int)->bool #export_c #effects(all) {
   if key==71 || key==103 {s[0].blonde=!s[0].blonde;return true;}
-  if key==74 || key==106 {if !s[0].shot[0].ready {return true;}canyon_blur(s);s[0].portrait=true;s[0].performance=false;s[0].source_shot=true;s[0].shot[0].frame=124;s[0].shot[0].playing=false;slay_shot_present(s[0].shot[..],s[0].echo[..]);return true;}
+  if key==74 || key==106 {if !s[0].shot[0].ready {return true;}canyon_blur(s);s[0].portrait=true;s[0].performance=false;s[0].source_shot=true;s[0].shot[0].frame=124;s[0].shot[0].playing=false;slay_shot_present(s[0].shot[..],s[0].echo[..],s[0].pack[..]);return true;}
   if key==77 || key==109 {if !s[0].shot[0].ready {return true;}canyon_spell_start(s);return true;}
   // N: Echo's orbit for the Everglade composite (verse/valley/echo-orbit.coax); K: its coverage matte.
-  if key==78 || key==110 {if !s[0].shot[0].ready {return true;}canyon_blur(s);s[0].source_shot=false;s[0].performance=false;s[0].portrait=true;s[0].closeup=true;echo_reset(s[0].echo[..]);echo_advance(s[0].echo[..],0,0,true,0);s[0].eorbit=true;s[0].eorbit_t=0;s[0].eorbit_run=true;return true;}
+  if key==78 || key==110 {if !s[0].shot[0].ready {return true;}canyon_blur(s);s[0].source_shot=false;s[0].performance=false;s[0].portrait=true;s[0].closeup=true;canyon_echo_restart(s);s[0].eorbit=true;s[0].eorbit_t=0;s[0].eorbit_run=true;return true;}
   if key==75 || key==107 {s[0].matte=!s[0].matte;return true;}
   if s[0].eorbit {
    if key==80 || key==112 {s[0].eorbit_run=!s[0].eorbit_run;return true;}
@@ -199,19 +197,19 @@ canyon_key :: (s:[]ValleyCanyon,key:int)->bool #export_c #effects(all) {
   if s[0].source_shot && s[0].spell {
    if key==84 || key==116 {canyon_spell_start(s);return true;}
    if key==80 || key==112 {if !s[0].shot[0].playing && s[0].spell_t>=SPELL_SECONDS {canyon_spell_start(s);return true;}s[0].shot[0].playing=!s[0].shot[0].playing;return true;}
-   if key==44 || key==46 {s[0].shot[0].playing=false;s[0].spell_t=pc.lo(SPELL_SECONDS,pc.hi(0,s[0].spell_t+(ifx key==46 then 1.0f32 else -1.0f32)/24));s[0].shot[0].frame=canyon_spell_frame(s);slay_shot_present(s[0].shot[..],s[0].echo[..]);return true;}
+   if key==44 || key==46 {s[0].shot[0].playing=false;s[0].spell_t=pc.lo(SPELL_SECONDS,pc.hi(0,s[0].spell_t+(ifx key==46 then 1.0f32 else -1.0f32)/24));s[0].shot[0].frame=canyon_spell_frame(s);slay_shot_present(s[0].shot[..],s[0].echo[..],s[0].pack[..]);return true;}
   }
-  if s[0].source_shot {if key==84 || key==116 {canyon_shot_replay(s);return true;}if key==80 || key==112 {if !s[0].shot[0].playing && s[0].shot[0].frame>=canyon_shot_last(s) {canyon_shot_replay(s);return true;}s[0].shot[0].playing=!s[0].shot[0].playing;return true;}if key==44 || key==46 {s[0].shot[0].playing=false;s[0].shot[0].frame=pc.lo(199,pc.hi(0,s[0].shot[0].frame+(ifx key==46 then 1.0f32 else -1.0f32)));slay_shot_present(s[0].shot[..],s[0].echo[..]);return true;}}
-  if key==70 || key==102 {s[0].source_shot=false;canyon_blur(s);s[0].portrait=true;s[0].closeup=true;s[0].performance=true;echo_reset(s[0].echo[..]);echo_advance(s[0].echo[..],0,0,true,0);canyon_face_select(s,4);return true;}
+  if s[0].source_shot {if key==84 || key==116 {canyon_shot_replay(s);return true;}if key==80 || key==112 {if !s[0].shot[0].playing && s[0].shot[0].frame>=canyon_shot_last(s) {canyon_shot_replay(s);return true;}s[0].shot[0].playing=!s[0].shot[0].playing;return true;}if key==44 || key==46 {s[0].shot[0].playing=false;s[0].shot[0].frame=pc.lo(199,pc.hi(0,s[0].shot[0].frame+(ifx key==46 then 1.0f32 else -1.0f32)));slay_shot_present(s[0].shot[..],s[0].echo[..],s[0].pack[..]);return true;}}
+  if key==70 || key==102 {s[0].source_shot=false;canyon_blur(s);s[0].portrait=true;s[0].closeup=true;s[0].performance=true;canyon_echo_restart(s);canyon_face_select(s,4);return true;}
   if s[0].performance {
    if key==91 || key==93 {clip:=(s[0].echo[0].face[0].clip+(ifx key==93 then 1 else 19))%20;canyon_face_select(s,clip);return true;}
    if key==80 || key==112 {s[0].echo[0].face[0].playing=!s[0].echo[0].face[0].playing;return true;}
    if key==84 || key==116 {canyon_face_select(s,s[0].echo[0].face[0].clip);return true;}
-   if key==66 || key==98 {s[0].echo[0].face[0].enabled=!s[0].echo[0].face[0].enabled;echo_present(s[0].echo[..]);return true;}
-   if key==44 || key==46 {e:=s[0].echo[..];if e[0].face_bytes>0 {b:=echo_face_bytes(e);f:=face_info(b);rate:=face_float(b,f.clip_table+e[0].face[0].clip*80+68);e[0].face[0].playing=false;e[0].face[0].time=pc.lo(e[0].face[0].end,pc.hi(0,e[0].face[0].time+(ifx key==46 then 1.0f32 else -1.0f32)/rate));e[0].face[0].age=0.15;echo_face_clock(e,0);}return true;}
+   if key==66 || key==98 {s[0].echo[0].face[0].enabled=!s[0].echo[0].face[0].enabled;character_present(s[0].echo[..],s[0].pack[..]);return true;}
+   if key==44 || key==46 {e:=s[0].echo[..];if character_has_face(e,s[0].pack[..]) {b:=character_face_bytes(e,s[0].pack[..]);f:=face_info(b);rate:=face_float(b,f.clip_table+e[0].face[0].clip*80+68);e[0].face[0].playing=false;e[0].face[0].time=pc.lo(e[0].face[0].end,pc.hi(0,e[0].face[0].time+(ifx key==46 then 1.0f32 else -1.0f32)/rate));e[0].face[0].age=0.15;character_face_clock(e,s[0].pack[..],0);}return true;}
   }
-  if key==72 || key==104 {s[0].source_shot=false;s[0].performance=false;canyon_blur(s);s[0].portrait=true;s[0].closeup=!s[0].closeup;echo_reset(s[0].echo[..]);echo_advance(s[0].echo[..],0,0,true,0);return true;}if key==67 || key==99 {s[0].performance=false;s[0].closeup=false;canyon_blur(s);s[0].portrait=!s[0].portrait;echo_reset(s[0].echo[..]);echo_advance(s[0].echo[..],0,0,true,0);return true;}if key==79 || key==111 {s[0].walking=!s[0].walking;canyon_blur(s);return true;}if key==118 || key==86 {s[0].mode=(s[0].mode+1)%5;return true;}if key==105 || key==73 {s[0].solo=(s[0].solo+1)%3;return true;}
-  if key==114 || key==82 {canyon_blur(s);s[0].started=false;canyon_start(s);echo_reset(s[0].echo[..]);echo_advance(s[0].echo[..],0,0,true,0);s[0].orbit=0.65;s[0].tilt=0.12;s[0].distance=14;s[0].portrait=false;s[0].closeup=false;s[0].performance=false;s[0].source_shot=false;s[0].face_cycle=0;s[0].mode=0;s[0].solo=2;return true;}
+  if key==72 || key==104 {s[0].source_shot=false;s[0].performance=false;canyon_blur(s);s[0].portrait=true;s[0].closeup=!s[0].closeup;canyon_echo_restart(s);return true;}if key==67 || key==99 {s[0].performance=false;s[0].closeup=false;canyon_blur(s);s[0].portrait=!s[0].portrait;canyon_echo_restart(s);return true;}if key==79 || key==111 {s[0].walking=!s[0].walking;canyon_blur(s);return true;}if key==118 || key==86 {s[0].mode=(s[0].mode+1)%5;return true;}if key==105 || key==73 {s[0].solo=(s[0].solo+1)%3;return true;}
+  if key==114 || key==82 {canyon_blur(s);s[0].started=false;canyon_start(s);canyon_echo_restart(s);s[0].orbit=0.65;s[0].tilt=0.12;s[0].distance=14;s[0].portrait=false;s[0].closeup=false;s[0].performance=false;s[0].source_shot=false;s[0].face_cycle=0;s[0].mode=0;s[0].solo=2;return true;}
   if key==49 || key==27 {url:="/worlds/valley-lab";for c,k:url {s[0].outbox[k]=c;}s[0].out_n=url.count;s[0].action=1;return true;}return false;
 }
 // Mouse drag uses the Grid's look convention; touch is the same shared Sticks controller as the parent lab.
@@ -231,7 +229,7 @@ canyon_pointer_event :: (s:[]ValleyCanyon,x:f32,y:f32,phase:int,kind:int,id:int)
 canyon_wheel :: (s:[]ValleyCanyon,dy:f32) #export_c #effects(all) {if s[0].walking {s[0].you=pc.walk_zoom(s[0].you,dy*0.01);}else {s[0].distance=clamp(s[0].distance+dy*0.01,2,80);}}
 canyon_uniform_point :: (u:[]f32,at:int,p:Point) {u[at]=p.x;u[at+1]=p.y;u[at+2]=p.z;}
 #test "Canyon source frames fit declared budget at desktop phone and high DPR" #steps 1000000000 {
-  s:[1]ValleyCanyon;s[0].pack_verified=true;out:[CANYON_HUD*12]f32;u:[CANYON_UNIFORMS]f32;size:=echo_rig_fixture(s[0].echo[0].data[..],1);canyon_asset(s[..],0,size);canyon_asset(s[..],1,187564308);canyon_asset(s[..],2,73674948);canyon_asset(s[..],3,35);
+  s:[1]ValleyCanyon;s[0].pack_verified=true;out:[CANYON_HUD*12]f32;u:[CANYON_UNIFORMS]f32;size:=echo_rig_fixture(s[0].pack[0].data[..],1);canyon_asset(s[..],0,size);canyon_asset(s[..],1,187564308);canyon_asset(s[..],2,73674948);canyon_asset(s[..],3,35);
   for screen:0..<3 {for mode:0..<5 {s[0].mode=mode;n:=canyon_frame(s[..],out[..],u[..],[3]f32.[1280,390,1170][screen],[3]f32.[800,844,2532][screen],[3]f32.[1,1,3][screen]);#assert n>0 && n<CANYON_HUD && budget_ok(s[0].meter[0]) && s[0].draws[1]==2999985 && s[0].draws[3]==2;}}
 }
 // The frame's uniform floats: 0..127 the scene and lights, 128..130 the shot's lens.
@@ -267,7 +265,7 @@ canyon_spell_start :: (s:[]ValleyCanyon) {
  q:=s[0].shot[..];canyon_blur(s);s[0].portrait=true;s[0].performance=false;s[0].source_shot=true;q[0].frame=SPELL_FROM;q[0].playing=true;
  s[0].spell_eye=v3(slay_shot_meta(q,0),slay_shot_meta(q,1),slay_shot_meta(q,2));s[0].spell_head=v3(slay_shot_meta(q,36),slay_shot_meta(q,37),slay_shot_meta(q,38));
  o:=sub(s[0].spell_head,s[0].spell_eye);fw:=v3(slay_shot_meta(q,9),slay_shot_meta(q,10),slay_shot_meta(q,11));s[0].spell_look=add(s[0].spell_eye,times(fw,sqrt(dot(o,o))));
- s[0].spell_lens=slay_shot_meta(q,12);s[0].spell=true;s[0].spell_t=0;slay_shot_present(q,s[0].echo[..]);
+ s[0].spell_lens=slay_shot_meta(q,12);s[0].spell=true;s[0].spell_t=0;slay_shot_present(q,s[0].echo[..],s[0].pack[..]);
 }
 // TF0290's filmback width in metres (24.89 mm).
 SLAY_SENSOR_WIDTH :: 0.02489f32;
@@ -328,7 +326,7 @@ canyon_frame :: (s:[]ValleyCanyon,out:[]f32,u:[]f32,w:f32,h:f32,d:f32)->int #exp
   for k:0..<2 {b:=HudBox.{x=16+cast(f32)k*w/d*0.5,y=h/d-82,width=w/d*0.5-32,height=44};n=hd_panel(out,n,b,pen,false);n=hd_text_fit(out,n,ifx k==0 then "V / VIEW" else ifx s[0].solo==2 then "I / BOTH" else ifx s[0].solo==0 then "I / INSTANCE 0" else "I / INSTANCE 1",b.x+8,b.y+28,11,b.width-16,pen,0);}
   n=hd_text_fit(out,n,ifx s[0].walking then "WASD MOVE / DRAG LOOK / SPACE JUMP / C INSPECT / H FACE / O ORBIT" else "DRAG ORBIT / WHEEL ZOOM / O WALK / R RESET",20,h/d-16,10,w/d-40,pen,0);
   if s[0].portrait {n=hd_text(out,0,"C BACK / H FACE / F PERFORMANCE / G HAIR / V MATERIAL / R RESET",20,h/d-20,10,pen,0);}
-  if s[0].performance {n=hd_text(out,0,"[] CLIP / P PAUSE / T RESTART / , . FRAME / B NEUTRAL / R WALK",20,h/d-20,10,pen,0);e:=s[0].echo[..];if e[0].face_bytes>0 {b:=echo_face_bytes(e);f:=face_info(b);at:=f.clip_table+e[0].face[0].clip*80;length:=0;while length<64 && b[at+length]!=0 {length+=1;}n=hd_text(out,n,cast(string)b[at..<at+length],20,30,14,pen,0);}}
+  if s[0].performance {n=hd_text(out,0,"[] CLIP / P PAUSE / T RESTART / , . FRAME / B NEUTRAL / R WALK",20,h/d-20,10,pen,0);e:=s[0].echo[..];if character_has_face(e,s[0].pack[..]) {b:=character_face_bytes(e,s[0].pack[..]);f:=face_info(b);at:=f.clip_table+e[0].face[0].clip*80;length:=0;while length<64 && b[at+length]!=0 {length+=1;}n=hd_text(out,n,cast(string)b[at..<at+length],20,30,14,pen,0);}}
   if s[0].source_shot {n=hd_text(out,0,"SLAY TF0290 / P PLAY / T REPLAY / M SPELL / N ORBIT / G HAIR / , . FRAME / R WALK",20,h/d-20,10,pen,0);rb:=canyon_replay_box(w/d,h/d);n=hd_panel(out,n,rb,pen,s[0].shot[0].playing);n=hd_text_fit(out,n,"T / REPLAY",rb.x+8,rb.y+28,11,rb.width-16,pen,0);}
   if canyon_shows_echo(s) {hb:=canyon_hair_box(w/d,h/d);n=hd_panel(out,n,hb,pen,s[0].blonde);n=hd_text_fit(out,n,ifx s[0].blonde then "G / BLONDE" else "G / BROWN",hb.x+8,hb.y+28,11,hb.width-16,pen,0);}
   if s[0].eorbit {n=0;}   // the composite's frames carry Echo alone

@@ -28,7 +28,7 @@ with no second render and no compositing:
 
 | Piece | Where it lives | State |
 | --- | --- | --- |
-| Rig, body pose, face playback | `verse/valley/echo.coax`, `aethyr/anim/pose.coax`, `aethyr/anim/face.coax`, `aethyr/facerig.coax` | Works, but the `Echo` struct is Echo-specific: fixed joint count, fixed capsule list, Valley's catalog format |
+| Rig, body pose, face playback | `aethyr/character/` (on `aethyr/anim/pose.coax` and `face.coax`); Echo's declarations in `verse/valley/echo.coax` | Moved out of Valley Lab in R2 (#12986): a `Character` record over a world's pack table, sizes under declared maximums, an idle face. Valley Lab runs on it with its TF0290 frames unchanged |
 | Skinning, morphs, groom, materials (GPU) | `apps/openagents-web/gpu/valleycanyon.coax` with `aethyr/render/hair-fiber.coax`, `aethyr/anim/morph-gpu.coax`, `aethyr/render/pbr-env.coax` | Works in the Valley page only. Character shading is branches inside that page's `scene_fs` |
 | Lights | `verse/valley/slay-lights.coax` | The TF0290 studio rig, in the Valley page's own uniform slots |
 | Post pass (depth of field, skin blur) | `vc_post_fs`, run by `coax/web/host.js` | Generic host feature; any page with a `post_fs` gets it |

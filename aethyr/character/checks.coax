@@ -1,0 +1,93 @@
+// Checks for aethyr/character/ on small authored fixtures (aethyr/tests/echo-rig-policy-checks.coax
+// rigs, aethyr/tests/face-pack-checks.coax faces): no private pack bytes.
+//   coax/bin/coax test aethyr/character/checks.coax
+#load "idle.coax";
+
+// A one-joint rig with face_fixture's face ("blink" target, "face" joint, clip TF0100 of 2 frames whose blink curve runs 0.2 to 0.8).
+character_fixture :: (packs:[]CharacterPack,c:[]Character)->bool {
+ n:=echo_rig_fixture(packs[0].data[..],1);face:[536]u8;face_fixture(face[..]);face_put(face[..],472,f32_bits(0.2f32));face_put(face[..],476,f32_bits(0.8f32));
+ return character_pack_rig(packs,0,n) && character_pack_face(packs,0,face[..],false) && character_spawn(c,packs,0);
+}
+#test "Spawning samples source local keys and preserves the inverse bind" #steps 1000000000 {
+ packs:[1]CharacterPack;n:=echo_rig_fixture(packs[0].data[..],1);scan_put(packs[0].data[..],496+28+4,f32_bits(2));#assert character_pack_rig(packs[..],0,n);
+ c:[1]Character;#assert character_spawn(c[..],packs[..],0);character_locomote(c[..],packs[..],1.0/60.0,0,true,0);
+ #assert abs(c[0].palette[7]-1)<0.00001 && abs(quat_dot(c[0].pose[0].q,c[0].pose[0].q)-1)<0.000001;
+ character_reset(c[..]);character_locomote(c[..],packs[..],0,0,true,0);#assert c[0].clip==0 && c[0].time==0;
+}
+#test "Locomotion chooses source starts, stops, the jog threshold and landing" #steps 1000000000 {
+ packs:[1]CharacterPack;n:=echo_rig_fixture(packs[0].data[..],1);#assert character_pack_rig(packs[..],0,n);c:[1]Character;#assert character_spawn(c[..],packs[..],0);
+ character_locomote(c[..],packs[..],0,1.47,true,0);#assert c[0].clip==5;character_locomote(c[..],packs[..],0,0,true,0);#assert c[0].clip==6;
+ character_locomote(c[..],packs[..],0,4.27,true,0);#assert c[0].clip==7;character_locomote(c[..],packs[..],0,4.27,false,0);#assert c[0].clip==3;character_locomote(c[..],packs[..],0,0,true,0);#assert c[0].clip==4;
+ #assert character_start_clip(false,-1.57)==10 && character_start_clip(false,1.57)==11 && character_start_clip(true,-3)==16 && character_start_clip(true,3)==17;
+ // character_step takes the same inputs from the record.
+ c[0].speed=1.47;character_step(c[..],packs[..],0);#assert c[0].clip==5;c[0].falling=true;character_step(c[..],packs[..],0);#assert c[0].clip==3;
+}
+#test "The idle body loops its clip in place and the held body is left to the caller" #steps 1000000000 {
+ packs:[1]CharacterPack;n:=echo_rig_fixture(packs[0].data[..],1);#assert character_pack_rig(packs[..],0,n);c:[1]Character;c[0].mode=CHARACTER_IDLE;c[0].idle_clip=18;#assert character_spawn(c[..],packs[..],0);
+ #assert c[0].clip==18;for k:0..<10 {character_step(c[..],packs[..],1.0/64.0);}#assert c[0].clip==18 && c[0].time>0.15 && c[0].time<0.16;
+ c[0].idle_clip=99;character_step(c[..],packs[..],1.0/64.0);#assert c[0].clip==0 && c[0].blending;
+ c[0].mode=CHARACTER_HELD;c[0].body[0].t=v3(3,0,0);before:=c[0].revision;character_step(c[..],packs[..],1.0/64.0);#assert c[0].body[0].t.x==3 && c[0].clip==0 && c[0].revision==before+1 && c[0].palette[3]==3;
+}
+#test "Packs refuse bad rigs, unknown slots and faces for other rigs, and spawning needs an admitted pack" #steps 1000000000 {
+ packs:[1]CharacterPack;c:[1]Character;#assert !character_spawn(c[..],packs[..],0) && !c[0].ready;
+ n:=echo_rig_fixture(packs[0].data[..],1);#assert !character_pack_rig(packs[..],0,n-1) && !packs[0].ready && !character_pack_rig(packs[..],1,n) && !character_pack_rig(packs[..],-1,n);
+ #assert character_pack_rig(packs[..],0,n) && !character_spawn(c[..],packs[..],1) && !character_spawn(c[..],packs[..],-1);
+ three:[1656]u8;face_fixture_three(three[..]);#assert !character_pack_face(packs[..],0,three[..],false) && packs[0].face_bytes==0;
+ bad:[536]u8;face_fixture(bad[..]);face_put(bad[..],448,0x7fc00000);#assert !character_pack_face(packs[..],0,bad[..],false);
+ face:[536]u8;face_fixture(face[..]);#assert character_pack_face(packs[..],0,face[..],false) && packs[0].face_bytes==504 && character_spawn(c[..],packs[..],0) && character_has_face(c[..],packs[..]);
+ #assert character_pack_rig(packs[..],0,n) && packs[0].face_bytes==0;
+}
+#test "Two characters share one pack and step apart; despawn stops one and empties its palette" #steps 1000000000 {
+ packs:[1]CharacterPack;c:[1]Character;#assert character_fixture(packs[..],c[..]);d:[1]Character;#assert character_spawn(d[..],packs[..],0);
+ character_place(d[..],v3(1,2,3),0.5);#assert d[0].at.y==2 && d[0].heading==0.5;
+ c[0].speed=4.27;character_step(c[..],packs[..],1.0/64.0);character_step(d[..],packs[..],1.0/64.0);#assert c[0].clip==7 && d[0].clip==0;
+ before:=d[0].revision;character_despawn(d[..]);#assert !d[0].ready && d[0].revision==before+1;for k:0..<CHARACTER_PALETTE_WORDS {#assert d[0].palette[k]==0;}
+ character_step(d[..],packs[..],1.0/64.0);#assert d[0].revision==before+1;
+}
+#test "The palette carries the face clip's weights and is empty past the rig's joints" #steps 1000000000 {
+ packs:[1]CharacterPack;c:[1]Character;#assert character_fixture(packs[..],c[..]);#assert CHARACTER_PALETTE_WORDS==CHARACTER_JOINTS*12+256+CHARACTER_CAPSULES*8;
+ #assert character_face_play(c[..],packs[..],0) && !character_face_play(c[..],packs[..],1);for k:0..<20 {character_step(c[..],packs[..],1.0/64.0);}
+ #assert c[0].face[0].fade>0 && c[0].palette[CHARACTER_PALETTE_MORPHS]==c[0].face[0].weights[0] && c[0].palette[CHARACTER_PALETTE_MORPHS]>0 && c[0].palette[12]==0;
+ c[0].face[0].enabled=false;character_present(c[..],packs[..]);#assert c[0].palette[CHARACTER_PALETTE_MORPHS]==0 && c[0].palette[0]==1 && c[0].palette[CHARACTER_PALETTE_CAPSULES+3]==0;
+}
+#test "Capsules run joint to joint or past a fingertip, and stay empty for joints the rig lacks" #steps 1000000000 {
+ c:[1]Character;c[0].joints=4;for k:0..<4 {c[0].parent[k]=k-1;c[0].gt[k]=v3(cast(f32)k,0,0);}
+ c[0].capsules=3;c[0].capsule[0]=CharacterCapsule.{joint=1,end=2,radius=0.1};c[0].capsule[1]=CharacterCapsule.{joint=3,end= -1,radius=0.05};c[0].capsule[2]=CharacterCapsule.{joint=4,end=1,radius=0.2};c[0].capsule[3]=CharacterCapsule.{joint=1,end= -1,radius=1};
+ character_capsules(c[..]);at:=CHARACTER_PALETTE_CAPSULES;
+ #assert c[0].palette[at]==1 && c[0].palette[at+4]==2 && c[0].palette[at+3]==0.1f32 && abs(c[0].palette[at+8+4]-3.8)<0.00001 && c[0].palette[at+16+3]==0 && c[0].palette[at+24+3]==0;
+ c[0].capsule[0].joint=0;character_capsules(c[..]);#assert c[0].palette[at+3]==0;
+}
+#test "The idle face cycle starts once after its period and cycles its segments" #steps 1000000000 {
+ packs:[1]CharacterPack;c:[1]Character;#assert character_fixture(packs[..],c[..]);c[0].cycle.period=8;c[0].cycle.count=2;c[0].cycle.last[0]=1;c[0].cycle.last[1]=1;c[0].cycle.first[1]=0;
+ for k:0..<511 {character_step(c[..],packs[..],1.0/64.0);#assert !c[0].face[0].enabled;}character_step(c[..],packs[..],1.0/64.0);#assert c[0].face[0].enabled && !c[0].face[0].looping && c[0].cycle.segment==1;
+ for k:0..<8 {character_step(c[..],packs[..],1.0/64.0);}#assert !c[0].face[0].enabled;
+ c[0].cycle.paused=true;for k:0..<600 {character_step(c[..],packs[..],1.0/64.0);}#assert !c[0].face[0].enabled && c[0].cycle.segment==1;
+ c[0].cycle.paused=false;c[0].cycle.clock=0;for k:0..<512 {character_step(c[..],packs[..],1.0/64.0);}#assert c[0].cycle.segment==0 && c[0].face[0].enabled;
+}
+#test "Idle life binds exact names and blinks, looks and breathes; a face clip owns the eyes" #steps 1000000000 {
+ packs:[1]CharacterPack;c:[1]Character;#assert character_fixture(packs[..],c[..]);c[0].cycle.paused=true;
+ rig:=CharacterIdleRig.{blink_left="blink",blink_right="blin",eye_left="face",eye_right="missing",breath="face",eye_yaw=v3(0,1,0),eye_pitch=v3(1,0,0),breath_axis=v3(1,0,0),seed=7};
+ s:[1]CharacterIdle;#assert character_idle_bind(s[..],c[..],packs[..],rig)==3 && s[0].blinks==1 && s[0].blink[0]==0 && s[0].eyes==1 && s[0].eye[0]==0 && s[0].breath==0;
+ #assert s[0].next_blink>=1 && s[0].next_blink<3;
+ most:f32=0;moved:=false;for k:0..<64*6 {character_step(c[..],packs[..],1.0/64.0);before:=c[0].revision;character_idle_step(s[..],c[..],packs[..],1.0/64.0);#assert c[0].revision==before+1;most=hi(most,c[0].palette[CHARACTER_PALETTE_MORPHS]);if abs(c[0].pose[0].q.w-1)>0.0000001 {moved=true;}}
+ #assert most>0.9 && most<=1 && moved;
+ // The turn reaches the palette: a quarter turn about z sends the joint's x axis along y.
+ s[0].eye_yaw=v3(0,0,1);s[0].yaw=PI/2;s[0].pitch=0;s[0].next_look=1000;s[0].breath= -1;character_step(c[..],packs[..],1.0/64.0);character_idle_step(s[..],c[..],packs[..],1.0/64.0);
+ #assert abs(c[0].palette[4]-1)<0.00001 && abs(c[0].palette[0])<0.00001;
+ // Replays draw the same; another seed draws differently.
+ t:[1]CharacterIdle;v:[1]CharacterIdle;u:[1]CharacterIdle;#assert character_idle_bind(t[..],c[..],packs[..],rig)==3 && character_idle_bind(v[..],c[..],packs[..],rig)==3;rig.seed=8;#assert character_idle_bind(u[..],c[..],packs[..],rig)==3;
+ for k:0..<64*4 {character_idle_step(t[..],c[..],packs[..],1.0/64.0);character_idle_step(v[..],c[..],packs[..],1.0/64.0);character_idle_step(u[..],c[..],packs[..],1.0/64.0);}
+ #assert t[0].draws==v[0].draws && t[0].yaw==v[0].yaw && t[0].next_blink==v[0].next_blink && t[0].next_look==v[0].next_look && (t[0].yaw!=u[0].yaw || t[0].next_blink!=u[0].next_blink);
+ // While a clip is on screen, blinks and looks rest and the clip's weights stand; breathing goes on.
+ #assert character_idle_bind(s[..],c[..],packs[..],rig)==3 && character_face_play(c[..],packs[..],0);
+ for k:0..<64*6 {character_step(c[..],packs[..],1.0/64.0);shown:=c[0].palette[CHARACTER_PALETTE_MORPHS];character_idle_step(s[..],c[..],packs[..],1.0/64.0);#assert s[0].weight==0 && s[0].look.w==1 && c[0].palette[CHARACTER_PALETTE_MORPHS]==shown;}
+ #assert s[0].breathe.x!=0;
+ // A dead character is left alone.
+ character_despawn(c[..]);r:=c[0].revision;character_idle_step(s[..],c[..],packs[..],1.0/64.0);#assert c[0].revision==r;
+ #assert character_blink_weight(-0.01)==0 && character_blink_weight(CHARACTER_BLINK)==0 && abs(character_blink_weight(CHARACTER_BLINK/2)-1)<0.0001;
+ #assert !character_name_is(packs[0].face[..],80,"") && character_name_is(packs[0].face[..],80,"blink") && !character_name_is(packs[0].face[..],80,"blinks");
+}
+#test "Idle life binds nothing without a face" #steps 1000000000 {
+ packs:[1]CharacterPack;c:[1]Character;n:=echo_rig_fixture(packs[0].data[..],1);s:[1]CharacterIdle;
+ #assert character_pack_rig(packs[..],0,n) && character_spawn(c[..],packs[..],0) && character_idle_bind(s[..],c[..],packs[..],CharacterIdleRig.{blink_left="blink",eye_left="face",breath="face"})==0 && s[0].breath<0;
+}

@@ -342,6 +342,48 @@ eases a fixed step at a time from each step's feet
 last two steps; a look turns it at once. Check: "Hecate's camera eases on
 the fixed step ...".
 
+## Characters (`aethyr/character/`)
+
+A world that hosts a detailed character keeps a table of `CharacterPack`s
+and one `Character` record per placed character (an entity's column). A
+pack holds an ECH1 rig (joints, inverse binds, rest pose and the 24
+locomotion clips) and its EFC1 face projected for the CPU (face clips and
+face bones; the GPU admits the morph deltas on its own). The world copies
+the rig into `data` and calls `character_pack_rig`, then
+`character_pack_face`. Sizes come from the pack, under declared maximums:
+334 joints, 256 morph weights, 20 capsules. Several characters can share
+one pack, since a record names its pack by index and every call takes the
+table.
+
+- `character_spawn(c, packs, pack)` reads the rig into the record and
+  presents its first frame; it refuses an unknown or unadmitted pack.
+  `character_place` sets the feet position and heading the world's pass
+  reads; `character_despawn` stops the record and zeroes its palette.
+- `character_step(c, packs, dt)` runs on the world's fixed step: the idle
+  face cycle (source segments every `period` seconds), then the body by
+  `mode`: the locomotion graph from the record's inputs (`speed`, `turn`,
+  `falling`, or `drive_inputs` with `input_on`/`run_requested`), one clip
+  looped in place (`CHARACTER_IDLE`, `idle_clip`), or held for the caller
+  to write (`CHARACTER_HELD`, as Valley Lab's TF0290 shot does). It ends
+  in `character_present`.
+- `palette` is what the GPU reads, in one f32 array: 12 floats per joint
+  (three rows of four), then 256 morph weights at
+  `CHARACTER_PALETTE_MORPHS`, then 8 floats per capsule at
+  `CHARACTER_PALETTE_CAPSULES`. `revision` goes up on every write.
+- `idle.coax` is idle life on top: after `character_step`,
+  `character_idle_step` blinks the declared face targets, moves the
+  declared eye joints in small saccades and rocks a declared breath joint,
+  chains the skeleton again from the first joint it turned and writes the
+  palette. Names are bound once by exact match against the pack's face
+  (`character_idle_bind`); draws come from `aethyr/rand.coax` under the
+  declared seed. While a face clip is on screen, it owns the eyes and lids.
+
+Echo's own declarations (catalog admission, the orb hand's capsules, her
+idle face segments) are in `verse/valley/echo.coax`. Valley Lab and Valley
+World run her on this module, with the TF0290 frames byte-identical to the
+runtime they replaced. Checks: `aethyr/character/checks.coax`, on authored
+rig and face fixtures with no private data.
+
 ## Cross-realm checks (`aethyr/tests/cross-realm.coax`, `cross-realm-floor.coax`)
 
 Every walking realm steps one controller (`aethyr/walk.coax`) with its own
