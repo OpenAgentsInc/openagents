@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.51.1 — Preserved Capacity Diagnostics — 2026-11-05
 
-Commit: pending
+Commit: [`b08d3a16a467d0f6c84a9c60ac885a2f65dc6394`](https://github.com/OpenAgentsInc/openagents/commit/b08d3a16a467d0f6c84a9c60ac885a2f65dc6394)
 
 - Preserve near-limit capacity facts in whole-program authority cache records
   and render the same text or JSON notes on a cache hit. The near-limit
