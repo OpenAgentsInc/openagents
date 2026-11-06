@@ -222,6 +222,7 @@ rc_drain :: (c: [] RelayConn, h: [] RcHeard, n: int,capture:string,started:int,w
 tool_main :: () -> int #export_c {
   a: [1] Args;
   if !args_load(a[..]) { tool_errln("raid-check: bad arguments"); return 2; }
+  if args_has(a[..], "--help") { print("usage: coax/web/tool.sh coax/web/room/raid-check.coax RELAY N SECONDS ROOM CLASS [fight]\n"); return 0; }
   b: [512] u8;
   base := rs_base(ifx args_count(a[..]) > 0 then args_at(a[..], 0) else "ws://127.0.0.1:8871", b[..]);
   n := ifx args_count(a[..]) > 1 then rc_max(rc_min(rs_num(args_at(a[..], 1)), RC_MAX), 1) else 8;

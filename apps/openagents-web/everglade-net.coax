@@ -2087,6 +2087,38 @@ net_self_max :: (s: [] Everglade) -> int {
   for e: 0..<NET_ENTS { en := n[0].ents[e]; if en.live && net_mine_player(n, en) { return en.max; } }
   return -1;
 }
+// Optional headless forest rehearsal: a real Produce Flame intent, then counts and a canonical
+// digest of the same transforms/material fields that the forest renderer reads. Never called by UI.
+net_forest_probe :: (s: [] Everglade, field: int) -> int {
+  if !sp_on(s) { return -1; }
+  v := tf_of(s);
+  if field == 9000 {
+    you := ab_you(s); pick := -1; best := 8.0f32;
+    for t: 0..<s[0].tree_n {
+      at := tf_foot(s, t); d := flat_gap(at, you);
+      if d < best && v[0].mode[tf_k(s, t)] == TF_UP && !tf_burning(s, t) && !fr_wet(s, at.x, at.z) {
+        pick = t; best = d;
+      }
+    }
+    if pick < 0 { return -1; }
+    at := add(tf_foot(s, pick), v3(0, 1.5, 0));
+    return ifx net_cast(s, SP_SLOTS + AB_FLAME, at, -1) then pick else -1;
+  }
+  if field == 9001 { return v[0].n; }
+  count := 0; hash := 7;
+  for t: 0..<s[0].tree_n {
+    k := tf_k(s, t); if k == 0 { continue; }
+    if field == 9002 && v[0].soot[k] == 1 && v[0].bare[k] == 1 { count += 1; }
+    if field == 9003 && v[0].mode[k] == TF_FALL { count += 1; }
+    if field != 9004 { continue; }
+    words := [12] int.[t, v[0].mode[k], wire_cm(v[0].ox[k]), wire_cm(v[0].oy[k]), wire_cm(v[0].oz[k]),
+      cast(int) floor(v[0].ax[k] * 1000 + 0.5), cast(int) floor(v[0].az[k] * 1000 + 0.5),
+      cast(int) floor(v[0].pivot[k] * 1000 + 0.5), cast(int) floor(v[0].rest[k] * 1000 + 0.5),
+      cast(int) floor(v[0].soot[k] * 1000 + 0.5), cast(int) floor(v[0].bare[k] * 1000 + 0.5), cast(int) floor(v[0].frost[k] * 1000 + 0.5)];
+    for i: 0..<12 { hash = (hash * 31 + words[i] + 2000000000) % 1000000007; }
+  }
+  return ifx field == 9004 then hash else count;
+}
 // For a headless check (everglade5e-face.c coaxial_net_probe): 0 the socket's state, 1 your seat, 2 the
 // other players, 3 creatures and zones, 4 all entities, 5 the clock's source, 6 frames in, 7 frames
 // out, 8 and 9 the first other player's x and z in cm, 10 effects played, 11 the jitter buffer's delay
@@ -2105,6 +2137,7 @@ net_self_max :: (s: [] Everglade) -> int {
 net_probe :: (s: [] Everglade, field: int) -> int #export_c {
   if !net_on(s) { return -1; }
   n := net_of(s);
+  if field >= 9000 && field <= 9004 { return net_forest_probe(s, field); }
   if field == 0 { return n[0].state; }
   if field == 1 { return n[0].seat; }
   if field == 2 { return net_count(s, WK_PLAYER); }
@@ -3108,6 +3141,7 @@ net_test_rooms :: (s: [] Everglade) {
     #assert k > 0 && v[0].mode[k] == TF_FALL && abs(v[0].ax[k] - 1) < 0.001 && abs(v[0].az[k] + 0.2) < 0.001;
     #assert v[0].soot[k] == 0.25 && v[0].bare[k] == 0.5 && v[0].frost[k] == 0.1;
     #assert v[0].n == 1 && v[0].burn[0].by == 2 && abs(v[0].burn[0].t - 3.4) < 0.001;
+    #assert net_forest_probe(s, 9001) == 1 && net_forest_probe(s, 9002) == 0 && net_forest_probe(s, 9003) == 1;
     #assert !tf_ignite(s, 1);   // even a local spell cannot start a room tree's fire
     u: [UNIFORM_FLOATS] f32; s[0].width = 1280; s[0].height = 800;
     for frame: 0..<60 { spells_frame(s, u[..], Shot.{}, 1.0 / 30.0); }
@@ -3148,7 +3182,9 @@ net_test_rooms :: (s: [] Everglade) {
     net_step(s, 4300, 0, 0, 0, 0, 0, 0, false, 0, false, 0);
     #assert tf_k(s, 0) > 0 && tf_k(s, 1) > 0;
     #assert tf_of(s)[0].soot[tf_k(s, 0)] == 1 && tf_of(s)[0].soot[tf_k(s, 1)] == 1;
+    #assert net_forest_probe(s, 9002) == 2 && net_forest_probe(s, 9003) == 0;
   }
+  #assert net_forest_probe(a[..], 9004) == net_forest_probe(b[..], 9004);
 }
 #test "net: a delayed world header dates its tick at the server, including either side of midnight" {
   for side: 0..<2 {
