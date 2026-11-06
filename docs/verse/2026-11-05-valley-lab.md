@@ -736,10 +736,19 @@ arithmetic and additive colour. The halo/flare remains an interim analytic
 effect, and source curl-noise deformation is not yet implemented. Source key, fill and warm wrap directions/colors/intensities feed an
 interim direct-light approximation with filtered shadow samples. This does
 not reproduce the original area-light integration, skin scattering or room
-lighting. Temple scenery, source orb textures/flare, camera shake,
+lighting. Temple scenery, source orb textures/flare,
 hair coverage/shading and the remaining material differences still prevent
 an exact reproduction of the owner's screenshot. Do not close #12962 on
 source-data equality alone. See the [implementation and comparison record](../verification/valley-lab-slay-2026-11-06/README.md).
+
+The handheld source profile (`?pack=valley-slay-handheld`) now includes the
+SDK's exact additive camera template and property scales. Its independent
+oracle checks all 200 camera frames. The
+[camera record](../verification/slay-camera-2026-11-06/README.md) retains the
+464-check page result, mutation gates, visible captures and both recovery
+observations: a concurrent deadline failure and isolated 9,849 ms recovery.
+The 91,959-byte Wasm remains within 96,000 bytes. The existing fixed-camera
+private pack stays valid; no licensed payload is committed.
 
 ## Subsequent engine work
 
@@ -898,5 +907,5 @@ noise but is not Marschner scattering, deep opacity or sorted/OIT hair.
 The pixel budget bounds the base raster before the explicit3x portrait
 supersampling: the1280x800 observation captures3840x2400 physical pixels.
 The additive operation currently occurs in the legacy display-mapped target;
-full linear-HDR compositing, the source material-time phase, source camera
-shake, exact reference frame selection and cinematic background remain open.
+full linear-HDR compositing, the source material-time phase,
+exact reference frame selection and cinematic background remain open.

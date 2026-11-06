@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-12962-recovery/aethyr/tools/slay_camera_oracle.py", line 68, in <module>
+    assert basis_error <= 2e-6, ('camera basis mismatch', frame, basis_error)
+           ^^^^^^^^^^^^^^^^^^^
+AssertionError: ('camera basis mismatch', 0, 0.005664598196536433)

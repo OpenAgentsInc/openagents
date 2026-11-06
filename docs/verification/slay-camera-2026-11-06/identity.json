@@ -1,0 +1,23 @@
+{
+  "date_chicago": "2026-11-06",
+  "compiler": "Coax 0.52.0",
+  "sources_sha256": {
+    "coax/bin/coax": "23dfc150fa0d21dd199b2da382b9c2dd0762e8183e3f576657fe1341d327117e",
+    "aethyr/tools/slay-shot-pack.coax": "d4d1c05ac5be1ba80b737f21d2eb6553b06faf6e3ed3985b334174cffa7076ce",
+    "aethyr/tools/slay-camera.coax": "d0cc6a5a671ecb63c97a2d3059903e926614eac00ab1b452db1db55f4419d33a",
+    "aethyr/tools/slay_camera_oracle.py": "0055883faad05c7e7ae67a37219a55b8e5c737845db073a13a3c3bbe0c82b1ef",
+    "aethyr/tools/unreal-echo-sdk/Source/EchoSourceSDK/Private/EchoSourceCamera.cpp": "a96f9bb9728f33c5a29842fa83038106c6984c8da6eca0b8a108fb403d8f2bef",
+    "verse/valley/canyon-pack-policy.coax": "08d9bf67a2ee987ac58e026e3e113c18ed3a7ceba0dd406fc81ef349d870c52c",
+    "apps/openagents-web/build/valleycanyon.wasm": "85590709544ded857808ca7a3cdf4edecb37a37fcd00c903ab64603cb28071b1",
+    "coax/web/host.js": "29d4403041767de1e8dbd7f7affc7d058a47a438151a9d26c5aa34ab317c9504",
+    "coax/web/valley-slay-shot-check.coax": "45b244c35a83428a638c066fd4233ffa8c040aef3d23fb21838e4d968f5ab2a4",
+    "aethyr/tools/unreal-echo-sdk/EchoSourceSDK.uplugin": "fe08a8cf7a14237cead770bf9692ddb137e6938da43018c02a746860575f1878",
+    "aethyr/tools/unreal-echo-sdk/Source/EchoSourceSDK/EchoSourceSDK.Build.cs": "b85603d5ac171005ea187253f3920a28d36b8ef16748a6c028ebf935e4e1a781"
+  },
+  "private_sdk_export_sha256": "753452805d2a5828b9009d20a189e3ea5f5fb9892d4abd79ce10974f9d2e9e46",
+  "private_pack_bytes": 794477568,
+  "private_pack_sha256": "5e0fa638d37aacecbb9870d0a25a6b9a9f3e136e49eb849d5201063a8cfa47da",
+  "wasm_bytes": 91959,
+  "wasm_budget": 96000,
+  "source_payload_committed": false
+}

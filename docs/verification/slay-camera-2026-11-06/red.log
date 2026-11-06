@@ -1,0 +1,7 @@
+FAIL #test source camera shake subtracts its authored base before property scaling (0 ms)
+aethyr/tools/slay-shot-pack.coax:25:2: error[E0406]: assertion failed
+   #assert result[0]==101 && result[1]==198 && result[2]==300;
+   ^
+  note: in #test source camera shake subtracts its authored base before property scaling
+1 of 157 checks (--only 'source camera shake'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

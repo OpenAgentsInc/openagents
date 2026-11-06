@@ -11,8 +11,10 @@ IMPLEMENT_MODULE(FDefaultModuleImpl, EchoSourceSDK)
 int32 EchoSourceReference();
 int32 EchoSourceCurves();
 int32 EchoSourceSlay(const FString& Params);
+int32 EchoSourceCamera();
 
 int32 UEchoSourceExportCommandlet::Main(const FString& Params) {
+    if (Params.Contains(TEXT("CameraTemplate"))) return EchoSourceCamera();
     if (Params.Contains(TEXT("Slay"))) return EchoSourceSlay(Params);
     if (Params.Contains(TEXT("Curves"))) {
         const int32 Result = EchoSourceCurves();

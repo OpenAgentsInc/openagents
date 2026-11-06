@@ -3,6 +3,6 @@ using UnrealBuildTool;
 public class EchoSourceSDK : ModuleRules {
     public EchoSourceSDK(ReadOnlyTargetRules Target) : base(Target) {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "HairStrandsCore", "UnrealEd", "RenderCore", "Json" });
+        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "HairStrandsCore", "UnrealEd", "RenderCore", "Json", "MovieScene", "MovieSceneTracks", "LevelSequence", "TemplateSequence" });
     }
 }

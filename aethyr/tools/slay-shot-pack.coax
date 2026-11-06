@@ -9,13 +9,30 @@
 #load "../../verse/valley/slay-shot.coax";
 #load "echo-gltf.coax";
 #load "slay-source.coax";
-#test "source camera axes retain Unreal forward/right/up through the axis reflection" {
- a:=ss_camera_axes(0,0,0);#assert a[0].x==1 && a[0].y==0 && a[1].z==1 && a[2].y==1;
- a=ss_camera_axes(0,0,90);#assert abs(a[0].z-1)<0.000001 && abs(a[1].x+1)<0.000001;
+#load "slay-camera.coax";
+ss_camera_value :: (g:[]EpJson,node:int)->f64 {
+ value:=pn_parse(jv_raw(g[0].d[0],node));#assert value.ok && value.v> -1000000000 && value.v<1000000000;return value.v;
 }
-ss_camera_axes :: (roll:f32,pitch:f32,yaw:f32)->[3]Point {
- p:=pitch*0.017453292519943295f32;y:=yaw*0.017453292519943295f32;r:=roll*0.017453292519943295f32;cp:=cos(p);sp:=sin(p);cy:=cos(y);sy:=sin(y);cr:=cos(r);sr:=sin(r);
- return [3]Point.[v3(cp*cy,sp,cp*sy),v3(sr*sp*cy-cr*sy,-sr*cp,sr*sp*sy+cr*cy),v3(-(cr*sp*cy+sr*sy),cr*cp,cy*sr-cr*sp*sy)];
+ss_camera_template :: (g:[]EpJson,camera:[]f32) {
+ #assert camera.count==200*9 && ep_int(g,0,"source_first",0)==1001 && ep_int(g,0,"frames",0)==200 && ep_int(g,0,"blend_type",0)==8;
+ names:=[9]string.["Location.X","Location.Y","Location.Z","Rotation.X","Rotation.Y","Rotation.Z","Scale.X","Scale.Y","Scale.Z"];
+ channels:=ep_get(g,0,"channels");#assert ep_len(g,channels)==9;
+ found:[9]bool;origin:[9]f64;samples:[200*9]f64;
+ for k:0..<9 {row:=ep_item(g,channels,k);name:=ep_text(g,row,"name");id:= -1;for n:0..<9 {if name==names[n] {id=n;}}#assert id>=0 && !found[id];found[id]=true;
+  origin[id]=ss_camera_value(g,ep_get(g,row,"base"));values:=ep_get(g,row,"values");#assert ep_len(g,values)==200;node:=g[0].nodes[values].first;
+  for frame:0..<200 {samples[frame*9+id]=ss_camera_value(g,node);node=g[0].nodes[node].next;}
+ }
+ scales:=ep_get(g,0,"scales");#assert ep_len(g,scales)==2;scale:[400]f64;seen:[2]bool;
+ for k:0..<2 {row:=ep_item(g,scales,k);kind:=ep_text(g,row,"type");id:=ifx kind=="TransformPropertyLocationOnly" then 0 else ifx kind=="TransformPropertyRotationOnly" then 1 else -1;
+  #assert id>=0 && !seen[id] && ep_text(g,row,"property")=="Transform";seen[id]=true;values:=ep_get(g,row,"values");#assert ep_len(g,values)==200;node:=g[0].nodes[values].first;
+  for frame:0..<200 {scale[id*200+frame]=ss_camera_value(g,node);node=g[0].nodes[node].next;}
+ }
+ for frame:0..<200 {
+  // This source shot scales location and rotation equally. Refuse a changed
+  // source profile rather than silently applying one property's scale to both.
+  #assert scale[frame]==scale[200+frame];composed:=ss_camera_shaken(camera[frame*9..<frame*9+9],samples[frame*9..<frame*9+9],origin[..],scale[frame]);
+  for k:0..<9 {camera[frame*9+k]=composed[k];}
+ }
 }
 ss_light_channel :: (g:[]EpJson,binding:string,parent_name:string,track:string,channel:string,out:[]f32,stride:int,field:int) {
  bindings:=ep_get(g,0,"bindings");if bindings<0 {bindings=0;}found:=false;
@@ -27,7 +44,7 @@ ss_light_channel :: (g:[]EpJson,binding:string,parent_name:string,track:string,c
 }
 ss_channel :: (g:[]EpJson,binding:string,track:string,channel:string,out:[]f32,stride:int,field:int) {ss_light_channel(g,binding,"",track,channel,out,stride,field);}
 tool_main :: ()->int #export_c #effects(all) {
- args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {return 2;}source:=args_at(args[..],0);sdk:=args_at(args[..],1);dest:=args_at(args[..],2);
+ args:[1]Args;if !args_load(args[..]) || (args_count(args[..])!=3 && args_count(args[..])!=4) {return 2;}source:=args_at(args[..],0);sdk:=args_at(args[..],1);dest:=args_at(args[..],2);camera_sdk:=ifx args_count(args[..])==4 then args_at(args[..],3) else sdk;
  g:[1]EpJson;j:[1]EpJson;names:[135]SfName;parent:[135]int;node_parent:[2048]int;node_bone:[2048]int;
  ep_load(g[..],source,"Echo.gltf");nodes:=ep_get(g[..],0,"nodes");joints:=ep_get(g[..],ep_top(g[..],"skins",0),"joints");#assert ep_len(g[..],joints)==134;
  for k:0..<2048 {node_parent[k]= -1;node_bone[k]= -1;}
@@ -47,6 +64,7 @@ tool_main :: ()->int #export_c #effects(all) {
  for k:0..<9 {ss_channel(j[..],"TF0290_01_Camera","Transform",channels[k],camera[..],9,k);}
  for k:0..<3 {ss_channel(j[..],"BP Mote Base","Transform",channels[k],offset[..],3,k);}
  ss_channel(j[..],"CameraComponent","Current Focal Length","None",focal[..],1,0);ss_channel(j[..],"CameraComponent","Manual Focus Distance (Focus Settings)","None",focus[..],1,0);
+ sf_json(j[..],camera_sdk,"tf0290-camera-template.json");ss_camera_template(j[..],camera[..]);
  sf_json(j[..],sdk,"tf0290-light-samples.json");key_actor:[200*9]f32;key_local:[200*9]f32;fill_actor:[200*9]f32;wrap_actor:[200*9]f32;wrap_power:[200]f32;key_rgb:[200*3]f32;key_power:[200]f32;fill_power:[200]f32;
  for k:0..<9 {ss_channel(j[..],"Echo_Key","Transform",channels[k],key_actor[..],9,k);ss_light_channel(j[..],"Key","Echo_Key","Transform",channels[k],key_local[..],9,k);ss_channel(j[..],"Echo_Fill","Transform",channels[k],fill_actor[..],9,k);ss_channel(j[..],"EchoKeyWrap","Transform",channels[k],wrap_actor[..],9,k);}
  for k:0..<3 {ss_light_channel(j[..],"Key","Echo_Key","Light Color",[3]string.["Color.R","Color.G","Color.B"][k],key_rgb[..],3,k);}

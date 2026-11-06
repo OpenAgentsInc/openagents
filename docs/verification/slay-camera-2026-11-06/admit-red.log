@@ -1,0 +1,31 @@
+ok   #test Canyon pack gate pins every digest byte and exact length before GPU upload (1 case, 12149 steps, 0 ms)
+FAIL #test the source handheld camera pack has its own complete admitted identity (0 ms)
+verse/valley/canyon-pack-policy.coax:18:3: error[E0406]: assertion failed
+    #assert canyon_pack_accept(digest[..],794477568);
+    ^
+  note: in #test the source handheld camera pack has its own complete admitted identity
+ok   #test an asset's id is the SHA-256 of its bytes, and sha256sum's hex reads back (1 case, 316408 steps, 4 ms)
+ok   #test a table's id is 64 lowercase hex digits and nothing else (1 case, 117332 steps, 1 ms)
+ok   #test a pack is taken whole: its bytes, slots and uses, and a refusal changes nothing (1 case, 427133 steps, 7 ms)
+ok   #test bytes already held are shared, not counted twice, and freed with their last use (1 case, 313231 steps, 5 ms)
+ok   #test an entry repeated in one pack counts its bytes once and adds a use each time (1 case, 337183 steps, 5 ms)
+ok   #test a table that doesn't match its entries, and a pack past the free slots, are refused (1 case, 6805008 steps, 107 ms)
+ok   #forall admits and releases match a plain count of uses, and every pack is all or nothing (16 cases, 12784877 steps, 337 ms)
+ok   #test published SHA256 empty and abc vectors (1 case, 50614 steps, 0 ms)
+ok   #test SHA256 length and padding boundaries (1 case, 49540 steps, 0 ms)
+ok   #test binary SHA256 vector 1 (1 case, 25352 steps, 0 ms)
+ok   #test binary SHA256 vector 3 (1 case, 25326 steps, 0 ms)
+ok   #test binary SHA256 vector 55 (1 case, 24650 steps, 0 ms)
+ok   #test binary SHA256 vector 56 (1 case, 47976 steps, 0 ms)
+ok   #test binary SHA256 vector 57 (1 case, 47963 steps, 0 ms)
+ok   #test binary SHA256 vector 63 (1 case, 47885 steps, 0 ms)
+ok   #test binary SHA256 vector 64 (1 case, 47868 steps, 0 ms)
+ok   #test binary SHA256 vector 65 (1 case, 47855 steps, 0 ms)
+ok   #test binary SHA256 vector 119 (1 case, 47153 steps, 0 ms)
+ok   #test binary SHA256 vector 120 (1 case, 70479 steps, 1 ms)
+ok   #test binary SHA256 vector 128 (1 case, 70371 steps, 1 ms)
+ok   #test binary SHA256 vector 256 (1 case, 115377 steps, 1 ms)
+ok   #test binary SHA256 vector 1000 (1 case, 362390 steps, 6 ms)
+ok   #forall every rotate distance (32 cases, 19259 steps, 0 ms)
+ok   #test logical maximum SHA length without allocating the input (1 case, 372 steps, 0 ms)
+26 checks, 25 passed, 1 failed

@@ -11,7 +11,8 @@ It starts paused at TF0290 sequence frame1125: body124, face4. P plays/pauses,
 comma/period step, J returns to the shot; F selects isolated face performance,
 brackets select clips, T restarts, B restores neutral and R returns to walking.
 The camera is the source 40mm/24.889999mm filmback, 2.4 aspect. Source handheld
-camera shake is not yet applied. The source actor transform track is disabled;
+camera shake is now available in the [handheld source profile](../slay-camera-2026-11-06/README.md),
+using `?pack=valley-slay-handheld`. The source actor transform track is disabled;
 applying its serialized keys again would double-transform the animation root.
 
 ## Source transport
@@ -109,5 +110,7 @@ noise but is not Marschner scattering, deep opacity or sorted/OIT hair.
 The pixel budget bounds the base raster before the explicit3x portrait
 supersampling: the1280x800 observation captures3840x2400 physical pixels.
 The additive operation currently occurs in the legacy display-mapped target;
-full linear-HDR compositing, the source material-time phase, source camera
-shake, exact reference frame selection and cinematic background remain open.
+full linear-HDR compositing, the source material-time phase,
+exact reference frame selection and cinematic background remain open. The
+handheld profile imports the exact source camera template; its recovery and
+mobile cost limitations are retained in that separate record.

@@ -1,0 +1,51 @@
+Setting up bundled DotNet SDK
+/Users/Shared/Epic Games/UE_5.8/Engine/Binaries/ThirdParty/DotNet/10.0/mac-arm64
+Running dotnet Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.dll UnrealEditor Mac Development -Project=/Users/christopherdavid/.openagents/aethyrforge/valley-lab/recovery-camera-export/SlayCameraData.uproject -NoHotReload -NoEngineChanges -MaxParallelActions=2
+Log file: /Users/christopherdavid/Library/Application Support/Epic/UnrealBuildTool/Log.txt
+Executing up to 2 actions based on MaxProcessorCount override
+UbaServer - Listening on 0.0.0.0:1345
+Invalidating makefile for UnrealEditor (ispc deleted)
+Compiling with Mac SDK 26.5, minimum Target OS version 14.00
+Building UnrealEditor...
+===== Toolchain Information =====
+Using Clang compiler 21.1.6 (/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++)
+  Apple clang version 21.0.0 (clang-2100.1.1.101) Target: arm64-apple-darwin25.4.0 Thread model: posix InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin
+Using Clang archiver (/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/libtool)
+  Apple clang version 21.0.0 (clang-2100.1.1.101) Target: arm64-apple-darwin25.4.0 Thread model: posix InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin
+[Adaptive Build] Excluded from EchoSourceSDK unity file: EchoSourceCamera.cpp, EchoSourceSlay.cpp, EchoSourceExportCommandlet.cpp, EchoSourceCurves.cpp, EchoSourceReference.cpp
+=================================
+Using Unreal Build Accelerator local executor to run 3 action(s)
+  CPU 18 physical cores, 18 logical cores
+  Memory 128 GB physical, 100.32 GB/128 GB committed
+  UBA Storage capacity 40 GB
+[1/3] Compile [Apple] EchoSourceCamera.cpp
+/Users/christopherdavid/.openagents/aethyrforge/valley-lab/recovery-camera-export/Plugins/EchoSourceSDK/Source/EchoSourceSDK/Private/EchoSourceCamera.cpp:26:39: warning: 'GetBindings' is deprecated: Getting non-const access to GetBindings is no longer allowed. Please use const GetBindings() - Please update your code to the new API before upgrading to the next release, otherwise your project will no longer compile. [-Wdeprecated-declarations]
+   26 |     for (const auto& Binding : Scene->GetBindings())
+      |                                       ^
+/Users/Shared/Epic Games/UE_5.8/Engine/Source/Runtime/MovieScene/Public/MovieScene.h:782:2: note: 'GetBindings' has been explicitly marked deprecated here
+  782 |     UE_DEPRECATED(5.7, "Getting non-const access to GetBindings is no longer allowed. Please use const GetBindings()")
+      |     ^
+/Users/Shared/Epic Games/UE_5.8/Engine/Source/Runtime/Core/Public/Misc/CoreMiscDefines.h:297:44: note: expanded from macro 'UE_DEPRECATED'
+  297 |     #define UE_DEPRECATED(Version, Message) [[deprecated(Message " - Please update your code to the new API before upgrading to the next release, otherwise your project will no longer compile.")]]
+      |                                               ^
+/Users/christopherdavid/.openagents/aethyrforge/valley-lab/recovery-camera-export/Plugins/EchoSourceSDK/Source/EchoSourceSDK/Private/EchoSourceCamera.cpp:40:44: warning: 'GetBindings' is deprecated: Getting non-const access to GetBindings is no longer allowed. Please use const GetBindings() - Please update your code to the new API before upgrading to the next release, otherwise your project will no longer compile. [-Wdeprecated-declarations]
+   40 |     for (const auto& Binding : InnerScene->GetBindings())
+      |                                            ^
+/Users/Shared/Epic Games/UE_5.8/Engine/Source/Runtime/MovieScene/Public/MovieScene.h:782:2: note: 'GetBindings' has been explicitly marked deprecated here
+  782 |     UE_DEPRECATED(5.7, "Getting non-const access to GetBindings is no longer allowed. Please use const GetBindings()")
+      |     ^
+/Users/Shared/Epic Games/UE_5.8/Engine/Source/Runtime/Core/Public/Misc/CoreMiscDefines.h:297:44: note: expanded from macro 'UE_DEPRECATED'
+  297 |     #define UE_DEPRECATED(Version, Message) [[deprecated(Message " - Please update your code to the new API before upgrading to the next release, otherwise your project will no longer compile.")]]
+      |                                               ^
+2 warnings generated.
+[2/3] Link [Apple] libUnrealEditor-EchoSourceSDK.dylib
+[3/3] WriteMetadata UnrealEditor.target [NoUba]
+
+Total time in Unreal Build Accelerator local executor: 10.75 seconds
+Output binary: /Users/Shared/Epic Games/UE_5.8/Engine/Binaries/Mac/UnrealEditor
+Deploying UnrealEditor Mac Development...
+Deploying now!
+
+Result: Succeeded
+Total execution time: 14.05 seconds
+Trace written to file /Users/christopherdavid/Library/Application Support/Epic/UnrealBuildTool/Trace.uba with size 5.0kb

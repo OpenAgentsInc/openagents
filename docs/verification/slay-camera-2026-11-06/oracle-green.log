@@ -1,0 +1,1 @@
+{"source_camera_frames": 200, "sdk_template_channels": 9, "sdk_property_scales": 2, "max_position_error_m": 0.0, "max_basis_component_error": 3.090124257379423e-07, "basis_tolerance": 2e-06, "position_tolerance_m": 1e-06, "exact_sdk_time_transform_samples": 200}

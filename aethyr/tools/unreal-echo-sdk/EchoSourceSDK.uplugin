@@ -1,1 +1,1 @@
-{"FileVersion":3,"Version":1,"VersionName":"1","FriendlyName":"Echo source SDK export","CanContainContent":false,"Modules":[{"Name":"EchoSourceSDK","Type":"Editor","LoadingPhase":"Default"}],"Plugins":[{"Name":"HairStrands","Enabled":true}]}
+{"FileVersion":3,"Version":1,"VersionName":"1","FriendlyName":"Echo source SDK export","CanContainContent":false,"Modules":[{"Name":"EchoSourceSDK","Type":"Editor","LoadingPhase":"Default"}],"Plugins":[{"Name":"HairStrands","Enabled":true},{"Name":"TemplateSequence","Enabled":true}]}

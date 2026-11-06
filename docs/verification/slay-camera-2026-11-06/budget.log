@@ -1,0 +1,5 @@
+Invocation receipt (the command emits no output on success)
+Command: coax/web/tool.sh wasm-size budget apps/openagents-web/wasm-budgets.txt valleycanyon apps/openagents-web/build/valleycanyon.wasm
+Observed exit status: 0
+Observed Wasm bytes: 91959
+Declared budget line: valleycanyon 96000
