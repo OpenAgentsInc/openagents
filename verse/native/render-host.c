@@ -189,18 +189,22 @@ int rhg_execute(RhgRenderer *r,const coax_t_RenderRuntimeFrame *receipt,const Rh
 VksImage *rhg_screen(RhgRenderer *r){return r->target_open[COAX_RenderTarget_screen]?&r->targets[COAX_RenderTarget_screen]:NULL;}
 typedef struct {VksPipe pipe;VksPass pass;} RhgPresentationEffects;
 static void rhg_record_presentation(VkCommandBuffer cmd,void *user){RhgPresentationEffects *effects=user;vks_pipe_record(&effects->pipe,cmd,&effects->pass);}
-static VksImage *rhg_present_descriptor(RhgRenderer *r,coax_t_RenderPresentation p,char *error,size_t size){
-  if(p.status!=COAX_RenderResourceStatus_ok){rhg_error(error,size,"experimental presentation refused by Coax");return NULL;}
-  VksImage *source=rhg_target_image(r,p.source);
-  if(!source||!rhg_ledger_live(&r->target_handles[p.source])||source->format!=rhg_format(p.draw.format)||source->w!=p.draw.width||source->h!=p.draw.height){rhg_error(error,size,"actual presentation source differs from Coax descriptor");return NULL;}
+int rhg_prepare_presentation(RhgRenderer *r,coax_t_RenderPresentation p,char *error,size_t size){
+  if(p.status!=COAX_RenderResourceStatus_ok)return rhg_error(error,size,"presentation refused by Coax");
   if(r->presentation_open&&(r->presentation.w!=p.display.width||r->presentation.h!=p.display.height||r->presentation.format!=rhg_format(p.display.format))){
     vks_image_free(r->v,&r->presentation);rhg_ledger_release(&r->presentation_handle);r->presentation_open=0;
   }
   if(!r->presentation_open){
     int64_t words=aethyr_render_format_words(p.display.format,p.display.width,p.display.height,1,1);
-    if(!rhg_ledger_acquire(RHG_COLOR,words,&r->presentation_handle)){rhg_error(error,size,"presentation allocation refused by ledger");return NULL;}
+    if(!rhg_ledger_acquire(RHG_COLOR,words,&r->presentation_handle))return rhg_error(error,size,"presentation allocation refused by ledger");
     r->presentation=vks_image(r->v,(uint32_t)p.display.width,(uint32_t)p.display.height,1,0,rhg_format(p.display.format),VKS_TARGET);r->presentation_open=1;
   }
+  return 1;
+}
+VksImage *rhg_present_plan(RhgRenderer *r,coax_t_RenderPresentation p,char *error,size_t size){
+  if(!rhg_prepare_presentation(r,p,error,size))return NULL;
+  VksImage *source=rhg_target_image(r,p.source);
+  if(!source||!rhg_ledger_live(&r->target_handles[p.source])||source->format!=rhg_format(p.draw.format)||source->w!=p.draw.width||source->h!=p.draw.height){rhg_error(error,size,"actual presentation source differs from Coax descriptor");return NULL;}
   RhgHandle uniform_handle={0};size_t bytes=sizeof p.uniforms.e;
   coax_t_RenderBufferObserved observed={.source_capacity=bytes,.upload_bytes=bytes,.gpu_bytes=bytes,.alignment=4};
   coax_t_RenderBufferView view=aethyr_render_buffer_view(p.uniform.binding,p.uniform.source.buffer_mode,observed);
@@ -233,11 +237,11 @@ static VksImage *rhg_present_descriptor(RhgRenderer *r,coax_t_RenderPresentation
 }
 VksImage *rhg_present_float(RhgRenderer *r,int format,char *error,size_t size){
   VksImage *screen=rhg_screen(r);if(!screen){rhg_error(error,size,"presentation has no completed screen");return NULL;}
-  return rhg_present_descriptor(r,render_presentation(r->profile,screen->w,screen->h,format,r->v->props.limits.maxImageDimension2D),error,size);
+  return rhg_present_plan(r,render_presentation(r->profile,screen->w,screen->h,format,r->v->props.limits.maxImageDimension2D),error,size);
 }
 VksImage *rhg_present_quantized_v1(RhgRenderer *r,int format,char *error,size_t size){
   VksImage *screen=rhg_screen(r);if(!screen){rhg_error(error,size,"presentation has no completed screen");return NULL;}
-  return rhg_present_descriptor(r,render_presentation_quantized_v1(r->profile,screen->w,screen->h,format,r->v->props.limits.maxImageDimension2D),error,size);
+  return rhg_present_plan(r,render_presentation_quantized_v1(r->profile,screen->w,screen->h,format,r->v->props.limits.maxImageDimension2D),error,size);
 }
 VksImage *rhg_probe_presentation(RhgRenderer *r,int64_t width,int64_t height,const void *bytes,size_t count,int format,int quantized,char *error,size_t size){
   coax_t_RenderPresentation p=quantized?render_presentation_quantized_v1(r->profile,width,height,format,r->v->props.limits.maxImageDimension2D):render_presentation(r->profile,width,height,format,r->v->props.limits.maxImageDimension2D);
@@ -245,7 +249,7 @@ VksImage *rhg_probe_presentation(RhgRenderer *r,int64_t width,int64_t height,con
   coax_t_FrameCounts counts={.width=p.draw.width,.height=p.draw.height};
   if(!rhg_target(r,p.source,&counts,0,p.draw.format,error,size))return NULL;
   vks_upload(r->v,&r->targets[p.source],bytes,count);
-  return rhg_present_descriptor(r,p,error,size);
+  return rhg_present_plan(r,p,error,size);
 }
 VksImage *rhg_target_image(RhgRenderer *r,coax_t_RenderTarget target){return target<COAX_RenderTarget_invalid&&r->target_open[target]?&r->targets[target]:NULL;}
 uint64_t rhg_draw_commands(const RhgRenderer *r){return r->draw_commands;}
