@@ -5887,7 +5887,7 @@ unlisted realm. Its owner-local VPK1 pack is gated by complete SHA-256 and byte
 count before upload. No extracted game payload belongs in Git or a public
 build. Local loading retains the existing `?pack` opt-in.
 
-The KOC1 catalogue binds disjoint complete OCL1 rig and KCG1 collision streams,
+The KOC1/KOC2 catalogue binds disjoint complete OCL1 rig and KCG1 collision streams,
 finite spawn, and bounded GPU byte/index/material/texture counts. Full collision
 validation checks finite coordinates, complete disjoint spans, contiguous cell
 tables and sorted in-range triangle references before retaining any view. The
@@ -5896,6 +5896,13 @@ copied, while collision borrows that retained buffer without a second 55 MiB
 copy. A replacement asset request cannot overwrite the live borrowed source.
 Readiness requires the catalogue, rig, collision, whole-pack identity and every
 exact declared upload. Device recovery retains these owners.
+
+KOC2 retains KOC1 compatibility and binds an 80-byte header with complete,
+triangle-aligned opaque/water index spans. Source water draws after opaque
+geometry using the existing alpha-blend ABI; it does not cast a solid shadow.
+The coincident back-flow helper is suppressed. Ground projection uses tiling
+source moss/soil maps, never a padded UV atlas. Sky, clouds, sun, ripples,
+Fresnel reflection and height haze remain explicit renderer adaptations.
 
 The delegated Coax OCL1 gate requires the complete 309-joint/eight-clip profile, ordered
 parents, finite inverse binds, unit quaternions, positive finite scale tracks,

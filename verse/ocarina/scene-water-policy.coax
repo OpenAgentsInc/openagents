@@ -1,0 +1,36 @@
+// KOC2 adds authenticated opaque/water index spans; the published KOC1 stays valid.
+#load "scene-policy.coax";
+#load "scene-water-fixture.coax";
+#authority;
+KocRenderScene :: struct {scene:KocScene;opaque:int;water:int;}
+#test "KOC2 binds complete source owners and disjoint opaque and water draws" #steps 1000000000 {
+ b:[OCL_TEST_BYTES+192]u8;koc2_fixture(b[..]);s:=koc_render_scene(b[..]);#assert s.scene.ok && s.scene.rig==80 && s.scene.world==80+OCL_TEST_BYTES && s.opaque==3 && s.water==3 && s.scene.spawn.x==0.5 && s.scene.spawn.y==0 && s.scene.spawn.z==0.5;
+ old:[OCL_TEST_BYTES+176]u8;koc_fixture(old[..]);s=koc_render_scene(old[..]);#assert s.scene.ok && s.scene.rig==64 && s.opaque==3 && s.water==0;
+ #assert !koc_render_scene(b[0..<3]).scene.ok && !koc_render_scene(b[0..<79]).scene.ok && !koc_render_scene(b[0..<b.count-1]).scene.ok;
+}
+#forall "KOC2 refuses hostile independent header fields" lane:0..<20 #steps 1000000000 {
+ b:[OCL_TEST_BYTES+192]u8;koc2_fixture(b[..]);scan_put(b[..],lane*4,0xffffffff);#assert !koc_render_scene(b[..]).scene.ok;
+}
+#test "Water span arithmetic has complete nonempty triangle-aligned coverage" #steps 1000000000 {
+ #assert koc_water_triangles(2,1,1) && !koc_water_triangles(1,0,1) && !koc_water_triangles(1,1,0) && !koc_water_triangles(3,1,1);
+ #assert koc_water_spans(6,3,3) && koc_water_spans(12,9,3);
+ #assert !koc_water_spans(6,0,6) && !koc_water_spans(6,6,0) && !koc_water_spans(6,9,3) && !koc_water_spans(6,3,6) && !koc_water_spans(6,2,4);
+ #assert !koc_water_spans(6,4,3) && !koc_water_spans(6,3,4) && !koc_water_spans(6,5,3) && !koc_water_spans(6,3,5);
+ #assert !koc_water_spans(6,4,4) && !koc_water_spans(8,4,4) && !koc_water_spans(7,4,3) && !koc_water_spans(7,3,4);
+ #assert !koc_water_spans(7,3,3) && !koc_water_spans(6,1,5) && !koc_water_spans(6,-3,9);
+ #assert koc2_size(80) && !koc2_size(79) && koc2_size(KOC_CAP) && !koc2_size(KOC_CAP+1);
+ short:[4]u8;scan_put(short[..],0,0x32434f4b);#assert koc_render_tag(short[..])==0x32434f4b && koc_render_tag(short[0..<3])==0;
+ b:[OCL_TEST_BYTES+192]u8;for at:[2]int.[72,76] {koc2_fixture(b[..]);scan_put(b[..],at,1);#assert !koc_render_scene(b[..]).scene.ok;}koc2_fixture(b[..]);scan_put(b[..],80,0);#assert !koc_render_scene(b[..]).scene.ok;koc2_fixture(b[..]);scan_put(b[..],80+OCL_TEST_BYTES,0);#assert !koc_render_scene(b[..]).scene.ok;
+}
+koc2_size :: (n:int)->bool #effects(all) {return n>=80 && n<=KOC_CAP;}
+koc_water_spans :: (total:int,opaque:int,water:int)->bool #effects(all) {return opaque%3==0 && water%3==0 && total%3==0 && koc_water_triangles(total/3,opaque/3,water/3);}
+koc_water_triangles :: (total:int,opaque:int,water:int)->bool #effects(all) {return opaque>=1 && water>=1 && opaque+water==total;}
+koc_render_tag :: (b:[]u8)->u32 #effects(all) {if b.count<4 {return 0;}return scan_u32(b,0);}
+koc_render_scene :: (b:[]u8)->KocRenderScene #effects(all) {
+ out:=KocRenderScene.{};if koc_render_tag(b)==0x31434f4b {s:=koc_scene(b);return KocRenderScene.{scene=s,opaque=s.indices};}
+ if !koc2_size(b.count) || scan_u32(b,0)!=0x32434f4b || scan_u32(b,4)!=1 || scan_u32(b,8)!=cast(u32)b.count || scan_u32(b,12)!=80 || scan_u32(b,56)!=1 || scan_u32(b,60)!=0 || scan_u32(b,72)!=0 || scan_u32(b,76)!=0 {return out;}
+ rig:=cast(int)scan_u32(b,16);world:=cast(int)scan_u32(b,20);bytes:=cast(int)scan_u32(b,24);vertex:=cast(int)scan_u32(b,28);indices:=cast(int)scan_u32(b,32);layers:=cast(int)scan_u32(b,36);materials:=cast(int)scan_u32(b,40);opaque:=cast(int)scan_u32(b,64);water:=cast(int)scan_u32(b,68);
+ if world!=80+rig || !koc_span(b.count,world,bytes) || world+bytes!=b.count || !koc_gpu(vertex,indices,layers,materials) || !koc_water_spans(indices,opaque,water) {return out;}
+ if !koc_number(b,44) || !koc_number(b,48) || !koc_number(b,52) || !ocarina_rig_valid(b[80..<world]) || !koc_grid_valid(b[world..<b.count]) {return out;}
+ s:=KocScene.{ok=true,rig=80,rig_bytes=rig,world=world,world_bytes=bytes,vertex_bytes=vertex,indices=indices,layers=layers,materials=materials,spawn=scan_point(b,44)};return KocRenderScene.{scene=s,opaque=opaque,water=water};
+}

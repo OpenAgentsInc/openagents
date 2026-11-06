@@ -144,7 +144,7 @@ character-only identity above is not its current admission pin.
 
 ## Original Kokiri scene admission and collision
 
-KOC1 is the browser's source catalogue. Its 64-byte header binds the complete
+KOC1 is the original source catalogue and remains accepted as opaque-only input. Its 64-byte header binds the complete
 OCL1 rig, complete KCG1 collision index, finite spawn and dynamic GPU byte,
 index, texture-layer and material counts. GPU geometry mixes 128-byte character
 records and 64-byte static records, so admission bounds total bytes without
@@ -198,7 +198,7 @@ all mipmapped texture bytes from the catalogue, includes the retained encoded
 pack, and uses a four-GiB frame budget. Guard probes return JavaScript numbers
 without truncating resident counts to signed 32-bit integers.
 
-Current verification: all 455 loaded runtime checks pass; scene admission kills
+Initial KOC1 verification: all 455 loaded runtime checks pass; scene admission kills
 all 258 root mutants, collision-profile binding all 39 and renderer adoption
 all 59, with zero survivors. The actual final foliage catalogue admits 65,766,052
 source bytes, 196,137,856 GPU vertex bytes, 10,234,311 indices, 163 physical texture layers and 758 materials. Native verification through the production
@@ -228,10 +228,10 @@ in the runtime pack. The model journal retains 43 unavailable model paths; cubem
 and hiding-hole helpers are explicitly excluded. This is a scenery reconstruction,
 not the game's story/NPC/effect systems.
 
-Current private pack: **652,647,608 bytes**, SHA-256
-`e0febcde5885f5b1aab931da8cad06172e677d75623435d9630f1d883f2addc9`.
-The unchanged KOC1 catalogue is 65,766,052 bytes; declared high-DPR residency is
-4,237,718,336 bytes against a 4,294,967,296-byte budget.
+Current private pack: **652,647,624 bytes**, SHA-256
+`9b2d86c244c417ad7189d5f4e9ea9e6fa3a65dec3d5e2b6d5c29a961c98598a6`.
+The KOC2 catalogue is 65,766,068 bytes; declared high-DPR residency is
+4,237,718,392 bytes against a 4,294,967,296-byte budget.
 
 Muted headless Chrome verifies keyboard/run/jump/backflip, all eight clips,
 inspection, pause/frame stepping, material views, blur release and touch movement
@@ -246,8 +246,42 @@ character layers and original 128-square foliage images retain their existing
 layout. The original full source maps remain private. Shared terrain-array surfaces
 use an explicit source moss adaptation while TerrainArc blending is unresolved.
 Second-albedo-only props use their bound source second map; inner/fade meshes use
-an explicit dark adaptation and bake-shadow proxy meshes are suppressed. Water is
-a simple tinted adaptation. Native terrain/material graphs, baked light, full plant
+an explicit dark adaptation and bake-shadow proxy meshes are suppressed. Water and sky use the appearance adaptation described below. Native terrain/material graphs, baked light, full plant
 growth/wind/coverage, water/reflections and story-dependent actor visibility remain
 limits. The complete extraction report and 3,476-entry verified source manifest
 live in [ore](https://github.com/OpenAgentsInc/ore/blob/main/docs/ocarina-of-time/kokiri-extraction.md).
+
+## Water, sky and ground appearance pass
+
+The previous ground fallback projected `Sand_Kokiri_MossGround_A_Alb` across the
+world, exposing the stretched padding around its authored UV islands. The new
+fallback uses the original tiling `Plant_Kokiri_MossGround_C_*` and
+`Sand_Kokiri_HouseSoil_A_Alb`, with restrained world-space soil/moss variation.
+It still does not decode native TerrainArc material blending.
+
+The original front/back flow-map meshes have identical positions. The back helper
+is suppressed instead of competing for the same depth values. Water now draws
+in a separate alpha pass after opaque geometry, with depth testing and no depth
+writes, using Aethyr's existing `coaxial_draw_blend_v1` profile 2. A separate shadow
+list excludes water. The original indices are stably partitioned into 10,218,582
+opaque and 15,729 water indices, preserving their total and all source triangles.
+
+KOC2 is a separate catalogue magic/version with an 80-byte header: it keeps the
+KOC1 field positions but sets rig offset 80, adds opaque/water index counts at
+64/68, and reserves zero words at 72/76. Both nonempty spans must be aligned to
+triangles and cover the complete index buffer. The existing rig/collision
+validators are reused. KOC1 retains its 64-byte format and opaque-only behavior.
+
+The sky follows camera rays and includes a blue zenith, warm horizon, cloud veil
+and sun glow. Height-sensitive haze and warmer direct light replace the uniform
+olive fog. Water normals animate smoothly; view-angle Fresnel controls reflection
+and opacity, so submerged geometry remains visible. Reflections sample this sky,
+not the forest geometry. Native water flow/refraction, environment reflections,
+terrain blend and lighting bakes remain unported.
+
+Verification: 459 runtime checks, 71 material checks, 53 bundle checks and 31
+shader checks pass; KOC2 admission kills all 105 root mutants, pack identity all
+22. Native original-source movement/jump/clip checks pass. Muted 1920×1080 Chrome
+passes controls, all clips/views, and retained device recovery with no source
+refetch or unexpected GPU errors. Pond and upward-sky captures are inspected
+separately, alongside the phone viewport.

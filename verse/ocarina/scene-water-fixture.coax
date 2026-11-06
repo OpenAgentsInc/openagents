@@ -1,0 +1,5 @@
+// Owned tiny KOC2 fixture; no game payloads.
+koc2_fixture :: (b:[]u8) #effects(all) {
+ old:[OCL_TEST_BYTES+176]u8;koc_fixture(old[..]);for i:0..<64 {b[i]=old[i];}for i:64..<old.count {b[i+16]=old[i];}
+ scan_put(b,0,0x32434f4b);scan_put(b,8,cast(u32)b.count);scan_put(b,12,80);scan_put(b,20,80+OCL_TEST_BYTES);scan_put(b,32,6);scan_put(b,64,3);scan_put(b,68,3);scan_put(b,72,0);scan_put(b,76,0);
+}

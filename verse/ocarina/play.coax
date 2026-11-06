@@ -1,7 +1,7 @@
 // Link source playback on the existing Aethyr walk, fixed-step, follow and touch systems.
 #load "rig-policy.coax";
 #load "pack-policy.coax";
-#load "scene-policy.coax";
+#load "scene-water-policy.coax";
 #load "motion.coax";
 #load "../../aethyr/loop.coax" as clock;
 #load "../../aethyr/anim/scaled-pose.coax";
@@ -21,12 +21,19 @@ OCL_BUDGET :: FrameBudget.{steps=8,vertices=50000000,draws=8,bytes=4294967296};
 OCL_SOURCE_SPAWN :: Point.{x= -12,y=110.052536,z=0};
 OcarinaLab :: struct {
  data:[OCL_RUNTIME_CAP]u8;bytes:int;ready:bool;failed:bool;loaded:[4]int;started:bool;pack_digest:[32]u8;pack_verified:bool;pack_checks:int;meter:[1]BudgetMeter;frame_steps:int;
- world_source:[]u8;catalog_ready:bool;catalog_bytes:int;expected_vertex_bytes:int=OCL_VERTEX_BYTES;expected_indices:int=OCL_INDEX_COUNT;expected_layers:int=OCL_LAYERS;expected_materials:int=25;spawn:Point=OCL_SOURCE_SPAWN;collision_tests:int;collision_contacts:int;
+ world_source:[]u8;catalog_ready:bool;catalog_bytes:int;expected_vertex_bytes:int=OCL_VERTEX_BYTES;expected_indices:int=OCL_INDEX_COUNT;expected_layers:int=OCL_LAYERS;expected_materials:int=25;water_indices:int;spawn:Point=OCL_SOURCE_SPAWN;collision_tests:int;collision_contacts:int;
  parents:[OCL_JOINTS]int;bind:[OCL_JOINTS*12]f32;rest:[OCL_JOINTS]SkinLocal;pose:[OCL_JOINTS]SkinLocal;from:[OCL_JOINTS]SkinLocal;scales:[OCL_JOINTS]Point;from_scales:[OCL_JOINTS]Point;basis:[OCL_JOINTS*12]f32;world:[OCL_JOINTS*12]f32;palette:[OCL_JOINTS*12]f32;revision:int;
  clip:int;time:f32;age:f32;forced:bool;grounded:bool=true;source_speeds:[8]f32;playing:bool=true;inspect:int;view:int;orbit:f32=0.3;tilt:f32=0.05;distance:f32=2.3;
  you:pc.Player;keys:int;look_x:f32;look_y:f32;thumbs:Sticks;active:[4]bool;ids:[4]int;now:f64;drag:bool;drag_id:int;x:f32;y:f32;
- width:f32=1280;height:f32=800;d:f32=1;draws:[4]u32;action:int;outbox:[128]u8;out_n:int;
+ width:f32=1280;height:f32=800;d:f32=1;draws:[8]u32;action:int;outbox:[128]u8;out_n:int;
 }
+#test "Ocarina renders opaque source first and alpha water last without recasting water" {
+ s:[1]OcarinaLab;s[0].expected_indices=12;s[0].water_indices=6;ocl_scene_draws(s[..]);#assert s[0].draws[0]==0 && s[0].draws[1]==6 && s[0].draws[4]==6 && s[0].draws[5]==6 && s[0].draws[7]==1;
+ for i:-1..<3 {#assert ocl_draw_blend(s[..],i)==(ifx i==1 then 2 else 0);}s[0].inspect=1;ocl_scene_draws(s[..]);#assert s[0].draws[7]==0 && ocl_draw_blend(s[..],1)==0;s[0].water_indices=0;ocl_scene_draws(s[..]);#assert s[0].draws[1]==12 && s[0].draws[5]==0;
+}
+ocl_scene_draws :: (s:[]OcarinaLab) {opaque:=s[0].expected_indices-s[0].water_indices;s[0].draws=[8]u32.[0,cast(u32)opaque,0,1,cast(u32)opaque,cast(u32)s[0].water_indices,0,(ifx s[0].inspect==0 then cast(u32)1 else cast(u32)0)];}
+ocl_draw_blend :: (s:[]OcarinaLab,index:int)->int #export_c #effects(all) {return ifx index==1 && s[0].water_indices>0 && s[0].inspect==0 then 2 else 0;}
+ocl_draw_count :: (s:[]OcarinaLab)->int #export_c #effects(all) {if !ocl_ready(s) {return 0;}return ifx s[0].water_indices>0 && s[0].inspect==0 then 2 else 1;}
 #test "Ocarina carrier translation belongs to the controller and remains original in inspection" #steps 1000000000 {
  b:[OCL_TEST_BYTES]u8;ocr_fixture(b[..]);c:=ocr_clip(b[..],32+2*32);
  scan_put(b[..],c.start+OCL_JOINTS*28+8,f32_bits(0.075));scan_put(b[..],c.start+OCL_JOINTS*28+4,f32_bits(0.03));
@@ -127,9 +134,9 @@ ocl_hold :: (s:[]OcarinaLab,raw_key:int,down:bool)->bool #export_c #effects(all)
 }
 ocl_catalog_capacity :: (s:[]OcarinaLab)->int #export_c #effects(all) {return ifx s[0].catalog_ready then 0 else KOC_CAP;}
 ocl_catalog_admit :: (s:[]OcarinaLab,b:[]u8)->bool #export_c #effects(all) {
- if s[0].catalog_ready {return false;}catalog:=koc_scene(b);if !catalog.ok {s[0].failed=true;return false;}
+ if s[0].catalog_ready {return false;}render:=koc_render_scene(b);catalog:=render.scene;if !catalog.ok {s[0].failed=true;return false;}
  if !ocl_admit(s,b[catalog.rig..<catalog.rig+catalog.rig_bytes]) {return false;}
- s[0].world_source=b[catalog.world..<catalog.world+catalog.world_bytes];s[0].catalog_bytes=b.count;s[0].expected_vertex_bytes=catalog.vertex_bytes;s[0].expected_indices=catalog.indices;s[0].expected_layers=catalog.layers;s[0].expected_materials=catalog.materials;s[0].spawn=catalog.spawn;s[0].catalog_ready=true;s[0].started=false;ocl_start(s);return true;
+ s[0].world_source=b[catalog.world..<catalog.world+catalog.world_bytes];s[0].catalog_bytes=b.count;s[0].expected_vertex_bytes=catalog.vertex_bytes;s[0].expected_indices=catalog.indices;s[0].expected_layers=catalog.layers;s[0].expected_materials=catalog.materials;s[0].water_indices=render.water;s[0].spawn=catalog.spawn;s[0].catalog_ready=true;s[0].started=false;ocl_start(s);return true;
 }
 ocl_walk_world :: (s:[]OcarinaLab)->pc.World {
  declaration:=collision.collision_profile_lookup("ocarina-lab");return pc.World.{ground=s[0].spawn.y,room=1000,collision=declaration.profile,locomotion=locomotion.LocomotionProfile.{walk_speed=(ifx s[0].ready then s[0].source_speeds[1] else 0.64f32),run_speed=(ifx s[0].ready then s[0].source_speeds[2] else 2.25f32),gravity=16,jump_speed=4.5,acceleration=12,turn_rate=10,ride_height=0.35}};
@@ -170,7 +177,7 @@ ocl_frame :: (s:[]OcarinaLab,out:[]f32,u:[]f32,width:f32,height:f32,d:f32)->int 
  if s[0].inspect>0 {target=add(pos,v3(0,ifx s[0].inspect==2 then 0.96f32 else 0.7f32,0));distance:=ifx s[0].inspect==2 then s[0].distance*0.3 else s[0].distance;distance*=hi(1.0f32,0.75*height/width);eye=add(target,times(v3(sin(s[0].orbit)*cos(s[0].tilt),sin(s[0].tilt),cos(s[0].orbit)*cos(s[0].tilt)),distance));}
  forward:=unit_or(sub(target,eye),v3(0,0,-1));right:=unit_or(cross(forward,v3(0,1,0)),v3(1,0,0));up:=cross(right,forward);sun:=unit_or(v3(-0.45,0.82,0.35),v3(0,1,0));lr:=unit_or(cross(v3(0,1,0),sun),v3(1,0,0));lu:=cross(sun,lr);
  for k:0..<64 {u[k]=0;}u[0]=width;u[1]=height;u[2]=d;u[3]=1;u[4]=cast(f32)s[0].view;ocl_uniform(u,8,eye);ocl_uniform(u,12,right);u[15]=1.73*height/width;ocl_uniform(u,16,up);u[19]=1.73;ocl_uniform(u,20,forward);ocl_uniform(u,24,pos);u[27]=ifx s[0].inspect>0 then 0.0f32 else pc.walk_face(s[0].you);ocl_uniform(u,28,sun);ocl_uniform(u,32,lr);ocl_uniform(u,36,lu);ocl_uniform(u,40,sun);ocl_uniform(u,44,add(pos,v3(0,1,0)));u[47]=ifx s[0].inspect>0 then 2.5f32 else 28.0f32;u[48]=cast(f32)s[0].now;u[49]=ifx s[0].inspect==0 then 1.0f32 else 0.0f32;
- s[0].draws=[4]u32.[0,cast(u32)s[0].expected_indices,0,1];pen:=HdPen.{d=d,top=0,bottom=height/d,cyan=false,sans=false};w:=width/d;h:=height/d;n:=hd_text(out,0,"OCARINA LAB",20,30,18,pen,0);small:=w<600;label:=ifx small then 8.0f32 else 10.0f32;n=hd_text(out,n,"C CHARACTER",20,52,label,pen,0);n=hd_text(out,n,"H FACE",w*0.30+8,52,label,pen,0);n=hd_text(out,n,ifx small then "V MAP" else "V MATERIAL",w*0.55+8,52,label,pen,0);n=hd_text(out,n,"JUMP",w*0.82+8,52,label,pen,0);
+ ocl_scene_draws(s);pen:=HdPen.{d=d,top=0,bottom=height/d,cyan=false,sans=false};w:=width/d;h:=height/d;n:=hd_text(out,0,"OCARINA LAB",20,30,18,pen,0);small:=w<600;label:=ifx small then 8.0f32 else 10.0f32;n=hd_text(out,n,"C CHARACTER",20,52,label,pen,0);n=hd_text(out,n,"H FACE",w*0.30+8,52,label,pen,0);n=hd_text(out,n,ifx small then "V MAP" else "V MATERIAL",w*0.55+8,52,label,pen,0);n=hd_text(out,n,"JUMP",w*0.82+8,52,label,pen,0);
  n=hd_text_fit(out,n,ifx s[0].ready then [8]string.["WAIT","WALK","RUN","DASH","JUMP","LAND","BACKFLIP","FACIAL CHECK"][s[0].clip] else ifx s[0].failed then "PRIVATE SOURCE PACK REFUSED" else "LOADING PRIVATE LINK SOURCE",20,h-74,12,w-40,pen,1);
  n=hd_text_fit(out,n,ifx s[0].inspect>0 then (ifx small then "DRAG / [] CLIP / P PAUSE / R FOREST" else "DRAG ORBIT / [] CLIP / P PLAY / , . FRAME / R FOREST") else (ifx small then "LEFT MOVE / RIGHT LOOK / TAP JUMP" else "WASD MOVE / SHIFT WALK / SPACE JUMP / DRAG OR ARROWS LOOK / B BACKFLIP"),20,h-27,label,w-40,pen,0);
  s[0].meter[0]=budget_meter(OCL_BUDGET);budget_measure(s[0].meter[..],n+(ifx ocl_ready(s) then s[0].expected_indices*2 else 0),8,ocl_measured_bytes(s,width,height));

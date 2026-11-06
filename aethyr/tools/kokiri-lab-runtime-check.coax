@@ -1,4 +1,4 @@
-// Actual KOC1 source through the same Ocarina gameplay owner as the browser.
+// Actual KOC1/KOC2 source through the same Ocarina gameplay owner as the browser.
 // tool.sh: stack-gib 2
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";

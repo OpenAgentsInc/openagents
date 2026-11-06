@@ -1,0 +1,24 @@
+// Aethyr atmosphere/water translation; source scenery and collision remain unchanged.
+#load "splash.coax";
+#test "Ocarina appearance noise is bounded and continuous across lattice edges" {
+ for p:[4]V2.[v2(0,0),v2(-3.2,7.8),v2(10.9,-2),v2(100,100)] {n:=oa_noise(p);#assert n>=0 && n<=1;}
+ #assert abs(oa_noise(v2(0.99999,0.37))-oa_noise(v2(1.00001,0.37)))<0.001;
+}
+#test "Ocarina sky has a blue zenith warm horizon and bounded water reflectance" {
+ sun:=normalize3(v3(-0.4,0.8,0.3));h:=oa_sky(v3(1,0,0),sun);z:=oa_sky(v3(0,1,0),sun);
+ #assert z.z>z.x && h.x>z.x && oa_fresnel(1)==0.025 && oa_fresnel(0)==1;
+ n:=oa_water_normal(v3(-12,109,-5),0);#assert abs(dot3(n,n)-1)<0.00001 && n.y>0.98;
+}
+oa_mix :: (a:V3,b:V3,t:f32)->V3 {return add3(scale3(a,1-t),scale3(b,t));}
+oa_hash :: (p:V2)->f32 {return fract(sin(p.x*127.1+p.y*311.7)*43758.5453);}
+oa_noise :: (p:V2)->f32 {x:=floor(p.x);y:=floor(p.y);fx:=fract(p.x);fy:=fract(p.y);u:=fx*fx*(3-2*fx);v:=fy*fy*(3-2*fy);return mix(mix(oa_hash(v2(x,y)),oa_hash(v2(x+1,y)),u),mix(oa_hash(v2(x,y+1)),oa_hash(v2(x+1,y+1)),u),v);}
+oa_sky :: (ray:V3,sun:V3)->V3 {
+ elevation:=clampf(ray.y,0,1);sky:=oa_mix(v3(0.58,0.66,0.67),v3(0.15,0.32,0.57),pow(elevation,0.55));
+ p:=v2(ray.x/(abs(ray.y)+0.32)*2.4,ray.z/(abs(ray.y)+0.32)*2.4);cloud:=oa_noise(p)*0.65+oa_noise(v2(p.x*2.1+17,p.y*2.1+5))*0.35;veil:=smoothstep(0.53f32,0.78f32,cloud)*smoothstep(0.03f32,0.30f32,elevation)*0.58;sky=oa_mix(sky,v3(0.82,0.84,0.81),veil);
+ alignment:=fmax(0.0f32,dot3(ray,sun));glow:=pow(alignment,18)*0.14+pow(alignment,650)*2.2;return add3(sky,v3(glow,glow*0.85,glow*0.60));
+}
+oa_fresnel :: (cosine:f32)->f32 {return 0.025+0.975*pow(1-clampf(cosine,0,1),5);}
+oa_water_normal :: (p:V3,time:f32)->V3 {
+ a:=p.x*3.1+p.z*1.7-time*0.8;b:=p.x*7.2-p.z*4.3+time*1.1;c:=p.z*11.7+p.x*2.5-time*1.6;
+ return normalize3(v3(cos(a)*0.018+cos(b)*0.010,1,sin(a)*0.015+cos(c)*0.008));
+}

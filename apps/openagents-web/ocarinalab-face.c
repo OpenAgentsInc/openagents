@@ -24,7 +24,10 @@ EXPORT("coaxial_asset") uint32_t asset(uint32_t p,int32_t i,uint32_t n){(void)p;
 EXPORT("coaxial_asset_capacity") uint32_t capacity(uint32_t p,int32_t i){(void)p;return i==0?(uint32_t)ocl_catalog_capacity(view(p)):0;}
 EXPORT("coaxial_asset_ready") void loaded(uint32_t p,int32_t i,uint32_t n){if(i==0&&n<=sizeof(incoming)){if(ocl_catalog_admit(view(p),(coax_v_u8){incoming,n}))ocl_asset(view(p),i,n);}else ocl_asset(view(p),i,n);}
 EXPORT("coaxial_draws") uint32_t draws(uint32_t p){return(uint32_t)(uintptr_t)state(p)->draws.e;}
-EXPORT("coaxial_draw_count") uint32_t draw_count(uint32_t p){return ocl_ready(view(p))?1:0;}
+EXPORT("coaxial_draw_count") uint32_t draw_count(uint32_t p){return (uint32_t)ocl_draw_count(view(p));}
+EXPORT("coaxial_draw_blend_v1") uint32_t draw_blend(uint32_t p,int32_t i){return (uint32_t)ocl_draw_blend(view(p),i);}
+EXPORT("coaxial_shadow_draws_v1") uint32_t shadow_draws(uint32_t p){return (uint32_t)(uintptr_t)state(p)->draws.e;}
+EXPORT("coaxial_shadow_draw_count_v1") uint32_t shadow_draw_count(uint32_t p){return ocl_ready(view(p))?1:0;}
 EXPORT("coaxial_stores") uint32_t stores(void){return 1;}
 EXPORT("coaxial_store") uint32_t store(uint32_t p,uint32_t i){return i==0?(uint32_t)(uintptr_t)state(p)->palette.e:0;}
 EXPORT("coaxial_store_bytes") uint32_t store_bytes(uint32_t p,uint32_t i){(void)p;return i==0?sizeof(state(0)->palette.e):0;}
