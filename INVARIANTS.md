@@ -5836,3 +5836,26 @@ state. Service commits retain their own operation IDs and revision fences.
 Release compatibility compares retained production contracts and suppresses only
 the same pre-existing failures. No mechanism here closes general view regions
 or changes the spec's memory-safety claim.
+
+## Animation Lab retains admitted document storage across GPU replacement
+
+Animation Lab's ALB1 bundle contains one immutable binary, one rig and
+1–64 clip documents. The bounded table is checked before any view is made;
+the rig and clips use the shared animation authorities. A failed admission
+retains the previous library. Borrowed views refer to the retained source
+buffer, which outlives playback and GPU replacement. The browser face stages a replacement in a second 64 MiB bank and
+publishes it only after admission. Rejected input cannot replace bytes
+underneath admitted records.
+
+The inspection renderer retains all eight skin influences and sparse morph
+records, with a 64 MiB GPU upload budget. It is an explicitly tracked
+renderer for `animation-lab` / `animationlab`, not a shared-renderer adoption
+claim. Its Coax-owned 4,096-page (256 MiB) memory declaration is used by both
+the Wasm linker and the browser page; ordinary pages retain 1,024 pages
+(64 MiB). The inspector uses a 4 MiB stack inside that ceiling. The selected
+rig, clip and held frame survive device replacement with equal frame hashes.
+
+Checks: `bundle-policy.coax` kills 66 mutants; the exact renderer/memory
+adoption gate kills 55, with zero survivors. Station checks, fixed-frame
+captures, recovery and timing are recorded in
+`docs/verification/animation-lab-a1-2026-11-06/README.md`.

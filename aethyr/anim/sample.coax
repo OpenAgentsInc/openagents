@@ -1,0 +1,39 @@
+// Playback of admitted documents. The pack catalogue and its bytes remain
+// immutable for the lifetime of the rig and clips that reference it.
+#load "clip-document.coax";
+
+AnimSample :: struct {
+ local:[512]SkinLocal;rotation:[512]Quat;position:[512]Point;
+ palette:[6144]f32;weights:[256]f32;
+}
+
+#test "document playback interpolates named sparse tracks and starts each face from rest" {
+ bytes:[128]u8;for k:0..<4 {anim_test_put(bytes[..],k*28+24,f32_bits(1));}
+ anim_test_put(bytes[..],28,f32_bits(2));anim_test_put(bytes[..],112,f32_bits(0.2));anim_test_put(bytes[..],116,f32_bits(0.8));
+ packs:=[1]AnimPack.[AnimPack.{bytes=bytes[..]}];r:AnimRig;r.ready=true;r.joints=2;r.parents[0]= -1;r.parents[1]=0;r.rest[1].t=v3(0,1,0);for j:0..<2 {for row:0..<3 {r.bind[j*12+row*4+row]=1;}}
+ c:AnimClip;c.ready=true;c.frames=2;c.rate=1;c.length=1;c.joint_count=1;c.joints[0]=0;c.body=AnimPart.{pack=0,offset=0,count=2,stride=28,width=28};c.curve_count=1;c.curves[0]=3;c.face=AnimPart.{pack=0,offset=112,count=2,stride=4,width=4};
+ out:[1]AnimSample;anim_sample(r,c,packs[..],0.5,out[..]);#assert out[0].local[0].t.x==1 && out[0].position[1].x==1 && out[0].position[1].y==1 && out[0].weights[3]==0.5;
+ anim_sample(r,c,packs[..],5,out[..]);#assert out[0].local[0].t.x==2;
+ c.looping=true;anim_sample(r,c,packs[..],1.5,out[..]);#assert out[0].local[0].t.x==1;
+ c.joint_count=0;c.face_joint_count=1;c.face_joints[0]=1;c.face_pose=AnimPart.{pack=0,offset=56,count=2,stride=28,width=28};anim_sample(r,c,packs[..],0,out[..]);#assert out[0].local[0].t.x==0 && out[0].local[1].t.y==0;
+ c.ready=false;anim_sample(r,c,packs[..],0,out[..]);#assert out[0].local[1].t.y==1 && out[0].weights[3]==0;
+}
+
+anim_sample_time :: (c:AnimClip,time:f32)->f32 {
+ t:=hi(0,time);if c.looping {return t-c.length*floor(t/c.length);}return lo(t,c.length);
+}
+anim_sample_pose :: (part:AnimPart,packs:[]AnimPack,tracks:int,track:int,a:int,b:int,share:f32)->SkinLocal {
+ bytes:=packs[part.pack].bytes;
+ return pose_blend(anim_local(bytes,part.offset+(a*tracks+track)*part.stride),anim_local(bytes,part.offset+(b*tracks+track)*part.stride),share);
+}
+anim_sample :: (r:AnimRig,c:AnimClip,packs:[]AnimPack,time:f32,out:[]AnimSample) {
+ for j:0..<r.joints {out[0].local[j]=r.rest[j];}for j:0..<256 {out[0].weights[j]=0;}
+ if c.ready {
+  frame:=lo(anim_sample_time(c,time)*c.rate,cast(f32)(c.frames-1));a:=cast(int)floor(frame);b:=ifx a+1<c.frames then a+1 else a;share:=frame-cast(f32)a;
+  for k:0..<c.joint_count {out[0].local[c.joints[k]]=anim_sample_pose(c.body,packs,c.joint_count,k,a,b,share);}
+  for k:0..<c.face_joint_count {out[0].local[c.face_joints[k]]=anim_sample_pose(c.face_pose,packs,c.face_joint_count,k,a,b,share);}
+  if c.curve_count>0 {p:=c.face;bytes:=packs[p.pack].bytes;for k:0..<c.curve_count {x:=anim_float(bytes,p.offset+(a*c.curve_count+k)*p.stride);y:=anim_float(bytes,p.offset+(b*c.curve_count+k)*p.stride);out[0].weights[c.curves[k]]=x+(y-x)*share;}}
+ }
+ for j:0..<r.joints {pose_chain(out[0].rotation[..],out[0].position[..],r.parents[j],j,out[0].local[j]);}
+ bind:=r.bind;for j:0..<r.joints {pose_palette(out[0].rotation[j],out[0].position[j],bind[..],j,out[0].palette[..]);}
+}

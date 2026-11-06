@@ -1,0 +1,17 @@
+// Original block mannequin on the existing CC0 65-joint character skeleton.
+#load "../../aethyr/anim/bundle.coax";
+#load "../../verse/everglade/people-rig.coax";
+al_mannequin :: (lib:[]AnimLibrary,bytes:[]u8) {
+ data:[1]People;people_load(data[..]);source:=people_rig(data[..],false);r:AnimRig;r.ready=true;r.name=anim_named("mannequin");r.joints=65;r.sections=1;r.material_count=1;r.materials[0]=anim_named("studio");
+ q:[65]Quat;points:[65]Point;for j:0..<65 {r.names[j]=anim_named(MANNEQUIN_NAME[j]);r.parents[j]=source.parent[j];r.rest[j]=skin_rest(source,j);r.mapped[j]=j;pose_chain(q[..],points[..],r.parents[j],j,r.rest[j]);for k:0..<12 {r.bind[j*12+k]=source.bind[j*12+k];}}
+ // Six rigidly weighted box faces per joint. They are made here, not sampled
+ // from a licensed mesh. Every skin8 record still has eight influence slots.
+ for k:0..<bytes.count {bytes[k]=0;}vertex_at:=0;index_at:=65*8*96;clip_at:=index_at+65*36*4;corners:=[8]Point.[v3(-1,-1,-1),v3(1,-1,-1),v3(1,1,-1),v3(-1,1,-1),v3(-1,-1,1),v3(1,-1,1),v3(1,1,1),v3(-1,1,1)];tri:=[36]int.[0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,3,7,6,3,6,2,1,2,6,1,6,5,0,4,7,0,7,3];
+ for j:0..<65 {size:=ifx j==6 then v3(0.11,0.13,0.1) else ifx j==1 then v3(0.12,0.09,0.08) else ifx j>=55 then v3(0.055,0.13,0.055) else ifx j>=2 && j<=4 then v3(0.12,0.08,0.065) else ifx j==8 || j==9 || j==32 || j==33 then v3(0.11,0.045,0.045) else v3(0.018,0.018,0.018);
+  for corner,k:corners {at:=vertex_at+(j*8+k)*96;p:=add(points[j],v3(corner.x*size.x,corner.y*size.y,corner.z*size.z));for x,w:[6]f32.[p.x,p.y,p.z,corner.x*0.5773503,corner.y*0.5773503,corner.z*0.5773503] {anim_bundle_put(bytes,at+w*4,f32_bits(x));}bytes[at+36]=cast(u8)j;bytes[at+52]=255;}
+  for v,k:tri {anim_bundle_put(bytes,index_at+(j*36+k)*4,cast(u32)(j*8+v));}
+ }
+ c:AnimClip;c.ready=true;c.name=anim_named("studio-wave");c.rig=r.name;c.frames=61;c.rate=30;c.length=2;c.looping=true;c.joint_count=65;for j:0..<65 {c.joints[j]=j;}
+ for frame:0..<61 {t:=cast(f32)frame/30;for j:0..<65 {p:=r.rest[j];if j==32 || j==33 {angle:=sin(t*3.14159265)*0.35;p.q=quat_mul(p.q,Quat.{x=sin(angle/2),w=cos(angle/2)});}at:=clip_at+(frame*65+j)*28;for x,w:[7]f32.[p.t.x,p.t.y,p.t.z,p.q.x,p.q.y,p.q.z,p.q.w] {anim_bundle_put(bytes,at+w*4,f32_bits(x));}}}
+ end:=clip_at+61*65*28;lib[0].packs[0]=AnimPack.{id=asset_id(cast(string)bytes[0..<end]),bytes=bytes[0..<end]};r.meshes[0]=AnimMesh.{vertices=AnimPart.{pack=0,offset=vertex_at,count=520,stride=96,width=96},indices=AnimPart.{pack=0,offset=index_at,count=2340,stride=4,width=4},material=0};c.body=AnimPart.{pack=0,offset=clip_at,count=61*65,stride=28,width=28};lib[0].rig[0]=r;lib[0].clips[0]=c;lib[0].count=1;
+}

@@ -1,0 +1,26 @@
+// Neutral inspection: eight skin influences, sparse morphs and weight heat.
+#load "splash.coax";
+al_bg_vs :: (id:u32,instance:u32)->V4 {return splash_bg_vs(id,instance);}
+al_bg_fs :: (p:V4,u:[]f32)->V4 {return v4(0.025,0.035,0.05,1);}
+AlVertex :: struct {a:V4;b:V4;c:V4;}
+al_fx_vs :: (id:u32,instance:u32,v:AlVertex,u:[]f32)->SplashV {return splash_fx_vs(id,instance,splash_fx_vs_in.{a=v.a,b=v.b,c=v.c,d=v4(0,0,0,0)},u);}
+al_fx_fs :: (v:SplashV,u:[]f32)->V4 {return splash_fx_fs(v,u);}
+al_at :: (b:[]f32,at:int)->V3 {return v3(b[at],b[at+1],b[at+2]);}
+al_word3 :: (b:[]u32,at:int)->V3 {return v3(f32_from_bits(b[at]),f32_from_bits(b[at+1]),f32_from_bits(b[at+2]));}
+AlSurface :: struct {pos:V4;normal:V3;heat:f32;material:f32;}
+al_scene_vs :: (id:u32,instance:u32,u:[]f32,geometry:[]u32,bones:[]f32)->AlSurface {
+ index:=cast(int)geometry[cast(int)id];at:=cast(int)geometry[0]+index*26;position:=al_word3(geometry,at);normal:=al_word3(geometry,at+3);first:=cast(int)geometry[at+24];count:=cast(int)geometry[at+25];
+ for k:0..<count {m:=first+k*8;weight:=bones[6144+cast(int)geometry[m]];position=wg_add_f3f3(position,wg_mul_f3f(al_word3(geometry,m+1),weight));normal=wg_add_f3f3(normal,wg_mul_f3f(al_word3(geometry,m+4),weight));}
+ posed:=v3(0,0,0);direction:=v3(0,0,0);sum:f32=0;heat:f32=0;
+ for k:0..<8 {word:=geometry[at+9+k/2];joint:=cast(int)((word>>cast(u32)((k%2)*16))&65535);weight:=cast(f32)((geometry[at+13+k/4]>>cast(u32)((k%4)*8))&255);sum+=weight;if joint==cast(int)u[29] {heat+=weight;}b:=joint*12;
+  p:=v4(position.x,position.y,position.z,1);n:=v4(normal.x,normal.y,normal.z,0);transformed:=v3(wg_dot4(wg_at4(bones,b),p),wg_dot4(wg_at4(bones,b+4),p),wg_dot4(wg_at4(bones,b+8),p));turned:=v3(wg_dot4(wg_at4(bones,b),n),wg_dot4(wg_at4(bones,b+4),n),wg_dot4(wg_at4(bones,b+8),n));posed=wg_add_f3f3(posed,wg_mul_f3f(transformed,weight));direction=wg_add_f3f3(direction,wg_mul_f3f(turned,weight));
+ }
+ posed=wg_mul_f3f(posed,1.0f32/sum);delta:=wg_sub_f3f3(wg_sub_f3f3(posed,al_at(u,24)),al_at(u,8));z:=wg_dot3(delta,al_at(u,20));x:=wg_dot3(delta,al_at(u,12))*u[28];y:=wg_dot3(delta,al_at(u,16))*u[28];
+ return AlSurface.{pos=v4(x*2/u[0],y*2/u[1]+(1-u[31]*2/u[1])*z,200.0f32/199.99f32*(z-0.01),z),normal=wg_normalize3(direction),heat=heat/sum,material=cast(f32)geometry[at+8]};
+}
+al_scene_fs :: (s:AlSurface,u:[]f32)->V4 {
+ light:=0.35f32+0.65f32*fmax(0.0f32,wg_dot3(wg_normalize3(s.normal),wg_normalize3(v3(-0.5,1,0.8))));base:=v3(0.45,0.55,0.65);
+ if u[30]>0.5 {base=wg_mix_f3f3f(v3(0.06,0.14,0.35),v3(1,0.2,0.4),s.heat);}c:=wg_mul_f3f(base,light);return v4(c.x,c.y,c.z,1);
+}
+
+wg_sub_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}

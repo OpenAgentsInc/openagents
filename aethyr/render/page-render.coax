@@ -7,6 +7,7 @@ RENDER_WEB_SHARED :: false;
 tool_main :: () -> int #export_c #effects(all) {
   args: [1] Args;
   if !args_load(args[..]) || args_count(args[..]) != 2 { return 2; }
+  if args_at(args[..],0)=="--memory" {print("%",render_memory_pages(args_at(args[..],1)));return 0;}
   route := render_adoption(args_at(args[..], 0), args_at(args[..], 1));
   // Web pages keep the existing renderer for now: with data-render the host fetches the catalogue's
   // raw asset paths (/realms/SLUG/assets/...), which deploy doesn't upload (it content-names
@@ -17,7 +18,11 @@ tool_main :: () -> int #export_c #effects(all) {
     print(" data-render=\"/build/render/%/render.json\" data-render-profile=\"%\"", p.slug, route.profile);
     return 0;
   }
-  if route.shared || route.tracked_legacy { return 0; }
+  if route.shared || route.tracked_legacy {
+    pages:=render_memory_pages(args_at(args[..],1));
+    if pages!=1024 {print(" data-memory-pages=\"%\"",pages);}
+    return 0;
+  }
   tool_errln("realm has no reviewed shared or legacy renderer adoption");
   return 2;
 }

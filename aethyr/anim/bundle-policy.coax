@@ -1,0 +1,19 @@
+// ALB1 transports one rig, its clips and one immutable binary pack.
+#load "document.coax";
+#load "bundle-policy-checks.coax";
+#authority;
+ANIM_BUNDLE_BYTES :: 67108864;
+anim_bundle_count :: (count:int)->bool #effects(all) {return count>=1 && count<=64;}
+anim_bundle_size :: (size:int)->bool #effects(all) {return size>=41 && size<=ANIM_BUNDLE_BYTES;}
+anim_bundle_valid :: (b:[]u8)->bool #effects(all) {
+ if !anim_bundle_size(b.count) {return false;}
+ if anim_word(b,0)!=0x31424c41 || cast(int)anim_word(b,4)!=b.count {return false;}
+ count:=cast(int)anim_word(b,8);if !anim_bundle_count(count) {return false;}
+ cursor:=12+(count+2)*8;if !anim_bundle_header_fits(b.count,count) {return false;}
+ for k:0..<count+2 {at:=12+k*8;first:=cast(int)anim_word(b,at);n:=cast(int)anim_word(b,at+4);if !anim_bundle_window(b.count,cursor,first,n) {return false;}if !anim_bundle_part_limit(k,n) {return false;}cursor+=n;}
+ return cursor==b.count;
+}
+
+anim_bundle_header_fits :: (size:int,count:int)->bool #effects(all) {return size>12+(count+2)*8;}
+anim_bundle_window :: (size:int,cursor:int,first:int,n:int)->bool #effects(all) {return first==cursor && n>=1 && n<=size-cursor;}
+anim_bundle_part_limit :: (part:int,n:int)->bool #effects(all) {return part==0 || n<=ANIM_DOCUMENT_BYTES;}

@@ -1,0 +1,3 @@
+--vertices al_bg_vs,al_scene_vs,al_fx_vs
+--fragments al_bg_fs,al_scene_fs,al_fx_fs
+--bindings apps/openagents-web/gpu/animationlab.bindings --strip al_

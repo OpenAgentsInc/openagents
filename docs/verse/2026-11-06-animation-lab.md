@@ -1,7 +1,7 @@
 # Animation Lab
 
-Written 2026-11-06. Status: A0 documents and admission are implemented.
-A1–A8 are pending. See the verification record linked below.
+Written 2026-11-06. Status: A0 documents and A1 rig/clip stations are implemented.
+A2–A8 are pending. See the verification record linked below.
 
 Animation Lab is an unlisted realm and a set of `openagents labs` commands
 where you take any character's animation apart, change it and put it back
@@ -26,6 +26,7 @@ Draconia, The Guardian").
 | Piece | Where | What it does today |
 | --- | --- | --- |
 | Animation documents (A0) | [Formats](anim-documents-v1.md), `aethyr/anim/*-document.coax` | Six bounded document readers, compiled-DNA admission, lossless private Echo/Slay conversion and shared source adapters; [verification](../verification/animation-lab-a0-2026-11-06/README.md) |
+| Rig and clip stations (A1) | `verse/animlab/`, `/worlds/animation-lab` | Neutral inspection, weights, shapes, scrub/play/step, skeleton ghosts and cached plots; [verification](../verification/animation-lab-a1-2026-11-06/README.md) |
 | Pose math | `aethyr/anim/pose.coax` | Quaternions, local poses, blending, the joint chain and the skinning palette |
 | Blend shapes | `aethyr/anim/morph.coax`, `morph-gpu.coax` | Sampled curves; sparse morph deltas applied on the GPU before skinning |
 | Face playback | `aethyr/anim/face.coax`, `face-pack.coax` | Plays face clips as morph weights plus face-bone overlays on a body pose; the EFC1 face pack format and its checks |
@@ -346,3 +347,12 @@ Recorded 2026-11-06 while implementing the milestones:
 
 The exact formats and admission limits are in
 [Animation documents v1](anim-documents-v1.md).
+
+A1 uses a neutral inspection material and skeleton ghosts. Its source bundle
+is limited to one rig, up to 64 clips and one immutable binary of at most
+64 MiB. A GPU mesh upload is at most 64 MiB. The browser and linker share
+an explicit 256 MiB memory declaration for this inspector; other pages keep
+64 MiB. These bounds retain the full Echo rig, all body and Slay face clips,
+and all eight influences without adding the source groom or texture cost.
+The frame budget is 33.3 ms. Headless phone viewport results use the Mac GPU;
+physical iPhone qualification is an owner action, recorded in the workspace.

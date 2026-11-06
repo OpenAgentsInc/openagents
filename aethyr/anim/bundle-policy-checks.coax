@@ -1,0 +1,24 @@
+#test "animation bundles bound all windows before borrowing document or pack bytes" {
+ b:[80]u8;anim_test_bundle(b[..]);#assert anim_bundle_valid(b[..]);
+ original:=b;for at:[8]int.[0,4,8,12,16,20,24,28] {b=original;anim_bundle_put(b[..],at,0xffffffff);#assert !anim_bundle_valid(b[..]);}
+ b=original;anim_bundle_put(b[..],32,40);#assert !anim_bundle_valid(b[..]);b=original;anim_bundle_put(b[..],32,38);#assert !anim_bundle_valid(b[..]);
+ #assert !anim_bundle_valid(b[0..<40]) && !anim_bundle_valid(b[0..<79]);
+ b=original;anim_bundle_put(b[..],16,0);#assert !anim_bundle_valid(b[..]);
+}
+#test "animation bundle profile endpoints are exact" {
+ #assert !anim_bundle_count(0) && anim_bundle_count(1) && anim_bundle_count(64) && !anim_bundle_count(65);
+ #assert !anim_bundle_size(40) && anim_bundle_size(41) && anim_bundle_size(67108864) && !anim_bundle_size(67108865);
+ b:[262190]u8;anim_bundle_put(b[..],0,0x31424c41);anim_bundle_put(b[..],4,262190);anim_bundle_put(b[..],8,1);anim_bundle_put(b[..],12,36);anim_bundle_put(b[..],16,1);anim_bundle_put(b[..],20,37);anim_bundle_put(b[..],24,262144);anim_bundle_put(b[..],28,262181);anim_bundle_put(b[..],32,9);#assert anim_bundle_valid(b[..]);anim_bundle_put(b[..],24,262145);#assert !anim_bundle_valid(b[..]);
+ b[0]=0;#assert !anim_bundle_valid(b[..]);
+}
+anim_bundle_put :: (b:[]u8,at:int,value:u32) #effects(all) {for k:0..<4 {b[at+k]=cast,trunc(u8)(value>>(k*8));}}
+anim_test_bundle :: (b:[]u8) #effects(all) {for k:0..<b.count {b[k]=0;}for value,k:[9]u32.[0x31424c41,80,1,36,2,38,3,41,39] {anim_bundle_put(b,k*4,value);}}
+
+#forall "animation bundle spans match positive contiguous bounded windows" size:1..<8,cursor:0..<8,first:0..<8,n:0..<9 {
+ #assert anim_bundle_window(size,cursor,first,n)==(first==cursor && n>0 && cursor+n<=size);
+}
+#test "animation bundle table and per-part budgets precede reads" {
+ #assert !anim_bundle_header_fits(540,64) && anim_bundle_header_fits(541,64) && !anim_bundle_header_fits(41,64);
+ #assert anim_bundle_part_limit(0,262145) && anim_bundle_part_limit(1,262144) && !anim_bundle_part_limit(1,262145) && !anim_bundle_part_limit(1,262146);
+ b:[41]u8;anim_bundle_put(b[..],0,0x31424c41);anim_bundle_put(b[..],4,41);anim_bundle_put(b[..],8,64);#assert !anim_bundle_valid(b[..]);
+}

@@ -1,0 +1,14 @@
+#load "../lib/json/json.coax";
+// Compare pixels and viewport, retaining the different producer identities in
+// the two receipts. The baseline must be explicitly recorded from its parent.
+anim_frame_report_same :: (baseline:string,actual:string)->bool {
+ an:[128]JvNode;bn:[128]JvNode;a:[1]Jv;b:[1]Jv;if !jv_parse(a[..],baseline,an[..]) || !jv_parse(b[..],actual,bn[..]) {return false;}
+ ah:=jv_get(a[0],0,"hashes");bh:=jv_get(b[0],0,"hashes");n:=jv_len(a[0],ah);if jv_kind(a[0],ah)!=JV_ARRAY || jv_kind(b[0],bh)!=JV_ARRAY || n<1 || n>6 || jv_len(b[0],bh)!=n {return false;}
+ for k:0..<n {x:=jv_at(a[0],ah,k);y:=jv_at(b[0],bh,k);if jv_kind(a[0],x)!=JV_STRING || jv_kind(b[0],y)!=JV_STRING || jv_raw(a[0],x)!=jv_raw(b[0],y) {return false;}}
+ av:=jv_get(a[0],0,"viewport");bv:=jv_get(b[0],0,"viewport");if jv_len(a[0],av)!=2 || jv_len(b[0],bv)!=2 {return false;}for k:0..<2 {x:=jv_int(a[0],jv_at(a[0],av,k),-1);y:=jv_int(b[0],jv_at(b[0],bv,k),-1);if x<1 || x!=y {return false;}}return true;
+}
+#test "animation frame reports compare every crop and viewport independently of engine code" {
+ a:="{\"engine\":\"old\",\"viewport\":[1280,800],\"hashes\":[\"a\",\"b\"]}";
+ #assert anim_frame_report_same(a,"{\"engine\":\"new\",\"viewport\":[1280,800],\"hashes\":[\"a\",\"b\"]}");
+ #assert !anim_frame_report_same(a,"{\"viewport\":[1280,800],\"hashes\":[\"a\",\"c\"]}") && !anim_frame_report_same(a,"{\"viewport\":[1280,800],\"hashes\":[\"a\"]}") && !anim_frame_report_same(a,"{\"viewport\":[390,844],\"hashes\":[\"a\",\"b\"]}") && !anim_frame_report_same(a,"{}");
+}

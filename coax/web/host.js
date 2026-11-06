@@ -270,7 +270,10 @@ let frames = 0;
 const probeDo = probe ? new URLSearchParams(location.search).get("do") || "" : "";
 
 // Grown at load to whatever the app's module declares (importedMemoryPages).
-const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024 }); // 8 MiB, at most 64 MiB
+// Coax's reviewed page declaration and wasm linker select the same ceiling.
+const memoryPages = Number(script?.dataset.memoryPages || 1024);
+if (!Number.isInteger(memoryPages) || memoryPages < 128 || memoryPages > 4096) throw new Error("invalid Coax memory declaration");
+const memory = new WebAssembly.Memory({ initial: 128, maximum: memoryPages });
 let engine = null;   // { exports, layout }
 let hostTransport = null, hostLifecycle = null, hostServices = null, reconnectAfterEngine = false;
 let socketQueues=null,lastSocketQueueRetired=null,socketDeliveryHeld=false,socketSendingHeld=false;

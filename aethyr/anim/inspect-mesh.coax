@@ -1,0 +1,24 @@
+// Neutral inspection mesh: skin8 vertices, indices and sparse GPU morphs.
+#load "sample.coax";
+ANIM_INSPECT_WORDS :: 16777216;
+anim_same_part :: (a:AnimPart,b:AnimPart)->bool {return a.pack==b.pack && a.offset==b.offset && a.count==b.count && a.stride==b.stride && a.width==b.width;}
+
+#test "inspection upload keeps eight weights indices and sparse shape deltas" {
+ text:[4096]u8;bytes:[452]u8;n:=anim_test_rig(text[..],bytes[..]);packs:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];rig:[1]AnimRig;#assert anim_rig_load(cast(string)text[0..<n],packs[..],rig[..])==0;
+ out:[1024]u32;draws:[256]u32;size:=anim_inspect_mesh(rig[0],packs[..],out[..],draws[..]);#assert size>0 && draws[1]==3 && draws[2]==0x80000000 && out[cast(int)draws[0]+2]==2 && out[16+13]==255;
+ #assert anim_inspect_mesh(rig[0],packs[..],out[0..<10],draws[..])== -1;
+}
+anim_inspect_mesh :: (r:AnimRig,packs:[]AnimPack,out:[]u32,draws:[]u32)->int {
+ bases:[64]int;pools:[64]int;vertices:=0;indices:=0;deltas:=0;
+ for s:0..<r.sections {pools[s]=s;for prev:0..<s {if anim_same_part(r.meshes[s].vertices,r.meshes[prev].vertices) {pools[s]=prev;break;}}
+  if pools[s]==s {bases[s]=vertices;vertices+=r.meshes[s].vertices.count;}else {bases[s]=bases[pools[s]];}indices+=r.meshes[s].indices.count;
+ }
+ for k:0..<r.morph_count {deltas+=r.morphs[k].data.count;}
+ vertex_at:=16;index_at:=vertex_at+vertices*26;delta_at:=index_at+indices;size:=delta_at+deltas*8;if size>out.count {return -1;}for k:0..<size {out[k]=0;}out[0]=cast(u32)vertex_at;
+ for s:0..<r.sections {p:=r.meshes[s].vertices;if pools[s]==s {b:=packs[p.pack].bytes;for v:0..<p.count {at:=vertex_at+(bases[s]+v)*26;for word:0..<24 {out[at+word]=anim_word(b,p.offset+v*p.stride+word*4);}}}}
+ for k:0..<r.morph_count {m:=r.morphs[k];p:=m.data;b:=packs[p.pack].bytes;for j:0..<p.count {v:=cast(int)anim_word(b,p.offset+j*p.stride);at:=vertex_at+(bases[m.section]+v)*26;out[at+25]+=1;}}
+ cursor:=delta_at;for v:0..<vertices {at:=vertex_at+v*26;out[at+24]=cast(u32)cursor;cursor+=cast(int)out[at+25]*8;out[at+25]=0;}
+ for k:0..<r.morph_count {m:=r.morphs[k];p:=m.data;b:=packs[p.pack].bytes;for j:0..<p.count {src:=p.offset+j*p.stride;v:=cast(int)anim_word(b,src);at:=vertex_at+(bases[m.section]+v)*26;dst:=cast(int)out[at+24]+cast(int)out[at+25]*8;out[dst]=cast(u32)m.shape;for word:0..<6 {out[dst+1+word]=anim_word(b,src+8+word*4);}out[at+25]+=1;}}
+ cursor=index_at;for s:0..<r.sections {p:=r.meshes[s].indices;b:=packs[p.pack].bytes;draws[s*4]=cast(u32)cursor;draws[s*4+1]=cast(u32)p.count;draws[s*4+2]=0x80000000+cast(u32)s;draws[s*4+3]=1;for k:0..<p.count {out[cursor+k]=anim_word(b,p.offset+k*p.stride)+cast(u32)bases[s];}cursor+=p.count;}
+ return size;
+}

@@ -5,6 +5,21 @@
 #authority;
 RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1; }
 
+// The document inspector retains its immutable source bundle and GPU upload
+// image together. Ordinary pages keep the existing 64 MiB Wasm ceiling.
+render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animationlab" then 4096 else 1024;}
+#test "only the document inspector requests the bounded larger Wasm memory" {
+  #assert render_memory_pages("animationlab")==4096;
+  for app:[4]string.["", "animationla", "animelab", "valleycanyon"] {#assert render_memory_pages(app)==1024;}
+}
+
+#test "Animation Lab binds its isolated inspection renderer to its exact producer" {
+  r:=render_adoption("animation-lab","animationlab");
+  #assert r.tracked_legacy && !r.shared && r.profile== -1;
+  #assert !render_adoption("animation-lab","animelab").tracked_legacy;
+  #assert !render_adoption("animation-la","animationlab").tracked_legacy;
+}
+
 #test "shared adoption binds each catalog slug to its actual producer" {
   for i: 0..<RENDER_CATALOG_COUNT {
     p := render_catalog(i); route := render_adoption(p.slug, p.app);
@@ -105,6 +120,7 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
 }
 #test "Valley world's source slice binds only its isolated initial renderer" {r:=render_adoption("valley-world","valleyworld");#assert r.tracked_legacy && !r.shared && r.profile== -1;#assert !render_adoption("valley-world","valleycanyon").tracked_legacy && !render_adoption("valley-worlds","valleyworld").tracked_legacy && !render_adoption("valley-canyon","valleyworld").tracked_legacy;}
 render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effects(all) {
+  if slug == "animation-lab" && app == "animationlab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "valley-world" && app == "valleyworld" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "valley-canyon" && app == "valleycanyon" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "valley-lab" && app == "valleylab" { return RenderAdoption.{tracked_legacy = true}; }

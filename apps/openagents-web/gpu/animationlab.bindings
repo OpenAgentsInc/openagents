@@ -1,0 +1,5 @@
+u 0 0 uniform 8
+sans_atlas 0 1
+sans_sampler 0 2
+geometry 1 0
+bones 1 1

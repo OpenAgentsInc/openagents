@@ -291,11 +291,15 @@ for pid in "${pids[@]}"; do wait "$pid"; done
 # The bounded package parser's 16,384 JSON nodes alone occupy 1 MiB.
 # Its measured wasm32 admission frame is 1,057,936 bytes; renderer frames
 # and shader validation also use bounded scratch. Keep their stack inside
-# the same 64 MiB imported-memory limit, with room for the measured chain.
+# the ordinary 64 MiB imported-memory limit. The Coax page declaration
+# below also bounds the document inspector's larger retained source image.
 stack_bytes=1048576
 [[ "$render" == 1 ]] && stack_bytes=4194304
+memory_pages="$(cd "$repo" && coax/web/tool.sh aethyr/render/page-render.coax --memory "$name")"
+max_memory=$((memory_pages * 65536))
+[[ "$memory_pages" == 1024 ]] || stack_bytes=4194304
 link=(--target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -mexec-model=reactor
-      -Wl,--import-memory,--max-memory=67108864,-z,stack-size="$stack_bytes",--export=__heap_base,--gc-sections,--strip-debug)
+      -Wl,--import-memory,--max-memory="$max_memory",-z,stack-size="$stack_bytes",--export=__heap_base,--gc-sections,--strip-debug)
 [[ -z "${COAX_FAST_EDIT:-}" || "${COAX_FAST_EDIT_ORACLE:-0}" == 1 ]] || link+=(-Wl,--export=fe_publish_offer)
 # A release's link still optimizes every unit together (full LTO), then
 # generates code in 8 parallel parts (#12938). Everglade 5e with its carrier
@@ -378,7 +382,7 @@ if [[ "$mode" != dev && -f "$budgets" ]]; then
   if [[ "$status" == 1 ]]; then
     echo "wasm.sh: $module's biggest parts:" >&2
     "$clang" --target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -mexec-model=reactor -o "$work/named.wasm" "${object_files[@]}" \
-      -Wl,--import-memory,--max-memory=67108864,-z,stack-size="$stack_bytes",--export=__heap_base,--gc-sections || true
+      -Wl,--import-memory,--max-memory="$max_memory",-z,stack-size="$stack_bytes",--export=__heap_base,--gc-sections || true
     (cd "$repo" && coax/web/tool.sh wasm-size report "$work/named.wasm" 25) >&2 || true
     echo "wasm.sh: (sizes before wasm-opt, by name.) Make it smaller, or raise its budget in the same commit and say why." >&2
   fi

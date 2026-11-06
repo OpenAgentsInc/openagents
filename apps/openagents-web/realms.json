@@ -469,7 +469,7 @@
         "description": "Explore a 250 metre Ancient World slice with Echo, 27,501 original placements and recovered source material maps.",
         "alt": "Echo walking through the original sandstone basin in Valley Lab",
         "style": "lowpoly", "clock": "fixed:0.5", "timing": true,
-        "golden": { "lit": 0.001, "settle": 1000, "blocks": 6 }, "assets": ["private:valley-world"]
+        "golden": { "lit": 0.001, "settle": 1000, "blocks": 6 }, "assets": ["private:valley-world", "storage:/private/valley-detail.page", "storage:/private/valley-detail-reference.page", "index:/private/valley-detail-spatial.page", "index:/private/valley-detail-spatial-reference.page", "data:/private/valley-detail.clusters"]
       } },
     { "id": "valleycanyon", "name": "VALLEY LAB CANYON PAIR", "kind": "open", "listed": false, "orbit": { "r": 0.4, "a": 3.4, "size": 0.02 },
       "realm": {
@@ -516,6 +516,15 @@
         "slot": "penultimate-frontier",
         "golden": { "lit": 0.01, "settle": 3000, "blocks": 6 },
         "assets": []
+      } },
+    { "id": "animationlab", "name": "ANIMATION LAB", "kind": "open", "listed": false, "orbit": { "r": 0.46, "a": 5.85, "size": 0.018 },
+      "realm": {
+        "slug": "animation-lab", "style": "lowpoly", "clock": "fixed:0.5",
+        "title": "Animation Lab", "description": "Inspect rigs, skin weights, shapes and animation clips on a neutral studio stage. Scrub, plot curves and compare ghost poses in Verse.",
+        "alt": "A character skeleton, skin weight colours and animation curves in a neutral studio",
+        "module": "animationlab", "slot": "animation-lab",
+        "golden": { "lit": 0.02, "settle": 3000, "blocks": 6 },
+        "assets": ["local:/private/animation-lab.bundle"]
       } }
 ]
 }
