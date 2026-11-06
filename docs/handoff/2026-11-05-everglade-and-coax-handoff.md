@@ -144,7 +144,11 @@ Books: #12610 stays open and paused. Approved books work is #12947 and the runna
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
 | #12845 | Completed: caller-owned session, command, replication, recipient-field, persistence and diagnostic contracts; Everglade adoption and input-authoritative Orbit v2. Policy gates kill all 900 mutants. Local/100/250 ms gameplay and raids, forest convergence, two real Orbit pages and signed 64-player load are recorded in [the verification record](../verification/aethyr-net-2026-11-06/README.md). The 100 ms hotbar result is replayed from its saved receipt after fixing bounded-report overflow. The unchanged baseline's offline bot-balance failure is retained explicitly. No production deploy; books remain paused. |
 | #12910 | Nostr chapter 104 on signet. Blocked on the signet faucet's captcha, which is in NEEDS_OWNER.md. |
-| #12718, #12833 | Epics. Close each when its children close. |
+| #12718, #12833 | Closed after the final #12845 delivery at `b930cb4cd9`. The [child-state audit](../verification/epic-child-closure-2026-11-06.json) checks all 33 #12718 children and all 38 #12833 children as closed, including formal sub-issues. It preserves each child's existing qualification scope. |
+| #12952, #12953 | Concurrent handle/effects work is in `oa-entity-handles`. Reconcile its current branch and `origin/main` before changing the same compiler or room code. |
+| #12954, #12955 | Remaining compiler transaction and persisted-compatibility work. |
+| #12959 | Next for this burn-down agent: seeded Aethyr/Rapier/Jolt Physics Lab. Reference engines stay in an ignored lab cache; Psionic remains reference-only. |
+| #12962 | Concurrent Echo facial-animation work is in `oa-echo-slay-face`; reconcile its current delivery before taking it. |
 | #12610 | The book epic, paused by the owner. |
 | #12864–#12867 | Excluded; left for Codex. |
 

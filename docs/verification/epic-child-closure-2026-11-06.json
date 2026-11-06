@@ -1,0 +1,305 @@
+{
+  "checked_at_chicago": "2026-11-06 04:23 CST (America/Chicago)",
+  "source_commit": "b930cb4cd9dc606e25147e335d8ab23668351f3e",
+  "method": "GitHub issue task-list children plus formal sub-issues; issue states read through the GitHub API.",
+  "epics": [
+    {
+      "issue": 12833,
+      "child_count": 38,
+      "all_closed": true,
+      "children": [
+        {
+          "number": 12721,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12746,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12776,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12778,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12784,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12789,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12792,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12793,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12794,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12795,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12796,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12797,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12834,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12835,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12836,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12837,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12838,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12839,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12840,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12841,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12842,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12843,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12844,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12845,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12846,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12847,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12848,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12849,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12850,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12851,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12852,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12853,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12854,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12855,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12856,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12857,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12858,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12859,
+          "state": "CLOSED"
+        }
+      ]
+    },
+    {
+      "issue": 12718,
+      "child_count": 33,
+      "all_closed": true,
+      "children": [
+        {
+          "number": 12705,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12706,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12707,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12708,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12709,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12710,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12711,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12712,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12713,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12714,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12715,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12716,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12717,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12773,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12774,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12775,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12776,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12777,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12778,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12834,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12835,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12836,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12837,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12838,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12839,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12840,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12841,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12842,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12843,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12844,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12845,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12846,
+          "state": "CLOSED"
+        },
+        {
+          "number": 12859,
+          "state": "CLOSED"
+        }
+      ]
+    }
+  ]
+}
