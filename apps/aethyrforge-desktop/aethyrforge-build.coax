@@ -158,7 +158,7 @@ tool_main :: () -> int #export_c #effects(all) {
   }
   worker_wasm:=af_path(p[..],root,"apps/openagents-web/build/everglade-room.wasm");
   if fs_mtime_ns(worker_wasm)<newest {
-    cmd:=[2]string.["bash",af_path(p[..],root,"coax/web/room/worker.sh")];worker_job=af_start(cmd[..]);if worker_job<0 {return 1;}
+    cmd:=[3]string.[af_path(p[..],root,"coax/web/tool.sh"),af_path(p[..],root,"coax/web/room/worker.coax"),worker_wasm];worker_job=af_start(cmd[..]);if worker_job<0 {return 1;}
   }
   if !af_finish(room_job, deadline) { if page_job >= 0 { released := proc_release(page_job); }if worker_job>=0 {released:=proc_release(worker_job);} return 1; }
   if !af_finish(page_job, deadline) { return 1; }
