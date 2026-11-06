@@ -18,7 +18,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { execFileSync } from "node:child_process"
 import { LOADER_CSS, loaderMarkup } from "./loader.js"
-import { brief, renderedCard } from "./og"
+import { brief, renderedCard, DEFAULT_IMAGE } from "./og"
 
 const SITE = join(import.meta.dir, "../../apps/openagents-web")
 let renderProfiles: Map<string, number> | undefined
@@ -270,7 +270,7 @@ export function page(r: Realm, isListed = true): string {
   const url = `https://openagents.com/worlds/${r.slug}`, t = esc(r.title), d = esc(r.description), share = esc(r.share ?? brief(r.description))
   // its link preview (docs/web/og-tags.md): its hand-made card, else the one og-render.ts renders from a still of it
   const card = `https://openagents.com${r.card ?? renderedCard(`realms/${r.slug}`)}`
-  const alt = esc(r.card ? r.alt : `${r.title}: a still of the world, with its name`)
+  const alt = esc(r.card === DEFAULT_IMAGE ? "OpenAgents" : r.card ? r.alt : `${r.title}: a still of the world, with its name`)
   const slot = ` data-realm="${r.slug}" data-slot="${r.slot}"` + (r.slot_was ? ` data-slot-was="${r.slot_was}"` : "")
     + (r.page ? ` data-page="${r.page}"` : "")
     + (r.voice ? ` data-voice="${r.voice}"` : "")

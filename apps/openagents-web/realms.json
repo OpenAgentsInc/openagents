@@ -456,7 +456,7 @@
     { "id": "valley-lab", "name": "VALLEY LAB", "kind": "open", "listed": false,
       "orbit": { "r": 0.43, "a": 3.5, "size": 0.02 },
       "realm": {
-        "slug": "valley-lab", "title": "Valley Lab", "module": "valleylab", "slot": "valley-lab",
+        "slug": "valley-lab", "title": "Valley Lab", "module": "valleylab", "slot": "valley-lab", "card": "/og/default.jpg",
         "description": "An unlisted Coax/Aethyr workbench: walk the basin, inspect an original content-hashed rock, and compare full-detail indexed geometry, normals, lighting and depth.",
         "alt": "An original sandstone boulder and measured bounds in Valley Lab asset and mesh stations",
         "style": "lowpoly", "clock": "fixed:0.5", "timing": true,
