@@ -13,6 +13,17 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.51.1 — Preserved Capacity Diagnostics — 2026-11-05
+
+Commit: pending
+
+- Preserve near-limit capacity facts in whole-program authority cache records
+  and render the same text or JSON notes on a cache hit. The near-limit
+  threshold participates in cache identity.
+- Rerun checks that produce notes after source edits so consumers and source
+  locations stay current. Quiet checks still use per-check reuse. Corrupt or
+  incomplete private diagnostic records fall back to fresh checks.
+
 ## 0.51.0 — Nominal integer identities — 2026-11-05
 
 Commit: [`0265cd16df9f86dc8ca9bcbc670f51d782e3eec6`](https://github.com/OpenAgentsInc/openagents/commit/0265cd16df9f86dc8ca9bcbc670f51d782e3eec6)

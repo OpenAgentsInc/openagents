@@ -1076,8 +1076,8 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
   const size_t frozen = file->frozen_values.size();
   const int64_t pending = defaults_pending(file);
   enum { MAGIC, PASSED, STEPS, CASES, BUDGET, SECONDS, PEAK_SLOTS, PEAK_CONTAINERS, PEAK_STRINGS,
-         END_SLOTS, END_CONTAINERS, END_STRINGS, SHARED, EXECUTED, FIELDS };
-  static constexpr uint64_t REPORT = 0x636f61782d636b31ULL;  // "coax-ck1"
+         END_SLOTS, END_CONTAINERS, END_STRINGS, SHARED, DIAGNOSTICS, EXECUTED, FIELDS };
+  static constexpr uint64_t REPORT = 0x636f61782d636b32ULL;  // "coax-ck2"
   struct Child { pid_t pid; int fd; size_t index; std::string bytes; };
   std::vector<Child> running;
   std::vector<std::vector<uint64_t>> reports(n);
@@ -1185,6 +1185,9 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
       report[END_CONTAINERS] = memory.containers;
       report[END_STRINGS] = memory.string_bytes;
       report[SHARED] = file->frozen_values.size() != frozen || defaults_pending(file) != pending;
+      report[DIAGNOSTICS] = !r.near.empty() || capacity_near(memory.peak_slots, memory.slot_limit) ||
+                            capacity_near(memory.peak_containers, memory.container_limit) ||
+                            capacity_near(memory.string_peak_bytes, CB_string_live_limit());
       report[EXECUTED] = r.executed.size();
       for (size_t i = 0; i < r.executed.size(); i++) report[FIELDS + i] = (uint64_t)(uintptr_t)r.executed[i];
       const char *at = (const char *)report.data();
@@ -1254,7 +1257,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
       if (check_ids[i].empty()) continue;
       const auto old = record.entries.find(check_ids[i]);
       const std::vector<uint64_t> &report = reports[i];
-      if (prefilled[i] || report.empty() || !report[PASSED] || report[SHARED]) {
+      if (prefilled[i] || report.empty() || !report[PASSED] || report[SHARED] || report[DIAGNOSTICS]) {
         if (old != record.entries.end()) kept.entries[check_ids[i]] = old->second;
         continue;
       }
@@ -1293,7 +1296,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
   // with what every check before it left behind.
   std::set<const ProcDecl *> procedures(file->procs.begin(), file->procs.end());
   int64_t extra_slots = 0, extra_containers = 0, extra_strings = 0;
-  bool left = false, failed = false;
+  bool left = false, failed = false, diagnostics = false;
   out->assign(n, PassedCheck{});
   for (size_t i = 0; i < n; i++) {
     const std::vector<uint64_t> &report = reports[i];
@@ -1311,6 +1314,9 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
     extra_containers += dc;
     extra_strings += db;
     if (!report[PASSED]) { failed = true; continue; }
+    // A note needs the current source's detailed consumers. Rerun this check
+    // in the parent and keep only quiet checks in the per-check cache.
+    if (report[DIAGNOSTICS]) { diagnostics = true; continue; }
     PassedCheck &passed = (*out)[i];
     passed.passed = true;
     passed.steps = report[STEPS];
@@ -1325,6 +1331,7 @@ static bool parallel_checks(File *file, uint64_t max_steps, std::vector<PassedCh
   }
   // A failing check runs again here, after none of the others; that is where
   // a sequential run would start it only when no check left anything behind.
+  if (diagnostics && left) return sequential("a diagnostic check follows retained storage");
   if (failed && left) return sequential("a check failed after checks left storage behind");
   g_timings.parallel = "parallel: " + std::to_string(n) + " checks, " + std::to_string(jobs) + " jobs";
   return true;

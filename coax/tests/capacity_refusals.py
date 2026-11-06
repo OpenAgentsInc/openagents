@@ -66,7 +66,7 @@ class CapacityRefusals(unittest.TestCase):
         self.path.write_text(source)
         environment = dict(os.environ)
         environment.pop('COAX_NEAR_LIMIT', None)
-        # A fresh check cache each run: a cached verdict runs no checks, so it reports no use.
+        # Isolate each refusal/threshold probe from other scenarios.
         environment['COAX_CHECK_CACHE'] = tempfile.mkdtemp(dir=self.tmp.name)
         environment.update(env or {})
         return subprocess.run([str(COMPILER), command, str(self.path), *args], text=True, capture_output=True,
@@ -162,7 +162,7 @@ class CapacityRefusals(unittest.TestCase):
         self.near('check', STEPS, 'compile-time steps', '--run-steps', str(used * 2), env={'COAX_NEAR_LIMIT': '40'})
 
     def test_check_steps_near_limit_from_a_parallel_check(self):
-        """#authority checks run in child processes report only their totals: the note names the check."""
+        """A near-limit child refreshes detailed consumers in the parent."""
         source = ('#authority;\n'
                   'spin :: (n: int) -> int { s := 0; for i: 0..<n { s += i; } return s; }\n'
                   '#test "heavy" #steps 40000 { #assert spin(8000) > 0; }\n'
@@ -172,9 +172,136 @@ class CapacityRefusals(unittest.TestCase):
         capacity = self.near('check', source, 'compile-time steps', '--timings', str(timings), env={'COAX_CHECK_JOBS': '2'})
         self.assertNotIn('sequential', json.loads(timings.read_text())['parallel_checks'])
         self.assertEqual(capacity['limit'], 40000)
-        self.assertEqual(capacity['consumers'][0]['what'], "#test 'heavy'")
-        self.assertEqual(capacity['consumers'][0]['span']['line'], 3)
-        self.assertIn("coax test --only 'heavy'", capacity['suggestion'])
+        self.assertEqual(capacity['consumers'][0]['what'], "in 'spin'")
+        self.assertEqual(capacity['consumers'][0]['span']['line'], 2)
+        self.assertIn("do less work in 'spin'", capacity['suggestion'])
+
+    def cache_compile(self, source, cache, name, *args, jobs=2, expected=0):
+        self.path.write_text(source)
+        timing = Path(self.tmp.name) / (name + '.json')
+        env = dict(os.environ, COAX_CHECK_CACHE=str(cache), COAX_CHECK_JOBS=str(jobs),
+                   COAX_JOBS_QUIET='1')
+        env.pop('COAX_NEAR_LIMIT', None)
+        r = subprocess.run([str(COMPILER), 'c', str(self.path), '--timings', str(timing), *args],
+                           text=True, capture_output=True, timeout=120, env=env)
+        self.assertEqual(r.returncode, expected, r.stderr)
+        return r, json.loads(timing.read_text())
+
+    def test_authority_near_notes_survive_whole_and_check_reuse(self):
+        # Two checks force the parallel path. Editing only the quiet check's
+        # procedure misses the whole verdict while preserving other inputs.
+        source = ('#authority;\n'
+                  'spin :: (n: int) -> int { s := 0; for i: 0..<n { s += i; } return s; }\n'
+                  'quiet :: () -> int { return 7; }\n'
+                  '#test "heavy" #steps 40000 { #assert spin(8000) > 0; }\n'
+                  '#test "quiet" { #assert quiet() == 7; }\n'
+                  '#test "reusable" { #assert spin(3) == 3; }\n'
+                  'main :: () {}\n')
+        for rich in (False, True):
+            with self.subTest(rich=rich):
+                args = ('--diagnostics', 'json') if rich else ()
+                cache = Path(self.tmp.name) / ('cache-' + str(rich))
+                cold, ct = self.cache_compile(source, cache, 'cold', *args)
+                self.assertIn('compile-time steps:', cold.stderr)
+                warm, wt = self.cache_compile(source, cache, 'warm', *args)
+                self.assertEqual(wt['authority_checks'], {'cached': 1, 'checked': 0})
+                self.assertEqual((warm.stdout, warm.stderr), (cold.stdout, cold.stderr))
+                edited = '// moved\n\n' + source.replace('return 7;', 'return 3 + 4;')
+                reused, rt = self.cache_compile(edited, cache, 'edited', *args)
+                fresh, ft = self.cache_compile(edited, Path(self.tmp.name) / ('fresh-' + str(rich)), 'fresh', *args)
+                self.assertGreater(rt['check_reuse']['reused'], 0)
+                self.assertEqual((reused.stdout, reused.stderr), (fresh.stdout, fresh.stderr))
+                # Moving the declaration must not replay the original line.
+                if rich:
+                    notes = [json.loads(x) for x in reused.stderr.splitlines()]
+                    note = next(x for x in notes if x.get('capacity', {}).get('resource') == 'compile-time steps')
+                    self.assertEqual(note['capacity']['consumers'][0]['span']['line'], self.line_of(edited, 'spin ::'))
+
+    def test_authority_traversal_and_storage_notes_match_one_job_and_reuse(self):
+        for source, resource, args in [
+                ('#authority;\n' + GAME, 'compile-time traversal work', ('--traversal', '2600000')),
+                ('#authority;\n' + SLOTS, 'compile-time value slots', ('--slots', '100000'))]:
+            # An independently passing check makes parallel execution eligible.
+            source += '#test "tiny" { #assert true; }\n'
+            with self.subTest(resource=resource):
+                for rich in (False, True):
+                    flags = args + (('--diagnostics', 'json') if rich else ())
+                    tag = resource.split()[-1] + str(rich)
+                    cache = Path(self.tmp.name) / ('cache-' + tag)
+                    cold, _ = self.cache_compile(source, cache, 'cold-' + tag, *flags)
+                    one, _ = self.cache_compile(source, Path(self.tmp.name) / ('one-' + tag), 'one-' + tag, *flags, jobs=1)
+                    self.assertIn(resource + ':', cold.stderr)
+                    self.assertEqual(cold.stderr, one.stderr)
+                    warm, wt = self.cache_compile(source, cache, 'warm-' + tag, *flags)
+                    self.assertEqual(wt['authority_checks'], {'cached': 1, 'checked': 0})
+                    self.assertEqual(warm.stderr, cold.stderr)
+
+    def test_authority_note_threshold_and_corrupt_record_are_cache_inputs(self):
+        source = ('#authority;\n'
+                  'spin :: (n: int) -> int { s := 0; for i: 0..<n { s += i; } return s; }\n'
+                  '#test "heavy" #steps 40000 { #assert spin(8000) > 0; }\n'
+                  'main :: () {}\n')
+        cache = Path(self.tmp.name) / 'threshold-cache'
+        quiet, _ = self.cache_compile(source, cache, 'high', '--near-limit', '95')
+        self.assertNotIn('note[E0400]', quiet.stderr)
+        loud, lt = self.cache_compile(source, cache, 'low', '--near-limit', '75')
+        self.assertIn('note[E0400]', loud.stderr)
+        warm, wt = self.cache_compile(source, cache, 'low-warm', '--near-limit', '75')
+        self.assertEqual(loud.stderr, warm.stderr)
+        # A partial private record cannot publish a partial diagnostic replay.
+        records = [p for p in cache.iterdir() if p.read_bytes().startswith(b'coax.authority-check.v2\n')]
+        self.assertTrue(records)
+        for p in records:
+            data = p.read_bytes(); p.write_bytes(data[:len(data) // 2])
+        repaired, rt = self.cache_compile(source, cache, 'repaired', '--near-limit', '75')
+        self.assertEqual(rt['authority_checks'], {'cached': 0, 'checked': 1})
+        self.assertEqual(repaired.stderr, loud.stderr)
+
+    def test_authority_note_cache_renders_each_format_from_the_same_facts(self):
+        source = ('#authority;\n'
+                  'spin :: (n: int) -> int { s := 0; for i: 0..<n { s += i; } return s; }\n'
+                  '#test "quoted \\"title\\" and \\\\ slash" #steps 40000 { #assert spin(8000) > 0; }\n'
+                  'main :: () {}\n')
+        cache = Path(self.tmp.name) / 'formats'
+        silent, _ = self.cache_compile(source, cache, 'one-line', '--json')
+        self.assertEqual(silent.stderr, '')
+        text, tt = self.cache_compile(source, cache, 'text')
+        self.assertEqual(tt['authority_checks'], {'cached': 1, 'checked': 0})
+        self.assertIn('note[E0400]', text.stderr)
+        rich, rt = self.cache_compile(source, cache, 'rich', '--diagnostics', 'json')
+        self.assertEqual(rt['authority_checks'], {'cached': 1, 'checked': 0})
+        fresh, _ = self.cache_compile(source, Path(self.tmp.name) / 'fresh-formats', 'fresh-rich', '--diagnostics', 'json')
+        self.assertEqual(rich.stderr, fresh.stderr)
+        self.assertTrue(json.loads(rich.stderr)['capacity']['consumers'])
+
+    def test_authority_cache_preserves_peak_facts_from_an_earlier_phase(self):
+        # A compile-phase allocation can exceed the later checks' smaller
+        # slot budget without the checks ever exceeding their live budget.
+        (Path(self.tmp.name) / 'make.coax').write_text(
+            'make :: () -> int { a: [200] u8; return cast(int) a[0]; }\n')
+        source = ('#authority;\n#load "make.coax";\n'
+                  'X :: #run make();\n'
+                  '#test "tiny" { #assert X == 0; }\nmain :: () {}\n')
+        cache = Path(self.tmp.name) / 'earlier-peak'
+        cold, ct = self.cache_compile(source, cache, 'peak-cold', '--slots', '100')
+        peak = next(x for x in ct['capacities'] if x['name'] == 'compile-time value slots')
+        self.assertGreater(peak['used'], peak['limit'])
+        warm, wt = self.cache_compile(source, cache, 'peak-warm', '--slots', '100')
+        self.assertEqual(wt['authority_checks'], {'cached': 1, 'checked': 0})
+        self.assertEqual(warm.stderr, cold.stderr)
+
+    def test_failed_note_check_keeps_an_older_quiet_reuse_entry(self):
+        source = ('#authority;\n'
+                  '#test "table" { a: [4000] u8; #assert a[0] == 0; }\n'
+                  '#test "a" { #assert true; }\n#test "b" { #assert true; }\n'
+                  'main :: () {}\n')
+        cache = Path(self.tmp.name) / 'quiet-before-failure'
+        self.cache_compile(source, cache, 'before-failure', '--slots', '10000')
+        broken = source.replace('[4000]', '[9000]').replace('a[0] == 0', 'a[0] == 1')
+        self.cache_compile(broken, cache, 'failure', '--slots', '10000', expected=1)
+        restored, rt = self.cache_compile('// restored\n' + source, cache, 'restored', '--slots', '10000')
+        self.assertEqual(rt['check_reuse']['reused'], 3)
+        self.assertEqual(restored.stderr, '')
 
     def test_near_limit_option_is_validated(self):
         for value in ('0', '101', '', 'x', '7.5'):

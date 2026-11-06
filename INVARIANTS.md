@@ -5048,8 +5048,11 @@ profile, library mode, Metal or CUDA), every unit's canonical path and
 SHA-256, the SHA-256 of the whole input after `#import_proto`, and which
 units' checks were left out as libraries. A failed check, or any error during
 the checks, is never recorded, so a failing program runs its checks and
-reports the same diagnostics every time; a passing one prints nothing either
-way, so a reused and a run pass give the same output, exit status and C.
+reports the same diagnostics every time. A passing record keeps frozen capacity
+facts and replays the same near-limit notes, so a reused and a run pass give
+the same output, exit status and C. The near-limit threshold participates in
+the key; text, rich JSON and quiet one-line JSON render from the same facts.
+The private v2 record publishes nothing until its full payload validates.
 `coax test`, `mutate` and `--evidence` always run the checks. The build-only
 stage0 can't hash itself and records nothing. The cache is local trusted
 state, not a signature: anyone who can write it can make a compile skip
@@ -5101,6 +5104,16 @@ behind within the limit, and past `--slots 40000` only sequentially: each
 gives the same stdout, stderr, exit status and per-check steps sequentially
 and in parallel, and the last falls back to sequential).
 
+A child that observes near-limit steps, traversal or storage does not stand
+in for that check's diagnostic details: the parent reruns that check and
+collects its current consumers and source spans. Such checks are omitted
+from per-check reuse records; quiet checks remain reusable. If earlier
+checks retain storage, the diagnostic path falls back to the sequential
+plan. Whole-program reuse still replays the completed capacity facts.
+Checks: `coax/tests/capacity_refusals.py` compares cold, warm, edited and
+moved-source diagnostics in text and rich JSON, one and multiple workers,
+threshold changes, cross-format reuse and incomplete private records.
+
 Check: `coax/tests/authority-cache.coax` (a second check reuses the pass and
 prints what the first printed; `coax c` gives the same C either way; a changed
 loaded unit, `#run_steps`, `--run-steps`, build profile or compiler binary
@@ -5146,7 +5159,9 @@ most `$COAX_CHECK_CACHE_FILES` (4096) records and `$COAX_CHECK_CACHE_BYTES`
 
 Check: `coax/tests/check-reuse.coax`. An edited procedure, constant,
 compile-time-run procedure or called signature runs only the checks that
-reach it. A body no check runs, or a moved declaration, runs nothing.
+reach it. A body no check runs, or a moved declaration, runs no quiet check again.
+Checks that produce capacity notes run again after edits to refresh their
+diagnostic locations.
 Options and the compiler binary run every check. A failure is never
 recorded, and putting the source back reuses the earlier pass. Coverage
 holds from reused checks, `coax test` runs every check, and the cache stays

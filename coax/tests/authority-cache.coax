@@ -65,7 +65,7 @@ tool_main :: () -> int #export_c {
   if dir[dir.count - 1] == '\n' { dir = cast(string) dir_out[0..<r.out_n - 1]; }
 
   // The first check runs the checks and records the pass; the second reuses it.
-  r = run(compiler, dir, "chk cold cache check tests/authority-cache/ok.coax; chk warm cache check tests/authority-cache/ok.coax; cat \"$D\"/cache/* | grep -c 'authority checks pass'", out[..]);
+  r = run(compiler, dir, "chk cold cache check tests/authority-cache/ok.coax; chk warm cache check tests/authority-cache/ok.coax; cat \"$D\"/cache/* | grep -c '^coax.authority-check.v2$'", out[..]);
   t := cast(string) out[0..<r.out_n];
   bad += check(has(t, "cold status=0 cached=0 checked=1\nwarm status=0 cached=1 checked=0\n1"), "the first check runs the checks and records the pass; the second reuses it");
   r = run(compiler, dir, "cat \"$D/cold.c\" \"$D/cold.err\" > \"$D/cold.all\"; cat \"$D/warm.c\" \"$D/warm.err\" > \"$D/warm.all\"; cmp \"$D/cold.all\" \"$D/warm.all\" && echo same", out[..]);

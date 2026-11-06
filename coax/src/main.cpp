@@ -314,6 +314,51 @@ void capacity_use(const char *name, const char *code, uint64_t used, uint64_t li
   if (!c.limit || (unsigned __int128)used * c.limit > (unsigned __int128)c.used * limit) c = {code, used, limit, std::move(detail)};
 }
 void capacity_use(const char *name, const char *code, uint64_t used, uint64_t limit) { capacity_use(name, code, used, limit, CapacityDetail{}); }
+// Whole-program verdicts keep frozen capacity facts, not rendered stderr.
+// The source key is exact; the same facts render in text or rich JSON.
+static std::string authority_capacity_record() {
+  std::ostringstream out;
+  out << "coax.authority-check.v2\n" << g_capacity.size() << '\n';
+  for (const auto &[name, c] : g_capacity) {
+    out << std::quoted(name) << ' ' << std::quoted(c.code) << ' ' << c.used << ' ' << c.limit << ' '
+        << std::quoted(c.detail.unit) << ' ' << std::quoted(c.detail.fix) << ' ' << c.detail.consumers.size() << '\n';
+    for (const auto &v : c.detail.consumers)
+      out << std::quoted(v.what) << ' ' << v.amount << ' ' << std::quoted(v.at) << ' '
+          << std::quoted(v.span_json) << ' ' << std::quoted(v.place_json) << '\n';
+  }
+  return out.str();
+}
+static bool authority_restore_capacity(const std::string &record) {
+  static const std::string schema = "coax.authority-check.v2\n";
+  if (record.size() > 8 * 1024 * 1024 || record.compare(0, schema.size(), schema) != 0) return false;
+  std::istringstream in(record.substr(schema.size()));
+  size_t count = 0;
+  if (!(in >> count) || count > 32) return false;
+  std::map<std::string, CapacityUse> saved;
+  for (size_t i = 0; i < count; ++i) {
+    std::string name;
+    CapacityUse c;
+    size_t consumers = 0;
+    if (!(in >> std::quoted(name) >> std::quoted(c.code) >> c.used >> c.limit >> std::quoted(c.detail.unit)
+             >> std::quoted(c.detail.fix) >> consumers) || name.empty() || !c.limit ||
+        consumers > CAPACITY_TOP || saved.count(name)) return false;
+    for (size_t k = 0; k < consumers; ++k) {
+      CapacityConsumer v;
+      if (!(in >> std::quoted(v.what) >> v.amount >> std::quoted(v.at) >> std::quoted(v.span_json) >> std::quoted(v.place_json))) return false;
+      c.detail.consumers.push_back(std::move(v));
+    }
+    saved.emplace(std::move(name), std::move(c));
+  }
+  in >> std::ws;
+  if (!in.eof()) return false;
+  // Publish only a complete record. These details are already frozen: do not
+  // call freeze_detail again, which would replace their JSON spans with null.
+  for (auto &[name, c] : saved) {
+    auto &now = g_capacity[name];
+    if (!now.limit || (unsigned __int128)c.used * now.limit > (unsigned __int128)now.used * c.limit) now = std::move(c);
+  }
+  return true;
+}
 static std::string capacity_text(const std::string &name, const CapacityUse &c) {
   const uint64_t percent = (uint64_t)((unsigned __int128)c.used * 100 / c.limit);
   const uint32_t near = capacity_near_percent();
@@ -1421,7 +1466,7 @@ static bool library_check_finish(pid_t pid) {
 // #import_proto, and which units' checks library_units left out. A later
 // compile with the same key skips run_compilation_checks. A failure is never
 // recorded, so a failing program runs its checks, and reports the same
-// diagnostics, every time; a passing one prints nothing either way. coax test,
+// diagnostics, every time. A passing record also replays its capacity facts. coax test,
 // mutate and an --evidence record always run the checks.
 // The compiler and the options that change checking, as a key's first lines
 // ("" when this compiler can't hash itself).
@@ -1431,7 +1476,7 @@ static std::string authority_options(const File *file, const EmitOptions &opts) 
   return compiler + "\n" + "run_steps=" + std::to_string(file->run_steps) + " option_steps=" + std::to_string(opts.run_steps) +
          " given=" + std::to_string(opts.run_steps_given) + " development=" + std::to_string(opts.development) +
          " wrapping=" + std::to_string(opts.wrapping) + " profile=" + std::to_string(opts.profile_identity) +
-         " library=" + std::to_string(file->library) + " metal=" + std::to_string(opts.metal) + " cuda=" +
+         " near=" + std::to_string(capacity_near_percent()) + " library=" + std::to_string(file->library) + " metal=" + std::to_string(opts.metal) + " cuda=" +
          std::to_string(opts.cuda) + " metal_compute=" + std::to_string(opts.metal_compute) +
          " quantity_device=" + std::to_string(opts.quantity_device) + " check_slots=" +
          std::to_string(g_check_slots ? g_check_slots : CB_test_slot_limit()) +
@@ -1440,7 +1485,7 @@ static std::string authority_options(const File *file, const EmitOptions &opts) 
 static std::string authority_key(const Source *src, const File *file, const EmitOptions &opts, const std::vector<bool> &dropped) {
   const std::string options = authority_options(file, opts);
   if (options.empty()) return "";
-  std::string text = "coax.authority-check.v1\n" + options;
+  std::string text = "coax.authority-check.v2\n" + options;
   for (size_t u = 0; u < src->units.size(); u++) {
     const SourceUnit &unit = *src->units[u];
     const std::string sha = debug_source_hash(unit.text);
@@ -1457,11 +1502,10 @@ static std::string authority_key(const Source *src, const File *file, const Emit
 // its keys start with the compiler, the options and the left-out units.
 static bool authority_checks(const Source *src, File *file, const EmitOptions &opts, const std::vector<bool> &dropped, bool mutation_lowering,
                              const std::vector<Token> &tokens) {
-  static const char PASSED[] = "authority checks pass\n";
   const std::string key = mutation_lowering || !g_evidence.path.empty() ? "" : authority_key(src, file, opts, dropped);
   const std::string dir = library_cache_dir();
   std::string record;
-  if (!key.empty() && read_record(dir + "/" + key, &record) && record == PASSED) {
+  if (!key.empty() && read_record(dir + "/" + key, &record) && authority_restore_capacity(record)) {
     cache_touch(dir + "/" + key);
     g_authority_cached++;
     return true;
@@ -1480,7 +1524,7 @@ static bool authority_checks(const Source *src, File *file, const EmitOptions &o
   g_check_reuse.on = false;
   g_check_reuse.tokens = nullptr;
   g_authority_checked++;
-  if (ok && g_error_count == errors) cache_record(dir, key, PASSED);
+  if (ok && g_error_count == errors) cache_record(dir, key, authority_capacity_record());
   return ok;
 }
 

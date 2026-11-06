@@ -168,6 +168,12 @@ whole percent from 1 to 100. Notes do not enlarge limits. Structured
 
 ## What remains planned
 
+An unchanged authority compile replays its near-limit notes from the cached
+capacity facts. Changing the threshold selects another cache entry. After
+source edits, checks that produce notes run again so their consumers point
+to the current source; quiet checks still use per-check reuse. Cache reuse
+does not suppress a capacity note.
+
 R22's five kernel/startup cases are first compile, cached load, scene rebuild,
 runtime parameter edit and structural edit. General content-keyed kernel
 reuse and target-specific budgets still need consumer qualification.
