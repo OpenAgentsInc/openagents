@@ -304,3 +304,22 @@ groom's light comes from. Crown means, sRGB:
   sample's blonde hair colours (`MI_Hair_Cards_Blonde`: darkened root, mid and
   tip blended at its 0.55 root-tip bias, its straition colour on 15% of
   strands). It works in the shot, the face view and the inspect view.
+
+### Frame cost
+
+The first version of the hair term and the hand capsules ran per pixel and
+cut the frame rate to a third. Headless Chrome at 1280x800, DPR 2:
+
+| Shader | Walk | Face | Shot |
+|---|---|---|---|
+| Before the capsules and hair term | 7.4 fps | 20.4 | 6.9 |
+| Per-pixel capsules and per-light LUT tables | 1.8 | 6.2 | 2.0 |
+| Per-vertex capsules and LUT averages, fitted LUT | 7.1 | 19.9 | 6.4 |
+
+- The capsule visibility and the LUT averages now come from the vertex
+  shader. The averages are sampled at the view angle, not at each light's
+  angle as UE does.
+- The LUT is evaluated as a fitted polynomial (within 0.0007 of every entry
+  above the first absorption row); `hair-lut.txt` keeps the table.
+- The pictures match the per-pixel version within 2 levels on the hair and
+  4 on the fully white finger count.
