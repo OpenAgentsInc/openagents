@@ -1,0 +1,24 @@
+#load "world-preview-observed.coax";
+#authority;
+#test "actual preview needs both rendered connected hosts and released old and final ownership" {
+ q:=fwp_receipt_good();#assert fwp_accept(q[..],"Check as Players See It","Return to Native World");
+ #assert !fwp_accept(q[0..<25],"Check as Players See It","Return to Native World");
+ #assert !fwp_accept(q[..],"check as Players See It","Return to Native World");
+ #assert !fwp_accept(q[..],"Check as Players See It","Return to Native World ");
+ extra:[27]int;for i:0..<26 {extra[i]=q[i];}#assert !fwp_accept(extra[..],"Check as Players See It","Return to Native World");
+ q[1]=1;q[16]=1;q[3]=3;q[13]=3;q[18]=3;#assert fwp_accept(q[..],"Check as Players See It","Return to Native World");
+ q[3]=-1;q[13]=-1;q[18]=-1;#assert !fwp_accept(q[..],"Check as Players See It","Return to Native World");
+}
+fwp_accept :: (q:[]int,menu:string,back:string)->bool #export_c {
+ return q.count==26 && menu=="Check as Players See It" && back=="Return to Native World"
+ && q[0]==1 && q[1]>0 && q[2]==2 && q[3]>=0 && q[4]==1 && q[5]==1
+ && q[6]==0 && q[7]==0 && q[8]==0 && q[9]==1 && q[10]==1 && q[11]==1
+ && q[12]==2 && q[13]==q[3] && q[14]==1 && q[15]==1 && q[16]>0
+ && q[17]==2 && q[18]==q[3] && q[19]==1 && q[20]==0 && q[21]==0
+ && q[22]==0 && q[23]==0 && q[24]==1 && q[25]==0;
+}
+#forall "each concrete field can independently prevent preview acceptance" index:0..<26,side:0..<2 {
+ q:=fwp_receipt_good();q[index]=ifx side==0 then -1 else 4;
+ #assert !fwp_accept(q[..],"Check as Players See It","Return to Native World") || index==1 || index==16;
+ if index==1 || index==16 {q[index]=0;#assert !fwp_accept(q[..],"Check as Players See It","Return to Native World");}
+}

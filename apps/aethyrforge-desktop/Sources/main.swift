@@ -48,13 +48,16 @@ final class ForgeWindow: NSWindow {
 }
 
 @MainActor
-final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply {
+final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply {
     let fm = FileManager.default
     var window: ForgeWindow!
     var coderHeldKeys: Set<UInt16> = []
     var web: WKWebView!
     var metalWorld: ForgeMetalWorld?
     var metalLocalOrigin = ""
+    var previewSwitchTask: Task<Void, Never>?
+    var previewMenu: NSMenuItem?
+    var lastPreviewRetired: [String: Any] = [:]
     var worldBackend: Int64 {
         let a = CommandLine.arguments
         if let i = a.firstIndex(of: "--world"), i+1 == a.count { return -1 }
@@ -169,6 +172,8 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         let viewItem = NSMenuItem(); menu.addItem(viewItem)
         let view = NSMenu(title: "View"); viewItem.submenu = view
         let reload = view.addItem(withTitle: "Reload Everglade", action: #selector(reloadWorld), keyEquivalent: "r"); reload.target = self
+        previewMenu = view.addItem(withTitle: previewTitle(), action: #selector(toggleWebPreview), keyEquivalent: "")
+        previewMenu?.target = self
         let setup = view.addItem(withTitle: "Setup…", action: #selector(showSetup), keyEquivalent: ","); setup.target = self
         let status = view.addItem(withTitle: "Status…", action: #selector(showStatus), keyEquivalent: "i"); status.target = self
         let chat = view.addItem(withTitle: "Message Coding Agent", action: #selector(focusChat), keyEquivalent: "l"); chat.target = self
@@ -219,7 +224,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             config.userContentController.addUserScript(WKUserScript(source: "globalThis.__forgeFrameCount=0;const nativeRAF=requestAnimationFrame;globalThis.requestAnimationFrame=f=>nativeRAF(t=>{__forgeFrameCount++;f(t);});", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
         config.mediaTypesRequiringUserActionForPlayback = []
-        configureAudioOutput(config, muted: smoke || launchReport != nil || microphoneReport != nil || frameProfileURL != nil || setupProfileURL != nil || offlineReportURL != nil)
+        configureAudioOutput(config, muted: smoke || CommandLine.arguments.contains("--mute-audio") || launchReport != nil || microphoneReport != nil || frameProfileURL != nil || setupProfileURL != nil || offlineReportURL != nil)
         if smoke {
             // The native test pumps the callback: WebKit throttles both animation
             // callbacks and page timers in an unordered window.
@@ -238,10 +243,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         let content = NSView(frame: web.frame); content.addSubview(web)
         if nativeWorld {
             web.isHidden = true
-            let view = ForgeMetalWorld(frame: content.bounds)
-            view.autoresizingMask = [.width, .height]
-            view.failed = { [weak self] in self?.fail($0) }
-            view.action = { [weak self] code, text in self?.metalAction(code, text) }
+            let view = makeMetalWorld(frame: content.bounds)
             view.preferredHz = Float(preferredHz); metalWorld = view; content.addSubview(view)
         }
         window.contentView = content; window.center()
@@ -393,6 +395,9 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
             warmVoiceIfNeeded()
             if setupPane.isHidden { window.makeFirstResponder(worldView) }
             try await startSceneControls()
+            if let i = CommandLine.arguments.firstIndex(of:"--web-preview-plan"),i+1<CommandLine.arguments.count {
+                try await measureWebPreview(URL(fileURLWithPath:CommandLine.arguments[i+1])); return
+            }
             if let i = CommandLine.arguments.firstIndex(of:"--metal-measure-plan"),i+1<CommandLine.arguments.count {
                 try await measureMetal(URL(fileURLWithPath:CommandLine.arguments[i+1])); return
             }
@@ -1739,8 +1744,78 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
         stopChildren(); NSApp.terminate(nil)
     }
 
+    func makeMetalWorld(frame: NSRect) -> ForgeMetalWorld {
+        let view = ForgeMetalWorld(frame: frame)
+        view.autoresizingMask = [.width, .height]
+        view.failed = { [weak self] in self?.fail($0) }
+        view.action = { [weak self] code, text in self?.metalAction(code, text) }
+        return view
+    }
+    func previewTitle() -> String {
+        var bytes: [UInt8] = []
+        for i in 0..<64 {
+            let byte = fwp_label_byte(metalWorld == nil ? 0:1, Int64(i))
+            if byte < 0 { break }; bytes.append(UInt8(byte))
+        }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(toggleWebPreview) {
+            item.title = previewTitle()
+            return fwp_target(worldBackend, metalWorld == nil ? 0:1, sceneReady && !stopping, previewSwitchTask != nil) >= 0
+        }
+        if item.action == #selector(reloadWorld) { return !stopping && previewSwitchTask == nil }
+        return true
+    }
+    @objc func toggleWebPreview() {
+        let destination = fwp_target(worldBackend, metalWorld == nil ? 0:1, sceneReady && !stopping, previewSwitchTask != nil)
+        guard destination >= 0 else { return }
+        previewSwitchTask = Task {
+            defer { previewSwitchTask = nil }
+            do { try await switchWorldView(destination) }
+            catch { if !Task.isCancelled && !stopping { fail(error.localizedDescription) } }
+        }
+    }
+    func switchWorldView(_ destination: Int64) async throws {
+        guard let resources = Bundle.main.resourceURL, let pageURL else { throw ShellError.failed("World preview is not ready.") }
+        sceneReady = false; setupPane.sceneReady = false; worldPauseWanted = nil
+        cancelVoice()
+        voiceWarmEpoch += 1; voiceWarmup?.cancel(); voiceWarmup = nil; voiceWarmReady = false; fgs_voice_ready(0)
+        notice.stringValue = "Loading \(destination == 0 ? "web preview":"native world")…"; notice.isHidden = false
+        window.makeFirstResponder(nil)
+        if destination == 0 {
+            if let previous = metalWorld {
+                previous.focus(false)
+                let audio = previous.audio?.source
+                previous.close(); previous.removeFromSuperview(); metalWorld = nil
+                lastPreviewRetired = ["ledgerLive":mf_closed_info(0),"ledgerWords":mf_closed_info(1),"mediaBytes":mf_closed_info(2),"audio":audio?.observations() ?? [:]]
+            }
+            web.isHidden = false
+            web.load(URLRequest(url: pageURL))
+        } else {
+            _ = try? await web.evaluateJavaScript("globalThis.coaxial?.setWorldPaused(true); true")
+            let auxiliary = URL(string:"http://127.0.0.1:\(pageURL.port!)/metal-voice.html")!
+            web.load(URLRequest(url:auxiliary))
+            let end = ProcessInfo.processInfo.systemUptime + 10
+            while web.url != auxiliary || web.isLoading {
+                try Task.checkCancellation()
+                guard ProcessInfo.processInfo.systemUptime < end else { throw ShellError.failed("The web preview did not close its document.") }
+                try await Task.sleep(for:.milliseconds(20))
+            }
+            web.isHidden = true
+            let view = makeMetalWorld(frame:web.frame)
+            window.contentView?.addSubview(view, positioned:.above, relativeTo:web); metalWorld = view
+            try view.open(resources:resources,storage:dataURL,page:pageURL,local:metalLocalOrigin,muted:smoke || CommandLine.arguments.contains("--mute-audio"))
+        }
+        try await waitForScene()
+        try Task.checkCancellation()
+        sceneReady = true; setupPane.sceneReady = true; notice.isHidden = true
+        updateWorldVisibility(); warmVoiceIfNeeded()
+        if setupPane.isHidden { window.makeFirstResponder(worldView) }
+    }
+
     @objc func reloadWorld() {
-        guard !stopping, pageURL != nil else { return }
+        guard !stopping, previewSwitchTask == nil, pageURL != nil else { return }
         sceneReady = false; worldPauseWanted = nil
         cancelVoice()
         voiceWarmEpoch += 1; voiceWarmup?.cancel(); voiceWarmup = nil; voiceWarmReady = false; fgs_voice_ready(0)
@@ -1756,6 +1831,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     func applicationWillTerminate(_ notification: Notification) { startup?.cancel(); stopChildren() }
     func stopChildren() {
         stopping = true
+        previewSwitchTask?.cancel()
         metalWorld?.close()
         voiceWarmEpoch += 1; voiceWarmup?.cancel(); voiceWarmup = nil; voiceWarmReady = false; fgs_voice_ready(0)
         cancelVoice()
@@ -1784,6 +1860,7 @@ final class ForgeApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavig
     }
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { sceneReady = false; worldPauseWanted = nil }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard previewSwitchTask == nil else { return }
         warmVoiceIfNeeded()
         if firstFrameSeconds > 0 {
             Task { do { try await waitForScene(); sceneReady = true; setupPane.sceneReady = true; updateWorldVisibility() } catch { if !stopping { fail(error.localizedDescription) } } }

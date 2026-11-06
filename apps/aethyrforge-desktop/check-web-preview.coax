@@ -1,0 +1,16 @@
+// Author one ordinary menu round trip; Coax checks the actual SDK receipt.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "world-preview-conformance.coax";
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..])||args_count(a[..])<3{tool_errln("usage: check-web-preview ISOLATED_APP DATA_DIRECTORY NEW_OUTPUT [--existing]");return 2;}
+ app:=args_at(a[..],0);data:=args_at(a[..],1);dir:=args_at(a[..],2);paths:[5][4096]u8;if !fs_mkdir(dir){return 1;}plan:=fs_join(dir,"plan.json",paths[0][..]);receipt:=fs_join(dir,"receipt.json",paths[1][..]);bytes:[32768]u8;o:[1]Jo;jo_start(o[..],bytes[..]);jo_obj(o[..]);jo_key(o[..],"report");jo_str(o[..],receipt);jo_key(o[..],"operations");jo_arr(o[..]);
+ for op:[10]string.["resize","connect","before","menu","connect","web","menu","connect","returned",""]{if op==""{continue;}jo_obj(o[..]);jo_key(o[..],"op");jo_str(o[..],ifx op=="before"||op=="web"||op=="returned" then "observe" else op);if op=="before"||op=="web"||op=="returned"{jo_key(o[..],"label");jo_str(o[..],op);}jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);if o[0].bad||!fs_write(plan,jo_text(o[..])){return 1;}
+ if !args_has(a[..],"--existing"){
+  cmd:=[10]string.[fs_join(app,"Contents/MacOS/Aethyrforge",paths[2][..]),"--world","metal","--mute-audio","--data-dir",data,"--web-preview-plan",plan,"--test-window-title","WebPreview12969"];out:[65536]u8;err:[65536]u8;r:=proc_run(cmd[..],120000,out[..],err[..]);if !fs_write(fs_join(dir,"sdk.stdout",paths[3][..]),cast(string)out[0..<r.out_n])||!fs_write(fs_join(dir,"sdk.stderr",paths[4][..]),cast(string)err[0..<r.err_n])||r.started!=0||r.status!=0||r.cut||r.timed_out{return 1;}
+ }
+ n:=fs_read(receipt,bytes[..]);doc:[1]Jv;nodes:[4096]JvNode;if n<1||!jv_parse(doc[..],cast(string)bytes[0..<n],nodes[..]){return 1;}d:=doc[0];list:=jv_get(d,0,"observed");if jv_len(d,list)!=26{return 1;}q:[26]int;for i:0..<26{q[i]=jv_int(d,jv_at(d,list,i),-1);}labels:[2][256]u8;mn:=jv_str(d,jv_get(d,0,"menu"),labels[0][..]);bn:=jv_str(d,jv_get(d,0,"back"),labels[1][..]);if mn<0||bn<0{return 1;}ok:=fwp_accept(q[..],cast(string)labels[0][0..<mn],cast(string)labels[1][0..<bn]);print("Ordinary native→web preview→native:26 actual fields, same roomseat and retired owners:%\n",ok);return ifx ok then 0 else 1;
+}

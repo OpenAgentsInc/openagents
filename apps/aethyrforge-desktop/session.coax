@@ -6,6 +6,7 @@
 #load "world-visibility.coax";
 #load "chrome.coax";
 #load "world-host.coax";
+#load "world-preview.coax";
 #load "native-entry.coax";
 
 #test "desktop opens the local 5e Everglade in play at the South Gate" {

@@ -281,6 +281,15 @@ Mac host acceptance, not the remaining three-host/default migration. Exact
 compiler, producer, shader and SDK identities remain separate in
 `docs/verification/metal-host-2026-11-05/current-85c-final.md`.
 
+An explicit native desktop session may open its ordinary web realm with one
+View-menu action and return with another. Shared `world-preview.coax` owns
+the destination, readiness/busy refusal and labels (24 root mutants killed).
+The shell closes the previous realm before switching; actual native→web→native
+observations pass the 108-mutant Coax receipt authority, retaining the same
+room seat and releasing old/final GPU, decoded-image and audio owners. This
+does not select native by default or opt in the public web face. See
+`docs/verification/metal-host-2026-11-05/web-preview.md`.
+
 The new admitted 3f8 compiler regenerates shader products byte-identical to
 the frozen graphics corpus. Actual current17a browser, Vulkan and Metal
 adapters admit the new package identity; complete displayed and direct

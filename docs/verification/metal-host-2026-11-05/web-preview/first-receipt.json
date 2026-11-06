@@ -1,0 +1,142 @@
+{
+  "back" : "Return to Native World",
+  "closedAudio" : {
+    "accepted" : 51,
+    "active" : 0,
+    "attemptedCallbacks" : 0,
+    "callbacks" : 0,
+    "deviceFrames" : 0,
+    "frames" : 0,
+    "nonzeroDeviceSamples" : 0,
+    "refused" : 0,
+    "retired" : 1,
+    "roomPartitions" : 66,
+    "started" : 0,
+    "voices" : 1
+  },
+  "menu" : "Check as Players See It",
+  "menus" : [
+    {
+      "busyDisabled" : true,
+      "enabled" : true,
+      "sent" : true,
+      "title" : "Check as Players See It"
+    },
+    {
+      "busyDisabled" : true,
+      "enabled" : true,
+      "sent" : true,
+      "title" : "Return to Native World"
+    }
+  ],
+  "observed" : [
+    1,
+    4,
+    2,
+    0,
+    1,
+    1,
+    0,
+    0,
+    0,
+    1,
+    1,
+    1,
+    2,
+    0,
+    1,
+    1,
+    4,
+    2,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0
+  ],
+  "originalURL" : "http:\/\/127.0.0.1:59089\/worlds\/everglade?forge=play#gate",
+  "retired" : {
+    "audio" : {
+      "accepted" : 51,
+      "active" : 0,
+      "attemptedCallbacks" : 0,
+      "callbacks" : 0,
+      "deviceFrames" : 0,
+      "frames" : 0,
+      "nonzeroDeviceSamples" : 0,
+      "refused" : 0,
+      "retired" : 1,
+      "roomPartitions" : 66,
+      "started" : 0,
+      "voices" : 1
+    },
+    "ledgerLive" : 0,
+    "ledgerWords" : 0,
+    "mediaBytes" : 0
+  },
+  "samples" : {
+    "before" : {
+      "audio" : {
+        "accepted" : 51,
+        "active" : 0,
+        "attemptedCallbacks" : 0,
+        "callbacks" : 0,
+        "deviceFrames" : 0,
+        "frames" : 0,
+        "nonzeroDeviceSamples" : 0,
+        "refused" : 0,
+        "retired" : 0,
+        "roomPartitions" : 66,
+        "started" : 0,
+        "voices" : 1
+      },
+      "auxiliaryClosed" : false,
+      "completed" : 4,
+      "frames" : 4,
+      "net" : 2,
+      "sameURL" : true,
+      "seat" : 0
+    },
+    "returned" : {
+      "audio" : {
+        "accepted" : 51,
+        "active" : 0,
+        "attemptedCallbacks" : 0,
+        "callbacks" : 0,
+        "deviceFrames" : 0,
+        "frames" : 0,
+        "nonzeroDeviceSamples" : 0,
+        "refused" : 0,
+        "retired" : 0,
+        "roomPartitions" : 66,
+        "started" : 0,
+        "voices" : 1
+      },
+      "auxiliaryClosed" : false,
+      "completed" : 4,
+      "frames" : 4,
+      "net" : 2,
+      "sameURL" : true,
+      "seat" : 0
+    },
+    "web" : {
+      "completed" : true,
+      "loop" : {
+        "frames" : 28,
+        "paused" : false,
+        "pending" : 2,
+        "socketFrames" : 21,
+        "submissions" : 29
+      },
+      "net" : 2,
+      "ready" : true,
+      "scene" : true,
+      "seat" : 0,
+      "url" : "http:\/\/127.0.0.1:59089\/worlds\/everglade?forge=play"
+    }
+  },
+  "schema" : "aethyrforge.web-preview.v1"
+}

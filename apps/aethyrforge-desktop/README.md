@@ -73,6 +73,11 @@ same Coax Everglade producer and renderer. It uses the shared canonical assets,
 Coax audio mixer and native room. Its [Mac qualification](../../docs/verification/metal-host-2026-11-05/current-85c-final.md)
 records actual 120 Hz gameplay, frame parity, input, session reload and GPU
 recovery. WebKit remains default while #12869 completes the common migration.
+In an explicit native session, **View → Check as Players See It** opens the
+same local world in the web view; **View → Return to Native World** returns.
+Each action closes the previous realm before loading the replacement. The
+[actual menu round-trip record](../../docs/verification/metal-host-2026-11-05/web-preview.md)
+retains frame, room-seat and resource-release observations.
 
 Offline `local:` sockets use that native room process through the same text
 messages as a network room. The loopback-only `--native-local` room option admits

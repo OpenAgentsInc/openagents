@@ -1,0 +1,32 @@
+// The explicit native session may inspect the same world in the web host.
+// Readiness and the in-flight OS transition are observations from AppKit.
+#authority;
+#test "one click previews only an explicit native session and returns to native" {
+ #assert fwp_target(1,1,true,false)==0;
+ #assert fwp_target(1,0,true,false)==1;
+ for launch:[4]int.[-1,0,2,3] {#assert fwp_target(launch,1,true,false)== -1 && fwp_target(launch,0,true,false)== -1;}
+ for current:[3]int.[-1,2,3] {#assert fwp_target(1,current,true,false)== -1;}
+}
+#forall "a loading or already switching view cannot start a second transition" current:0..<2 {
+ #assert fwp_target(1,current,false,false)== -1;
+ #assert fwp_target(1,current,true,true)== -1;
+ #assert fwp_target(1,current,false,true)== -1;
+}
+#test "the menu labels the actual destination and has bounded scalar text" {
+ a:="Check as Players See It";b:="Return to Native World";
+ for i:0..<a.count {#assert fwp_label_byte(1,i)==cast(int)a[i];}
+ for i:0..<b.count {#assert fwp_label_byte(0,i)==cast(int)b[i];}
+ for backend:[4]int.[-1,0,1,2] {#assert fwp_label_byte(backend,-1)== -1 && fwp_label_byte(backend,23)== -1;}
+ #assert fwp_label_byte(0,22)== -1;
+ #assert fwp_label_byte(-1,0)== -1 && fwp_label_byte(2,0)== -1;
+}
+fwp_target :: (launch:int,current:int,ready:bool,busy:bool)->int #export_c {
+ if launch!=1 || !ready || busy {return -1;}
+ if current==1 {return 0;}
+ if current==0 {return 1;}
+ return -1;
+}
+fwp_label_byte :: (current:int,index:int)->int #export_c {
+ label:=ifx current==1 then "Check as Players See It" else ifx current==0 then "Return to Native World" else "";
+ return ifx index>=0 && index<label.count then cast(int)label[index] else -1;
+}

@@ -1,0 +1,2 @@
+// Independently authored successful SDK receipt, used only by checks.
+fwp_receipt_good :: ()->[26]int {return [26]int.[1,37,2,0,1,1,0,0,0,1,1,1,2,0,1,1,53,2,0,1,0,0,0,0,1,0];}
