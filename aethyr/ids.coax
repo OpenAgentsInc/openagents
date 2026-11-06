@@ -1,0 +1,11 @@
+// Identity domains shared by engine, room and service contracts. Construction
+// admits an integer representation only; owners still check bounds and life.
+#module "aethyr.ids";
+SeatId :: struct @id { value: int; }
+SeatGeneration :: struct @id(ordered) { value: int #counter; }
+EntityId :: struct @id { value: int; }
+EntityGeneration :: struct @id(ordered) { value: int #counter; }
+EntityHandle :: struct @id { value: int; } // packed slot + generation, checked by entity.coax
+CharacterId :: struct @id { value: int; }
+ItemId :: struct @id { value: int; }
+OwnerGeneration :: struct @id(ordered) { value: int #counter; }

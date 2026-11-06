@@ -1,3 +1,4 @@
+#load "../../../aethyr/ids.coax";
 // SDK physical capacity plus already accepted waiting/staged work.
 #load "../../../aethyr/session/effect-reservation.coax";
 #test "overload: physical effect refusal precedes cast order and preserves another seat's reservation (#12841)" #steps 3000000000 {
@@ -8,7 +9,7 @@
   rm_heard(v[..],1,"C 1 0 0 0 10 -1");#assert v[0].eg[k].cast_order==1;
   rm_effect_free(v[..],k,0,1);rm_heard(v[..],0,"C 2 0 0 0 10 -1");#assert v[0].eg[k].cast_order==2;
   rm_heard(v[..],0,"C 3 1 0 0 10 -1");#assert v[0].eg[k].cast_order==2;
-  #assert re_may_start(v[..],k,0,0,1); // exclude this accepted intent, keeping its lease
+  #assert re_may_start(v[..],k, SeatId.{value = 0},0,1); // exclude this accepted intent, keeping its lease
 }
 #test "overload: the world acknowledges only a consumed strike prefix (#12841)" #steps 2000000000 {
   v:[1]RmServer;k:=rc_test_room(v[..],"pair-effect-prefix",1,false);
@@ -33,7 +34,7 @@
 #test "overload: accepted world transfers keep a reserved player region before further casts (#12841)" #steps 2000000000 {
   v:[1]RmServer;k:=rc_test_room(v[..],"pair-stage-effects",1,false);
   for n:0..<EG_PLAYER_STRIKES{v[0].eg[k].strikes[n]=EgStrike.{by=0,slot=EG_WL_BLAST};}v[0].eg[k].strike_n=EG_PLAYER_STRIKES;
-  #assert !rc_hear(v[..],k,0,1,EG_WL_DOOR,0,0,0,-1,0)&&v[0].eg[k].cast_order==0;
+  #assert !rc_hear(v[..],k, SeatId.{value = 0},1,EG_WL_DOOR,0,0,0,-1,0)&&v[0].eg[k].cast_order==0;
 }
 rm_effect_sources::()->int #export_c{return EFFECT_HOUSE+1;}
 // Free slots are a snapshot after this world's impacts step. Waiting casts and
@@ -50,7 +51,7 @@ rm_effect_free::(v:[]RmServer,k:int,source:int,free:int) #export_c{
     r[0].raid[0].effect_known=true;r[0].raid[0].effect_free[q]=rs_max(available-held,0);
   }else{v[0].eg[k].house_free=rs_max(available-held,0);}
 }
-re_may_start::(v:[]RmServer,k:int,seat:int,slot:int,exclude:int)->bool{
+re_may_start::(v:[]RmServer,k:int, seat_id: SeatId,slot:int,exclude:int)->bool{ seat := seat_id.value;
   if !effect_physical(slot)&&slot!=EG_WL_DOOR{return true;}
   staged:=0;
   for q:0..<EG_CASTS{c:=v[0].eg[k].casts[q];if q!=exclude&&c.on&&(effect_physical(c.slot)||c.slot==EG_WL_DOOR)&&(c.phase==RC_WAIT||c.phase==RC_BAR||c.slot==EG_WL_DOOR){staged+=1;}}

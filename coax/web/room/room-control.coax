@@ -1,3 +1,4 @@
+#load "../../../aethyr/ids.coax";
 // What the API says about Everglade's rooms, asked every two seconds (#12714; coax/web/api/player.c
 // room_control): "pvp 0|1\nedit STAMP\nkick PID\n...".
 //   - pvp: the realm's row (off unless switched on); the rules let harm reach another player only
@@ -90,7 +91,7 @@ rc_hold :: (v: [] RmServer, line: string) {
     if m.live && cast(string) m.game[0..<m.game_n] == EVERGLADE && cast(string) m.code[0..<m.code_n] == code { r = q; }
   }
   k := ifx r >= 0 then eg_room_at(v, r) else -1;
-  if k < 0 || !rm_eg_seat_live(v, k, seat) { return; }   // not yet: a later answer's line holds it
+  if k < 0 || !rm_eg_seat_live(v, k, SeatId.{value = seat}) { return; }   // not yet: a later answer's line holds it
   v[0].ctl.hold_stamp = stamp;
   v[0].eg[k].seat[seat].hold_due = true;
   p := v[0].eg[k].seat[seat].pose;
@@ -113,7 +114,7 @@ rc_place :: (v: [] RmServer, line: string) {
   stamp := rc_num(rc_word(line, at));
   if code.count == 0 || seat < 0 || boat < 0 || boat >= EG_BOATS || stamp <= 0 { return; }
   k := rc_room(v, code);
-  if k < 0 || stamp <= v[0].eg[k].place_stamp || !rm_eg_seat_live(v, k, seat) { return; }   // not yet: a later answer's line lays it
+  if k < 0 || stamp <= v[0].eg[k].place_stamp || !rm_eg_seat_live(v, k, SeatId.{value = seat}) { return; }   // not yet: a later answer's line lays it
   v[0].eg[k].place_stamp = stamp;
   v[0].eg[k].seat[seat].place_due = boat + 1;
 }

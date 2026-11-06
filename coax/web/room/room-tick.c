@@ -41,7 +41,7 @@ static void everglade_town(int k) {
   }
   rm_eg_use_asks_heard(view(), k);
   for (int w = 0; w < 2; w++) rm_eg_doors(view(), k, w, world_doors(k, w));
-  for (int s = 0; s < WORLD_SEATS; s++) rm_eg_seat_town(view(), k, s, (coax_v_f32){seats + s * WORLD_SEAT_TOWN, WORLD_SEAT_TOWN});
+  for (int s = 0; s < WORLD_SEATS; s++) rm_eg_seat_town(view(), k, (coax_t_SeatId){ s}, (coax_v_f32){seats + s * WORLD_SEAT_TOWN, WORLD_SEAT_TOWN});
   /* the rowboats (#12861): a seat gone leaves its boat tied up; the floats a tick on; each boat for the pages */
   for (int s = 0; s < WORLD_SEATS; s++) if (seats[s * WORLD_SEAT_TOWN + 3] < 0.5f) world_gone(k, s);
   world_floats(k, 1.0f / WORLD_HZ);
@@ -51,20 +51,20 @@ static void everglade_town(int k) {
     rm_eg_boat(view(), k, n, (coax_v_f32){bt, WORLD_BOAT});
   }
   /* a place line (room-control.coax "place", #12861): the seat on the bank beside that rowboat */
-  for (int s = 0; s < WORLD_SEATS; s++) { int b = (int)rm_eg_place_take(view(), k, s); if (b >= 0) world_place_boat(k, s, b); }
+  for (int s = 0; s < WORLD_SEATS; s++) { int b = (int)rm_eg_place_take(view(), k, (coax_t_SeatId){ s}); if (b >= 0) world_place_boat(k, s, b); }
   /* a scripted Hold Person (room-control.coax "hold", #12886): the watch's hold on the seat, before the town steps */
-  for (int s = 0; s < WORLD_SEATS; s++) if (rm_eg_hold_take(view(), k, s)) world_hold(k, s);
+  for (int s = 0; s < WORLD_SEATS; s++) if (rm_eg_hold_take(view(), k, (coax_t_SeatId){ s})) world_hold(k, s);
   int64_t t0 = now_us();
   world_town(k, 1.0f / WORLD_HZ, (double)wall_ms() / 1000.0, seats, took);
   int64_t t1 = now_us(); part_us[PART_TOWN] += t1 - t0;
   for (int s = 0; s < WORLD_SEATS; s++) {
     if (seats[s * WORLD_SEAT_TOWN + 3] < 0.5f) continue;
-    rm_eg_hurt(view(), k, s, (int64_t)took[s], (int64_t)took[WORLD_SEATS + s]);
-    int seed = (int)rm_eg_want_take(view(), k, s);   /* back WANTED at the level the room saved (#12794) */
+    rm_eg_hurt(view(), k, (coax_t_SeatId){ s}, (int64_t)took[s], (int64_t)took[WORLD_SEATS + s]);
+    int seed = (int)rm_eg_want_take(view(), k, (coax_t_SeatId){ s});   /* back WANTED at the level the room saved (#12794) */
     if (seed > 0) world_seed_wanted(k, s, seed);
-    rm_eg_wanted(view(), k, s, world_wanted(k, s));
-    rm_eg_cond(view(), k, s, world_cond(k, s));
-    for (int c = 0; c < 3; c++) rm_eg_cond_left(view(), k, s, c, world_cond_left(k, s, c));
+    rm_eg_wanted(view(), k, (coax_t_SeatId){ s}, world_wanted(k, s));
+    rm_eg_cond(view(), k, (coax_t_SeatId){ s}, world_cond(k, s));
+    for (int c = 0; c < 3; c++) rm_eg_cond_left(view(), k, (coax_t_SeatId){ s}, c, world_cond_left(k, s, c));
   }
   rm_eg_gates(view(), k, world_gates(k));   /* the gates shut at WANTED 4 (#12794): the doors row's FORM */
   /* the town's pieces: the rebuild, the strikes cast since, then what broke and caught for every page */
@@ -115,7 +115,7 @@ static void everglade_abilities(int k) {
   for (int s = 0; s < WORLD_SEATS; s++)
     for (int ab = 0; ab < WORLD_ABS; ab++) {
       bool on = world_life(k, s, ab, l);
-      rm_ra_live(view(), k, s, ab, on, l[1], l[2], l[3], l[4], (int64_t)l[5]);
+      rm_ra_live(view(), k, (coax_t_SeatId){ s}, ab, on, l[1], l[2], l[3], l[4], (int64_t)l[5]);
     }
   for (int i = 0; i < WORLD_FOLK; i++) rm_ra_air(view(), k, i, world_air(k, i));
   int hn = world_hurts(k);
@@ -125,10 +125,10 @@ static void everglade_abilities(int k) {
 // inputs through the movement step in its room's world (room-world.c), the hotbar abilities, the
 // town, the casts' sight, the rolls, and every seat's D frame queued: false when room k is closed.
 static void everglade_place(int k, int s, float *pose) {
-  if (rm_eg_unplaced(view(), k, s) &&
-      (rm_eg_back(view(), k, s, 0) > 0 ? world_place_at(k, s, rm_eg_back(view(), k, s, 1), rm_eg_back(view(), k, s, 2), rm_eg_back(view(), k, s, 3), rm_eg_back(view(), k, s, 4), pose)
+  if (rm_eg_unplaced(view(), k, (coax_t_SeatId){ s}) &&
+      (rm_eg_back(view(), k, (coax_t_SeatId){ s}, 0) > 0 ? world_place_at(k, s, rm_eg_back(view(), k, (coax_t_SeatId){ s}, 1), rm_eg_back(view(), k, (coax_t_SeatId){ s}, 2), rm_eg_back(view(), k, (coax_t_SeatId){ s}, 3), rm_eg_back(view(), k, (coax_t_SeatId){ s}, 4), pose)
                                         : world_place(k, s, pose)))
-    rm_eg_moved(view(), k, s, 0, pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
+    rm_eg_moved(view(), k, (coax_t_SeatId){ s}, 0, pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
 }
 static bool everglade_prepare(int k) {
   if (world_prepared(k)) return true;
@@ -159,10 +159,10 @@ static bool everglade_room_tick(int k) {
   int64_t tm = now_us();
   for (int s = 0; s < WORLD_SEATS; s++) {
     everglade_place(k, s, pose);
-    while (rm_eg_input(view(), k, s, inv)) {
+    while (rm_eg_input(view(), k, (coax_t_SeatId){ s}, inv)) {
       int64_t input_began = ROOM_LATENCY_ACTIVE(k,s) ? now_us() : 0;
       if (!world_step(k, s, in, pose)) break;
-      rm_eg_moved(view(), k, s, in[0], pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
+      rm_eg_moved(view(), k, (coax_t_SeatId){ s}, in[0], pose[0], pose[1], pose[2], pose[3], pose[4], pose[5], pose[6], (int64_t)pose[7], (int64_t)pose[8], (int64_t)pose[9]);
       if(input_began)ROOM_LATENCY_STEP(k,s,in[0],input_began,now_us());
     }
   }
@@ -191,7 +191,7 @@ static bool everglade_room_tick(int k) {
   for (int64_t q = 0; q < sn; q++) if (rm_eg_sight(view(), k, q, sgv)) rm_eg_sight_is(view(), k, q, world_sight(k, sg, sg + 3));
   rm_eg_rules(view(), k);
   /* the seats the world moved in one jump: their next row is a WARP (#12835) */
-  for (int s = 0; s < WORLD_SEATS; s++) if (world_cut_take(k, s)) rm_eg_cut(view(), k, s);
+  for (int s = 0; s < WORLD_SEATS; s++) if (world_cut_take(k, s)) rm_eg_cut(view(), k, (coax_t_SeatId){ s});
   int64_t tw = now_us(); part_us[PART_RULES] += tw - te;
   rm_eg_send(view(), k);
   ROOM_LATENCY_SERIALIZED(k,tw,tw,now_us());

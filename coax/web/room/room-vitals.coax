@@ -1,3 +1,4 @@
+#load "../../../aethyr/ids.coax";
 // What a player's HP is when they leave an Everglade room, kept so a reload is not a free heal
 // (#12715, spec section 7). The server owns HP (everglade5e-room-rules.coax), so the server reports
 // it: each ticketed seat's HP (its ticket's player id, room-ticket.coax) is noted when the seat
@@ -110,16 +111,16 @@ rv_slot :: (v: [] RmServer) -> int {
   return lost;
 }
 // Seat s of everglade room k: its HP noted, and where it stands, when its ticket names a player.
-rv_note_seat :: (v: [] RmServer, k: int, s: int) {
-  ck_capture(v,k,s);
-  tk := eg_ticket(v, k, s);
+rv_note_seat :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
+  ck_capture(v,k, s_id);
+  tk := eg_ticket(v, k, s_id);
   if !tk.ok { return; }
   c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s];
   pid := cast(string) tk.pid[0..<tk.pid_n];
   // a seat of an older owner than one already noted here (#12834): its HP isn't the character's now
   was := rv_find(v, pid);
   if tk.owner > 0 && was >= 0 && v[0].vit.v[was].owner > tk.owner { return; }
-  rv_note_as(v, pid, c.hp, c.hp_max, ev_xp_of(v, k, s), v[0].eg[k].wanted[s], c.dead && c.hp <= 0);
+  rv_note_as(v, pid, c.hp, c.hp_max, ev_xp_of(v, k, s_id), v[0].eg[k].wanted[s], c.dead && c.hp <= 0);
   i := rv_find(v, pid);
   if i >= 0 && tk.owner > v[0].vit.v[i].owner { v[0].vit.v[i].owner = tk.owner; }   // its lines go as the newest owner here
   st := v[0].eg[k].seat[s];
@@ -132,8 +133,8 @@ rv_note_seat :: (v: [] RmServer, k: int, s: int) {
 }
 // A seat that just joined: where its player stood in this room, when this server noted it in the last
 // VITALS_PLACE_MS (the host puts it there instead of the gate: rm_eg_back).
-rv_back :: (v: [] RmServer, k: int, s: int) {
-  tk := eg_ticket(v, k, s);
+rv_back :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
+  tk := eg_ticket(v, k, s_id);
   r := v[0].eg[k].relay;
   if !tk.ok || r < 0 { return; }
   i := rv_find(v, cast(string) tk.pid[0..<tk.pid_n]);
@@ -146,7 +147,7 @@ rv_back :: (v: [] RmServer, k: int, s: int) {
 }
 // For the host, placing seat s of room k: 1 when it goes back where its player stood, then (field 1
 // to 4) that place's x, y, z and facing; 0 to the gate.
-rm_eg_back :: (v: [] RmServer, k: int, s: int, field: int) -> f32 #export_c {
+rm_eg_back :: (v: [] RmServer, k: int, s_id: SeatId, field: int) -> f32 #export_c { s := s_id.value;
   if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live || !v[0].eg[k].seat[s].back { return 0; }
   st := v[0].eg[k].seat[s];
   if field == 1 { return st.back_x; }
@@ -159,9 +160,9 @@ rm_eg_back :: (v: [] RmServer, k: int, s: int, field: int) -> f32 #export_c {
 // has one from the last 10 minutes (down at 0, or dead, stays so: #12883), else its ticket's. A ticket
 // with none (or 0: it fell somewhere else) leaves it full. The seat keeps it (back_hp) until its hello
 // has built its character (rv_hp_back), since a class or the demo character builds it whole again.
-rv_join :: (v: [] RmServer, k: int, s: int) {
+rv_join :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   v[0].eg[k].seat[s].back_hp = -1; v[0].eg[k].seat[s].back_dead = false;
-  tk := eg_ticket(v, k, s);
+  tk := eg_ticket(v, k, s_id);
   if !tk.ok { return; }
   hp := tk.hp; dead := false;
   i := rv_find(v, cast(string) tk.pid[0..<tk.pid_n]);
@@ -174,12 +175,12 @@ rv_join :: (v: [] RmServer, k: int, s: int) {
   if want > 0 && want <= 5 { v[0].eg[k].seat[s].want_seed = want; v[0].eg[k].wanted[s] = want; }
   if hp < 0 || (hp == 0 && !noted) { return; }
   v[0].eg[k].seat[s].back_hp = hp; v[0].eg[k].seat[s].back_dead = dead;
-  rv_hp_back(v, k, s);
+  rv_hp_back(v, k, s_id);
 }
 // Seat s's character after a build (its join, its level, its hello's class or demo): no more Hit Points
 // than its player came back with, and down or dead as they left. The hello's build is the last
 // (eg_heard_hello clears back_hp).
-rv_hp_back :: (v: [] RmServer, k: int, s: int) {
+rv_hp_back :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   hp := v[0].eg[k].seat[s].back_hp;
   if hp < 0 { return; }
   c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s..<E5RR_SEAT + s + 1];
@@ -203,7 +204,7 @@ rm_vitals_due :: (v: [] RmServer) -> int #export_c {
     v[0].vit.last = v[0].wall_ms;
     for k: 0..<EG_ROOMS {
       if !v[0].eg[k].live { continue; }
-      for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { rv_note_seat(v, k, s); } }
+      for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { rv_note_seat(v, k, SeatId.{value = s}); } }
     }
   }
   // a revision unsaved for VITALS_OUTBOX_MS is given up
@@ -301,7 +302,7 @@ rm_vitals_answer :: (v: [] RmServer, batch: int, status: int, body: string) #exp
             // (one past the largest owner generation stays the largest: none sits above it, #12927)
             past := add_sat(v[0].vit.fly_owner[q], 1);
             g: [1] ControlFence; g[0].gen[0] = e.floor;
-            if control_fence(g[..], 0, past) == CONTROL_OK { v[0].vit.v[i].floor = g[0].gen[0]; }
+            if control_fence(g[..], CharacterId.{value = 0}, past) == CONTROL_OK { v[0].vit.v[i].floor = g[0].gen[0]; }
             v[0].vit.dropped += rl_owner_drop(v, cast(string) e.pid[0..<e.pid_n], past, -1);
           }
         }
@@ -507,7 +508,7 @@ rv_test_receipt :: (b: [] u8, gen: int, batch: int, codes: string) -> string {
   #assert eg_test_has(cast(string) t[0..<n], ".-x40w3.") && tk_check(key, cast(string) t[0..<n], "pair-tk", now).wanted == 3;
   #assert rm_join(v[..], 0, tk_test_ask(r[..], t[..], n)) == 0;
   k := eg_room_at(v[..], v[0].conns[0].relay);
-  #assert v[0].eg[k].wanted[0] == 3 && rm_eg_want_take(v[..], k, 0) == 3 && rm_eg_want_take(v[..], k, 0) == 0;
+  #assert v[0].eg[k].wanted[0] == 3 && rm_eg_want_take(v[..], k, SeatId.{value = 0}) == 3 && rm_eg_want_take(v[..], k, SeatId.{value = 0}) == 0;
   // the town makes it 4; the seat leaves, and its note goes at once (a flush), WANTED with it
   #assert rm_vitals_due(v[..]) > 0;
   rm_vitals_local(v[..]);

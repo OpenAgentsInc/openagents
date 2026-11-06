@@ -782,7 +782,7 @@ static void room_checkpoint(const request *q, PGconn *db, int version) {
     if (PQresultStatus(r)!=PGRES_TUPLES_OK || PQntuples(r)!=1) { free(who); goto failed; }
     old_xp=atoll(PQgetvalue(r,0,0)); PQclear(r); r=NULL;
   }
-  int64_t code = room_checkpoint_decide(durable,known,owner,directory,process,rev,xp,old_owner,old_process,old_rev,old_xp,same);
+  int64_t code = room_checkpoint_decide(durable,known,(coax_t_OwnerGeneration){owner},(coax_t_OwnerGeneration){directory},process,rev,xp,(coax_t_OwnerGeneration){old_owner},old_process,old_rev,old_xp,same);
   if (code == 0) {
     r = PQexecParams(db, version == 2 ? "INSERT INTO verse.character_checkpoints_v2 AS c (who,owner,process,rev,body,accepted_at) SELECT $2,(j->>'owner')::bigint,(j->>'process')::bigint,(j->>'rev')::bigint,j-'sent',verse.now_ms() FROM (SELECT $1::jsonb j) s ON CONFLICT (who) DO UPDATE SET owner=EXCLUDED.owner,process=EXCLUDED.process,rev=EXCLUDED.rev,body=EXCLUDED.body,accepted_at=EXCLUDED.accepted_at RETURNING accepted_at" : "INSERT INTO verse.character_checkpoints_v1 AS c (who,owner,process,rev,body,accepted_at) SELECT $2,(j->>'owner')::bigint,(j->>'process')::bigint,(j->>'rev')::bigint,j-'sent',verse.now_ms() FROM (SELECT $1::jsonb j) s ON CONFLICT (who) DO UPDATE SET owner=EXCLUDED.owner,process=EXCLUDED.process,rev=EXCLUDED.rev,body=EXCLUDED.body,accepted_at=EXCLUDED.accepted_at RETURNING accepted_at", 2, NULL, v, NULL, NULL, 0);
     if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { free(who); goto failed; }

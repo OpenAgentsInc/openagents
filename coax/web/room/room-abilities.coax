@@ -1,3 +1,4 @@
+#load "../../../aethyr/ids.coax";
 // The everglade rooms' hotbar abilities on the server (GitHub #12718, #12733): the casts room-everglade.coax
 // takes (C) and the ends (E) of the abilities the world runs, handed to the host's world (room-world.c
 // world_ability: apps/openagents-web/everglade-room-abilities.coax runs each seat's own copy of the
@@ -61,11 +62,11 @@ ra_fresh :: (v: [] RmServer, k: int) {
 }
 ra_queue :: (v: [] RmServer, k: int, c: RaCast) -> bool {
   r := v[0].ab[k..<k + 1];
-  if !ra_may_queue(v,k,c.by,c.on) { return false; }
+  if !ra_may_queue(v,k, SeatId.{value = c.by},c.on) { return false; }
   r[0].q[r[0].q_n] = c; r[0].q_n += 1;
   return true;
 }
-ra_may_queue :: (v:[]RmServer,k:int,seat:int,start:bool)->bool {
+ra_may_queue :: (v:[]RmServer,k:int, seat_id: SeatId,start:bool)->bool { seat := seat_id.value;
   if seat<0||seat>=EG_SEATS||v[0].ab[k].q_n>=RA_CASTS{return false;}
   starts:=0;ends:=0;
   for q:0..<v[0].ab[k].q_n{c:=v[0].ab[k].q[q];if c.by!=seat{continue;}if c.on{starts+=1;}else{ends+=1;}}
@@ -74,7 +75,7 @@ ra_may_queue :: (v:[]RmServer,k:int,seat:int,start:bool)->bool {
 // A cast of bar slot `slot` from seat `seat` standing at `me`, at the aim (room-everglade.coax
 // eg_heard_cast, once it is checked): an ability the world runs goes to it (pressed again, one that
 // toggles ends: the world's copy decides, as a page's does). Whether it went.
-ra_cast :: (v: [] RmServer, k: int, seat: int, slot: int, me: EgPose, ax: f32, ay: f32, az: f32, mode: int) -> bool {
+ra_cast :: (v: [] RmServer, k: int, seat_id: SeatId, slot: int, me: EgPose, ax: f32, ay: f32, az: f32, mode: int) -> bool { seat := seat_id.value;
   if !ra_world_slot(slot) || seat < 0 || seat >= EG_SEATS { return false; }
   m := ifx mode >= 0 && mode <= RA_MODES then mode else 0;
   if !ra_queue(v, k, RaCast.{by = seat, ab = slot - EG_SP_SLOTS, x = me.x, y = me.y, z = me.z, yaw = me.yaw, on = true, ax = ax, ay = ay, az = az, mode = m}) { return false; }
@@ -83,7 +84,7 @@ ra_cast :: (v: [] RmServer, k: int, seat: int, slot: int, me: EgPose, ax: f32, a
 }
 // E: seat `seat` ends what bar slot `slot` holds up in the world. Whether it held one up (as the
 // world said last tick: rm_ra_live).
-ra_end :: (v: [] RmServer, k: int, seat: int, slot: int) -> bool {
+ra_end :: (v: [] RmServer, k: int, seat_id: SeatId, slot: int) -> bool { seat := seat_id.value;
   if !ra_world_slot(slot) || !v[0].ab[k].live[seat * RA_ABS + slot - EG_SP_SLOTS].on { return false; }
   me := v[0].eg[k].seat[seat].pose;
   return ra_queue(v, k, RaCast.{by = seat, ab = slot - EG_SP_SLOTS, x = me.x, y = me.y, z = me.z, yaw = me.yaw, on = false, ax = me.x, ay = me.y, az = me.z});
@@ -101,7 +102,7 @@ rm_ra_cast :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
 rm_ra_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].ab[k].q_n = 0; } }
 // Seat s's ability ab now: up or not, where its last cast was, its facing, and its casts (`epoch`: a
 // new one is a new entity, every page casts it again).
-rm_ra_live :: (v: [] RmServer, k: int, s: int, ab: int, on: bool, x: f32, y: f32, z: f32, yaw: f32, epoch: int) #export_c {
+rm_ra_live :: (v: [] RmServer, k: int, s_id: SeatId, ab: int, on: bool, x: f32, y: f32, z: f32, yaw: f32, epoch: int) #export_c { s := s_id.value;
   if !rm_eg_live(v, k) || s < 0 || s >= EG_SEATS || ab < 0 || ab >= RA_ABS { return; }
   r := v[0].ab[k..<k + 1];
   l := r[0].live[s * RA_ABS + ab..<s * RA_ABS + ab + 1];
@@ -113,7 +114,7 @@ rm_ra_live :: (v: [] RmServer, k: int, s: int, ab: int, on: bool, x: f32, y: f32
 rm_ra_rg :: (v: [] RmServer, k: int, on: bool, by: int, x: f32, y: f32, z: f32) #export_c {
   if !rm_eg_live(v, k) || by < 0 || by >= EG_SEATS { return; }
   l := v[0].ab[k].live[by * RA_ABS + RA_REVERSE];
-  rm_ra_live(v, k, by, RA_REVERSE, on, x, y, z, 0, ifx on && !l.on then l.epoch + 1 else l.epoch);
+  rm_ra_live(v, k, SeatId.{value = by}, RA_REVERSE, on, x, y, z, 0, ifx on && !l.on then l.epoch + 1 else l.epoch);
 }
 // Person j is `m` metres over their feet.
 rm_ra_air :: (v: [] RmServer, k: int, j: int, m: f32) #export_c {
@@ -181,9 +182,9 @@ ra_table :: (v: [] RmServer, k: int) {
   #assert c[0] == 1 && c[1] == 1 && c[6] == 1;
   rm_ra_heard(v[..], k);
   // the world says what each seat holds up: both cylinders (seat 1 cast one too) and seat 1's wall
-  rm_ra_live(v[..], k, 0, RA_REVERSE, true, 0, 0, 0, 0, 1);
-  rm_ra_live(v[..], k, 1, RA_REVERSE, true, 3, 0, 0, 0, 1);
-  rm_ra_live(v[..], k, 1, 1, true, 0, 0, 0, 1.5, 1);
+  rm_ra_live(v[..], k, SeatId.{value = 0}, RA_REVERSE, true, 0, 0, 0, 0, 1);
+  rm_ra_live(v[..], k, SeatId.{value = 1}, RA_REVERSE, true, 3, 0, 0, 0, 1);
+  rm_ra_live(v[..], k, SeatId.{value = 1}, 1, true, 0, 0, 0, 1.5, 1);
   rm_ra_air(v[..], k, 3, 2.5);
   person := [12] f32.[2, 0, 0, 0, 0, 9, 1, -1, 0, -1, 0, 9];   // townsperson 3 outdoors, 2 m off (the town's own, 9 HP at most)
   rm_eg_folk(v[..], k, 3, person[..]);
@@ -215,8 +216,8 @@ ra_table :: (v: [] RmServer, k: int) {
   rm_ra_cast(v[..], k, 0, c[..]);
   #assert c[0] == 0 && c[6] == 0;
   rm_ra_heard(v[..], k);
-  rm_ra_live(v[..], k, 0, RA_REVERSE, false, 0, 0, 0, 0, 1);
-  rm_ra_live(v[..], k, 1, 1, true, 0, 0, 0, 1.5, 2);
+  rm_ra_live(v[..], k, SeatId.{value = 0}, RA_REVERSE, false, 0, 0, 0, 0, 1);
+  rm_ra_live(v[..], k, SeatId.{value = 1}, 1, true, 0, 0, 0, 1.5, 2);
   rm_ra_air(v[..], k, 3, 0);
   for q: 0..<10 { eg_test_tick(v[..], k); }
   eg_test_drain(v[..], box[..]);
@@ -251,7 +252,7 @@ ra_table :: (v: [] RmServer, k: int) {
   rm_ra_cast(v[..], k, 0, c[..]);
   #assert c[0] == 1 && c[1] == 14 && c[10] == 2;
   rm_ra_heard(v[..], k);
-  rm_ra_live(v[..], k, 1, 14, true, 1, 0, 2, 0, 1);
+  rm_ra_live(v[..], k, SeatId.{value = 1}, 14, true, 1, 0, 2, 0, 1);
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
   a := eg_test_of(box[..], 0);
@@ -270,5 +271,5 @@ ra_table :: (v: [] RmServer, k: int) {
   // the rise and sink keys (8, 16) come through the input to the world
   rm_heard(v[..], 0, "I 3 0 0 0 0 0 24 0");
   in: [EG_IN_FIELDS] int;
-  #assert rm_eg_begin(v[..], k) && rm_eg_input(v[..], k, 0, in[..]) && in[6] == 24;
+  #assert rm_eg_begin(v[..], k) && rm_eg_input(v[..], k, SeatId.{value = 0}, in[..]) && in[6] == 24;
 }

@@ -1,3 +1,4 @@
+#load "../../../aethyr/ids.coax";
 // Everglade's world events and its levels 1 to 3 on the room server (spec
 // docs/verse/2026-11-03-everglade-world-events.md; epic #12737, #12738, #12739). Each Everglade
 // instance runs at most one event at a time, the same for every seat in it: the Cultist Raid first.
@@ -186,7 +187,7 @@ ev_control_done :: (v: [] RmServer) {
     v[0].evc.levels = d.levels; v[0].evc.cap = d.cap;
     for k: 0..<EG_ROOMS {
       if !v[0].eg[k].live { continue; }
-      for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { ev_build(v, k, s); } }
+      for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { ev_build(v, k, SeatId.{value = s}); } }
     }
   }
 }
@@ -240,8 +241,8 @@ ev_kit_has :: (kit: EvKit, slot: int) -> bool {
 }
 // Seat s's character as the levels switch says: the SRD class at its XP's level, or Everglade's own
 // (level 0). Its Hit Points carry over (full stays full; a level gained adds its Hit Points).
-ev_build :: (v: [] RmServer, k: int, s: int) {
-  demo := v[0].ev[k].demo[s] && eg_ticket(v, k, s).admin;
+ev_build :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
+  demo := v[0].ev[k].demo[s] && eg_ticket(v, k, s_id).admin;
   want := ifx v[0].evc.d.levels && !demo then ev_level(v, v[0].ev[k].xp[s]) else 0;
   if want == v[0].ev[k].level[s] { return; }
   b := v[0].eg[k].rules[0].b[..];
@@ -262,7 +263,7 @@ ev_build :: (v: [] RmServer, k: int, s: int) {
   v[0].ev[k].level[s] = want;
 }
 // Whether seat s's character has bar slot `slot` (entry a) in its kit, and a spell slot for it.
-ev_may_cast :: (v: [] RmServer, k: int, s: int, slot: int, a: FbAb) -> bool {
+ev_may_cast :: (v: [] RmServer, k: int, s_id: SeatId, slot: int, a: FbAb) -> bool { s := s_id.value;
   lv := v[0].ev[k].level[s];
   if lv == 0 { return true; }
   if !ev_kit_has(ev_kit(v[0].eg[k].rules[0].klass[s] == 1, lv), slot) { return false; }
@@ -272,14 +273,14 @@ ev_may_cast :: (v: [] RmServer, k: int, s: int, slot: int, a: FbAb) -> bool {
   return false;
 }
 // Seat s's hello (room-everglade.coax eg_heard_hello): whether it asks for the demo character.
-ev_hello :: (v: [] RmServer, k: int, s: int, flags: int) {
+ev_hello :: (v: [] RmServer, k: int, s_id: SeatId, flags: int) { s := s_id.value;
   demo := (flags & EV_DEMO_FLAG) != 0;
   if demo == v[0].ev[k].demo[s] { return; }
   v[0].ev[k].demo[s] = demo;
-  ev_build(v, k, s);
+  ev_build(v, k, s_id);
 }
 // XP for seat s (times the reward dial), its gain heard by everyone near it, a level-up by everyone.
-ev_award :: (v: [] RmServer, k: int, s: int, base: int) {
+ev_award :: (v: [] RmServer, k: int, s_id: SeatId, base: int) { s := s_id.value;
   if base <= 0 || s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live { return; }
   amount := rs_max(base * v[0].evc.d.reward / 100, 1);
   was := ev_level(v, v[0].ev[k].xp[s]);
@@ -295,7 +296,7 @@ ev_award :: (v: [] RmServer, k: int, s: int, base: int) {
   if now > was {
     n = wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "e level"), s), now);
     eg_event_who(v, k, cast(string) b[0..<n], p.x, p.z, true, 1 << s);
-    ev_build(v, k, s);
+    ev_build(v, k, s_id);
   }
 }
 
@@ -308,24 +309,24 @@ ev_fresh :: (v: [] RmServer, k: int) {
 }
 // Seat s sat (after its HP came back, rv_join): its XP from this server's note or its ticket, and
 // its character at its level.
-ev_join :: (v: [] RmServer, k: int, s: int) {
+ev_join :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   v[0].ev[k].xp[s] = 0; v[0].ev[k].level[s] = 0; v[0].ev[k].earned[s] = false; v[0].ev[k].demo[s] = false;
   for q: 0..<EG_SEATS { v[0].ev[k].heard_v[q * EG_SEATS + s] = 0; v[0].ev[k].heard_v[s * EG_SEATS + q] = 0; }
   v[0].ev[k].heard_g[s] = 0;
-  tk := eg_ticket(v, k, s);
+  tk := eg_ticket(v, k, s_id);
   if tk.ok {
     xp := tk.xp;
     i := rv_find(v, cast(string) tk.pid[0..<tk.pid_n]);
     if i >= 0 && v[0].vit.v[i].xp > xp { xp = v[0].vit.v[i].xp; }
     v[0].ev[k].xp[s] = ev_clamp(xp, 0, EV_XP_MAX);
   }
-  ev_build(v, k, s);
+  ev_build(v, k, s_id);
   // a returning player's HP is theirs at the new level too (rv_join set it on Everglade's own)
-  rv_hp_back(v, k, s);
+  rv_hp_back(v, k, s_id);
 }
 // Seat s's class changed (its hello's CLASS: e5rr_join_as built Everglade's own): built at its level again.
-ev_class :: (v: [] RmServer, k: int, s: int) { v[0].ev[k].level[s] = 0; ev_build(v, k, s); }
-ev_xp_of :: (v: [] RmServer, k: int, s: int) -> int { return ifx k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS then v[0].ev[k].xp[s] else 0; }
+ev_class :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value; v[0].ev[k].level[s] = 0; ev_build(v, k, s_id); }
+ev_xp_of :: (v: [] RmServer, k: int, s_id: SeatId) -> int { s := s_id.value; return ifx k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS then v[0].ev[k].xp[s] else 0; }
 
 // ---- the lifecycle
 
@@ -385,7 +386,7 @@ ev_end :: (v: [] RmServer, k: int, outcome: int) {
   // the raiders that fell this tick first: the camp's fall still pays for its last kills
   ev_raid_downs(v, k);
   e[0].outcome = outcome;
-  if outcome == EV_OUT_HELD { for s: 0..<EG_SEATS { if e[0].earned[s] { ev_award(v, k, s, EV_XP_HELD); } } }
+  if outcome == EV_OUT_HELD { for s: 0..<EG_SEATS { if e[0].earned[s] { ev_award(v, k, SeatId.{value = s}, EV_XP_HELD); } } }
   ev_rules(v, k)[0].raid[0].stand = false;
   ev_phase(v, k, EV_END, EV_END_S);
 }
@@ -479,9 +480,9 @@ ev_calm :: (v: [] RmServer, k: int) {
   }
 }
 // Seat s cast: it is fighting (any cast; a heal mid-raid is part of the fight).
-ev_fought :: (v: [] RmServer, k: int, s: int) { if s >= 0 && s < EG_SEATS { v[0].ev[k].fought[s] = v[0].eg[k].tick + 1; } }
+ev_fought :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value; if s >= 0 && s < EG_SEATS { v[0].ev[k].fought[s] = v[0].eg[k].tick + 1; } }
 // Whether seat s may take a Long Rest now: between raids, alive, and EV_CALM_S out of combat.
-ev_rest_ok :: (v: [] RmServer, k: int, s: int) -> bool {
+ev_rest_ok :: (v: [] RmServer, k: int, s_id: SeatId) -> bool { s := s_id.value;
   if s < 0 || s >= EG_SEATS || !v[0].eg[k].seat[s].live || !v[0].eg[k].rules[0].live[s] { return false; }
   p := v[0].ev[k].phase;
   if p != EV_IDLE && p != EV_AFTER { return false; }
@@ -491,7 +492,7 @@ ev_rest_ok :: (v: [] RmServer, k: int, s: int) -> bool {
   return f == 0 || v[0].eg[k].tick + 1 - f >= EV_CALM_S * EG_HZ;
 }
 // Seat s's Long Rest: every Hit Point back, every condition gone, every spell slot and use back.
-ev_long_rest :: (v: [] RmServer, k: int, s: int) {
+ev_long_rest :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + s..<E5RR_SEAT + s + 1];
   c[0].hp = c[0].hp_max; c[0].cond = 0; c[0].death_ok = 0; c[0].death_fail = 0; c[0].stable = false;
   for l: 0..<10 { c[0].slots[l] = c[0].slots_max[l]; }
@@ -638,7 +639,7 @@ ev_siege_second :: (v: [] RmServer, k: int) {
 }
 // Seat s repaired a piece of the town (the palisade or the stables) during the siege: its help on
 // the line, as a kill's or a heal's is (the Repair ability calls it).
-ev_repair :: (v: [] RmServer, k: int, s: int) {
+ev_repair :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS { return; }
   p := v[0].ev[k].phase;
   if p == EV_SIEGE || p == EV_STAND { v[0].ev[k].pts[s] += f32(RAID_PTS_REPAIR); }
@@ -743,7 +744,7 @@ ev_fell :: (v: [] RmServer, k: int, dn: E5rdDown) {
   for s: 0..<EG_SEATS { if (bits & (1 << s)) != 0 && v[0].eg[k].seat[s].live { n += 1; } }
   if n == 0 { return; }
   share := rs_max(ev_xp_for(dn.npc, dn.level) / n, 1);
-  for s: 0..<EG_SEATS { if (bits & (1 << s)) != 0 && v[0].eg[k].seat[s].live { ev_award(v, k, s, share); } }
+  for s: 0..<EG_SEATS { if (bits & (1 << s)) != 0 && v[0].eg[k].seat[s].live { ev_award(v, k, SeatId.{value = s}, share); } }
 }
 // Each tick while the raid runs: what its creatures cast reaches the pages (and the town, when its
 // damage dial is on), who fell gets its XP, the wards and the leader.
@@ -863,26 +864,26 @@ ev_cache :: (v: [] RmServer, k: int) {
 }
 // Seat s's D (room-everglade.coax eg_send): the g entry and the v of each seat it sees (not in
 // unseen, room-blocks.coax eg_im_unseen), on change.
-ev_send :: (v: [] RmServer, k: int, s: int, full: bool, unseen: int, o: [] EgOut) {
+ev_send :: (v: [] RmServer, k: int, s_id: SeatId, full: bool, unseen: int, o: [] EgOut) { s := s_id.value;
   e := v[0].ev[k..<k + 1];
   ev_cache(v, k);
   if full {
     e[0].heard_g[s] = 0;
     for q: 0..<EG_SEATS { e[0].heard_v[s * EG_SEATS + q] = 0; }
   }
-  if e[0].heard_g[s] != e[0].g_h { eg_out_entry(o, v, k, s, 0, cast(string) e[0].g[0..<e[0].g_n]); e[0].heard_g[s] = e[0].g_h; }
+  if e[0].heard_g[s] != e[0].g_h { eg_out_entry(o, v, k, s_id, 0, cast(string) e[0].g[0..<e[0].g_n]); e[0].heard_g[s] = e[0].g_h; }
   b: [96] u8;
   cap := v[0].evc.d.cap;
   for q: 0..<EG_SEATS {
     if !v[0].eg[k].seat[q].live || ((unseen >> q) & 1) != 0 { e[0].heard_v[s * EG_SEATS + q] = 0; continue; }   // (unseen: #12789)
     lv := ifx e[0].level[q] > 0 then e[0].level[q] else ev_level(v, e[0].xp[q]);
     kit := ev_kit(v[0].eg[k].rules[0].klass[q] == 1, e[0].level[q]);
-    rest := ifx ev_rest_ok(v, k, q) then 1 else 0;
+    rest := ifx ev_rest_ok(v, k, SeatId.{value = q}) then 1 else 0;
     h := eg_hash(cast(string) b[0..<wire_int(b[..], wire_int(b[..], wire_int(b[..], wire_int(b[..], wire_int(b[..], wire_int(b[..], 0, lv), e[0].xp[q]), cap), kit.lo), kit.hi), rest)]);
     if e[0].heard_v[s * EG_SEATS + q] == h { continue; }
     n := wire_int(b[..], wire_int(b[..], wire_int(b[..], wire_put(b[..], 0, "v"), q), lv), e[0].xp[q]);
     n = wire_int(b[..], wire_int(b[..], wire_int(b[..], wire_int(b[..], n, cap), kit.lo), kit.hi), rest);   // REST last (older pages read six)
-    eg_out_entry(o, v, k, s, 0, cast(string) b[0..<n]);
+    eg_out_entry(o, v, k, s_id, 0, cast(string) b[0..<n]);
     e[0].heard_v[s * EG_SEATS + q] = h;
   }
 }
@@ -935,7 +936,7 @@ ev_test_second :: (v: [] RmServer, k: int) { while v[0].eg[k].tick % EG_HZ != EG
 
 // Seat s strikes raid creature q down where it stands, a metre from the seat (the engine's damage event,
 // then the damage, as a cast's roll does).
-ev_test_strike :: (v: [] RmServer, k: int, s: int, q: int, amount: int) {
+ev_test_strike :: (v: [] RmServer, k: int, s_id: SeatId, q_id: SeatId, amount: int) { q := q_id.value; s := s_id.value;
   r := v[0].eg[k].rules[..];
   b := r[0].b[..];
   i := E5RR_BEAST0 + q;
@@ -947,11 +948,11 @@ ev_test_strike :: (v: [] RmServer, k: int, s: int, q: int, amount: int) {
   rs_damage(b, E5RR_SEAT + s, i, amount, RS_FORCE, false, -1);
 }
 // Every raider standing (not the stones, not the leader), struck down by seat s.
-ev_test_rout :: (v: [] RmServer, k: int, s: int) {
+ev_test_rout :: (v: [] RmServer, k: int, s_id: SeatId) {
   r := v[0].eg[k].rules[..];
   for q: 0..<E5RR_BEASTS {
     f := r[0].beasts[q].form;
-    if e5rd_is(r[0].beasts[q]) && f != E5RR_FORM_WARD && f != E5RR_FORM_RAID + RS_NPC_ARCH { ev_test_strike(v, k, s, q, 999); }
+    if e5rd_is(r[0].beasts[q]) && f != E5RR_FORM_WARD && f != E5RR_FORM_RAID + RS_NPC_ARCH { ev_test_strike(v, k, s_id, SeatId.{value = q}, 999); }
   }
 }
 ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
@@ -993,14 +994,14 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   #assert cz2 > cz + f32(c[RF_CULT]) * 3 && tz2 < tz - f32(c[RF_TOWN]) * 3 && v[0].ev[k].phase == EV_SIEGE;
   // Darian and his stones can't be hurt in the siege
   hp: [2] int;
-  ev_test_strike(v[..], k, 0, r[0].raid[0].arch, 400);
+  ev_test_strike(v[..], k, SeatId.{value = 0}, SeatId.{value = r[0].raid[0].arch}, 400);
   #assert e5rd_arch_hp(r, hp[..]) && hp[0] == hp[1];
   // seat 0 cuts down a Cultist for XP; one of the watch that falls pays none
   qc := -1; qt := -1;
   for q: 0..<E5RR_BEASTS { bt := r[0].beasts[q]; if qc < 0 && bt.form == E5RR_FORM_RAID + RS_NPC_CULTIST && e5rd_is(bt) { qc = q; } if qt < 0 && e5rd_town(bt) { qt = q; } }
   had := v[0].ev[k].xp[0];
-  ev_test_strike(v[..], k, 0, qc, 999);
-  ev_test_strike(v[..], k, 0, qt, 999);
+  ev_test_strike(v[..], k, SeatId.{value = 0}, SeatId.{value = qc}, 999);
+  ev_test_strike(v[..], k, SeatId.{value = 0}, SeatId.{value = qt}, 999);
   eg_test_tick(v[..], k);
   #assert v[0].ev[k].xp[0] == had + EV_XP_SRD_X * EV_XP_CULTIST;
   #assert v[0].ev[k].pts[0] > 0;   // and its help on the line
@@ -1010,10 +1011,10 @@ ev_test_count :: (v: [] RmServer, k: int, form: int) -> int {
   ev_test_second(v[..], k);
   #assert v[0].ev[k].phase == EV_STAND && r[0].raid[0].stand;
   had = v[0].ev[k].xp[0];
-  for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) && r[0].beasts[q].form == E5RR_FORM_WARD { ev_test_strike(v[..], k, 0, q, 60); } }
+  for q: 0..<E5RR_BEASTS { if e5rd_is(r[0].beasts[q]) && r[0].beasts[q].form == E5RR_FORM_WARD { ev_test_strike(v[..], k, SeatId.{value = 0}, SeatId.{value = q}, 60); } }
   ev_test_second(v[..], k);
   #assert v[0].ev[k].wards == 0 && v[0].ev[k].arch == EV_ARCH_EXPOSED && v[0].ev[k].xp[0] == had + 3 * EV_XP_SRD_X * EV_XP_WARD;
-  ev_test_strike(v[..], k, 0, r[0].raid[0].arch, 400);
+  ev_test_strike(v[..], k, SeatId.{value = 0}, SeatId.{value = r[0].raid[0].arch}, 400);
   #assert e5rd_arch_hp(r, hp[..]) && hp[0] == hp[1] / 2;
   had = v[0].ev[k].xp[0];
   ev_test_second(v[..], k); ev_test_second(v[..], k);
@@ -1153,10 +1154,10 @@ ev_test_healthy :: (v: [] RmServer, k: int, box: [] EgInbox, c: int, own: string
   q0 := -1;
   for q: 0..<E5RR_BEASTS { if q0 < 0 && r[0].beasts[q].form == E5RR_FORM_RAID + RS_NPC_CULTIST { q0 = q; } }
   // seat 1 lands a hit and walks 200 m off (a ranged caster far back); seat 0 strikes it down
-  ev_test_strike(v[..], k, 1, q0, 1);
+  ev_test_strike(v[..], k, SeatId.{value = 1}, SeatId.{value = q0}, 1);
   eg_test_tick(v[..], k);
   v[0].eg[k].seat[1].pose.x += 200;
-  ev_test_strike(v[..], k, 0, q0, 999);
+  ev_test_strike(v[..], k, SeatId.{value = 0}, SeatId.{value = q0}, 999);
   eg_test_tick(v[..], k);
   half := EV_XP_SRD_X * EV_XP_CULTIST / 2;
   #assert v[0].ev[k].xp[0] == half && v[0].ev[k].xp[1] == half;
@@ -1164,7 +1165,7 @@ ev_test_healthy :: (v: [] RmServer, k: int, box: [] EgInbox, c: int, own: string
   q1 := -1;
   for q: 0..<E5RR_BEASTS { if q1 < 0 && r[0].beasts[q].form == E5RR_FORM_RAID + RS_NPC_CULTIST && e5rd_is(r[0].beasts[q]) { q1 = q; } }
   had0 := v[0].ev[k].xp[0];
-  ev_test_strike(v[..], k, 0, q1, 999);
+  ev_test_strike(v[..], k, SeatId.{value = 0}, SeatId.{value = q1}, 999);
   e5rr_beasts_check(r); eg_engine_events(v[..], k);    // it falls in the rules, its hit heard,
   ev_end(v[..], k, EV_OUT_HELD);                       // and the camp falls before the raid's step
   #assert v[0].ev[k].phase == EV_END && v[0].ev[k].outcome == EV_OUT_HELD;
@@ -1195,25 +1196,25 @@ ev_test_healthy :: (v: [] RmServer, k: int, box: [] EgInbox, c: int, own: string
   #assert v[0].eg[k].broken[3] && !v[0].eg[k].rebuild;
   // between raids, unhurt: a Long Rest makes you whole
   ev_calm(v[..], k);
-  #assert ev_rest_ok(v[..], k, 0);
+  #assert ev_rest_ok(v[..], k, SeatId.{value = 0});
   b[0].c[i].hp = b[0].c[i].hp_max - 3;
   ev_calm(v[..], k);   // Hit Points lost since the last second: fighting
-  #assert !ev_rest_ok(v[..], k, 0);
+  #assert !ev_rest_ok(v[..], k, SeatId.{value = 0});
   rm_heard(v[..], 0, "L 8");
   #assert b[0].c[i].hp == b[0].c[i].hp_max - 3;
   // EV_CALM_S later it may rest
   v[0].ev[k].fought[0] -= EV_CALM_S * EG_HZ;   // (as if EV_CALM_S of ticks went by)
-  #assert ev_rest_ok(v[..], k, 0);
+  #assert ev_rest_ok(v[..], k, SeatId.{value = 0});
   rm_heard(v[..], 0, "L 9");
   #assert b[0].c[i].hp == b[0].c[i].hp_max;
   // during a raid: none, and the aftermath again allows it
   v[0].ev[k].phase = EV_SIEGE;
-  #assert !ev_rest_ok(v[..], k, 0);
+  #assert !ev_rest_ok(v[..], k, SeatId.{value = 0});
   v[0].ev[k].phase = EV_AFTER;
-  #assert ev_rest_ok(v[..], k, 0);
+  #assert ev_rest_ok(v[..], k, SeatId.{value = 0});
   // a cast is fighting
-  ev_fought(v[..], k, 0);
-  #assert !ev_rest_ok(v[..], k, 0);
+  ev_fought(v[..], k, SeatId.{value = 0});
+  #assert !ev_rest_ok(v[..], k, SeatId.{value = 0});
 }
 
 #test "events: the siege has no time limit and the town never falls; STOP ends it with no bonus, events off end it, and START begins it in every room (#12860)" #steps 16000000000 {
@@ -1266,7 +1267,7 @@ ev_test_healthy :: (v: [] RmServer, k: int, box: [] EgInbox, c: int, own: string
   b: [64] u8;
   for q: 0..<200 { n := wire_put_hit(b[..], 0, WireHit.{who = 2000 + q, by = 2001, amt = 7, kind = 3}); eg_event(v[..], k, cast(string) b[0..<n], 0, 0, false); }
   #assert v[0].eg[k].ev_n >= EG_EVENTS;
-  ev_award(v[..], k, 0, 300);
+  ev_award(v[..], k, SeatId.{value = 0}, 300);
   eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
   #assert v[0].ev[k].level[0] == 2;
@@ -1287,14 +1288,14 @@ ev_test_healthy :: (v: [] RmServer, k: int, box: [] EgInbox, c: int, own: string
   eg_test_drain(v[..], box[..]);
   a := eg_test_of(box[..], 0);
   #assert eg_test_has(a, "r 1 level") && eg_test_has(a, "r 2 level") && !eg_test_has(a, "r 3 ");
-  ev_award(v[..], k, 0, 150);   // 300 at 200%
+  ev_award(v[..], k, SeatId.{value = 0}, 150);   // 300 at 200%
   eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
   #assert v[0].ev[k].xp[0] == 300 && v[0].ev[k].level[0] == 2 && b[0].c[0].level == 2 && b[0].c[0].hp_max == 15 && b[0].c[0].slots_max[1] == 3;
   #assert eg_test_has(eg_test_of(box[..], 0), "e xp 0 300") && eg_test_has(eg_test_of(box[..], 1), "e level 0 2") && eg_test_has(eg_test_of(box[..], 1), "v 0 2 300 2 ");
   #assert ev_kit_has(ev_kit(false, 2), 27) && !ev_kit_has(ev_kit(false, 1), 27) && !ev_kit_has(ev_kit(false, 2), 20);
   // the cap is 2: XP past it is kept and gives nothing
-  ev_award(v[..], k, 0, 5000);
+  ev_award(v[..], k, SeatId.{value = 0}, 5000);
   #assert v[0].ev[k].level[0] == 2 && v[0].ev[k].xp[0] == 10300;
   // the cap raised to 3: the seat is level 3 at once, with Moonbeam
   rm_control(v[..], "levels 1 3\n");
@@ -1360,7 +1361,7 @@ ev_test_healthy :: (v: [] RmServer, k: int, box: [] EgInbox, c: int, own: string
   #assert rm_join(v[..], 1, tk_test_ask(r[..], t[..], n)) == 1 && v[0].conns[1].ticket.hp == 7 && v[0].ev[k].xp[1] == 0;
   n = tk_sign(key, "p-0123012301230123", false, "", "pair-tk", now + 60000, 5, t[..]);
   #assert tk_check(key, cast(string) t[0..<n], "pair-tk", now).ok && tk_check(key, cast(string) t[0..<n], "pair-tk", now).xp == 0;
-  ev_award(v[..], k, 0, 30);
+  ev_award(v[..], k, SeatId.{value = 0}, 30);
   rm_left(v[..], 0);
   #assert rm_vitals_due(v[..]) > 0;
   #assert eg_test_has(cast(string) v[0].vit.out[0..<v[0].vit.out_n], " 450 0 ");   // PID HP MAX XP WANTED REV AT

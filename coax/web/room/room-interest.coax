@@ -1,3 +1,4 @@
+#load "../../../aethyr/ids.coax";
 // Interest management for the Everglade rooms (#12789; docs/research/mmo.md section 7): which of a
 // room's entities each seat may receive this tick, and how much each matters. The send path
 // (room-everglade.coax eg_send, the v3 replication of #12783) asks im_pick once per seat per tick and
@@ -85,13 +86,13 @@ im_clear :: (im: [] Interest) {
   for q: 0..<IM_ENTS { im[0].e[q] = ImEnt.{}; im[0].mark[q] = 0; }
 }
 
-im_key :: (id: int) -> int { h := id * 2654435761; if h < 0 { h = -h; } return (h >> 7) & (IM_KEYS - 1); }
+im_key :: (identity: EntityId) -> int { id := identity.value; h := id * 2654435761; if h < 0 { h = -h; } return (h >> 7) & (IM_KEYS - 1); }
 im_cell_of :: (cx: int, cz: int) -> int { h := cx * 73856093 + cz * 19349663; if h < 0 { h = -h; } return h & (IM_BUCKETS - 1); }
 im_coord :: (v: f32) -> int { if !(v == v) { return 0; } return cast(int) floor(v / f32(IM_CELL)); }
 
 // The slot that holds wire ID id, or -1.
-im_find :: (im: [] Interest, id: int) -> int {
-  i := im[0].key[im_key(id)] - 1;
+im_find :: (im: [] Interest, identity: EntityId) -> int { id := identity.value;
+  i := im[0].key[im_key(identity)] - 1;
   while i >= 0 { if im[0].e[i].id == id { return i; } i = im[0].e[i].knext; }
   return -1;
 }
@@ -117,7 +118,7 @@ im_own_unlink :: (im: [] Interest, i: int) {
   if e.onext >= 0 { im[0].e[e.onext].oprev = e.oprev; }
   im[0].e[i].onext = -1; im[0].e[i].oprev = -1;
 }
-im_own_link :: (im: [] Interest, i: int, of: int) {
+im_own_link :: (im: [] Interest, i: int, of_id: SeatId) { of := of_id.value;
   im[0].e[i].of = of;
   if of < 0 || of >= IM_SEATS { im[0].e[i].of = -1; return; }
   head := im[0].own[of] - 1;
@@ -139,21 +140,21 @@ im_room_remove :: (im: [] Interest, i: int) {
 
 // Entity id is at (x, z) this tick: of the seat it is or rides on (-1 none), flags IM_ROOM and IM_HIDDEN.
 // With IM_ENTS entities held already, a new one isn't (counted in over).
-im_put :: (im: [] Interest, tick: int, id: int, x: f32, z: f32, of: int, flags: int) { im_put_at(im, tick, id, -1, x, z, of, flags); }
+im_put :: (im: [] Interest, tick: int, identity: EntityId, x: f32, z: f32, of_id: SeatId, flags: int) { of := of_id.value; im_put_at(im, tick, identity, -1, x, z, of_id, flags); }
 // The same, with a tag of the caller's that each pick hands back (the send path's table slot).
-im_put_at :: (im: [] Interest, tick: int, id: int, tag: int, x: f32, z: f32, of: int, flags: int) {
-  i := im_find(im, id);
+im_put_at :: (im: [] Interest, tick: int, identity: EntityId, tag: int, x: f32, z: f32, of_id: SeatId, flags: int) { of := of_id.value; id := identity.value;
+  i := im_find(im, identity);
   if i < 0 {
     if im[0].free_n > 0 { im[0].free_n -= 1; i = im[0].free[im[0].free_n]; }
     else if im[0].used < IM_ENTS { i = im[0].used; im[0].used += 1; }
     else { im[0].over += 1; return; }
     im[0].e[i] = ImEnt.{on = true, id = id};
-    k := im_key(id);
+    k := im_key(identity);
     im[0].e[i].knext = im[0].key[k] - 1; im[0].key[k] = i + 1;
     for s: 0..<IM_SEATS { im[0].had[s * IM_ENTS + i] = 0; im[0].reveal[s * IM_ENTS + i] = 0; }
-    im_own_link(im, i, of);
+    im_own_link(im, i, of_id);
   } else if im[0].e[i].of != of {
-    im_own_unlink(im, i); im_own_link(im, i, of);
+    im_own_unlink(im, i); im_own_link(im, i, of_id);
   }
   im[0].e[i].x = x; im[0].e[i].z = z; im[0].e[i].put = tick; im[0].e[i].tag = tag;
   cx := im_coord(x); cz := im_coord(z);
@@ -163,10 +164,10 @@ im_put_at :: (im: [] Interest, tick: int, id: int, tag: int, x: f32, z: f32, of:
 }
 
 // The room no longer holds entity id.
-im_drop :: (im: [] Interest, id: int) {
-  i := im_find(im, id);
+im_drop :: (im: [] Interest, identity: EntityId) {
+  i := im_find(im, identity);
   if i < 0 { return; }
-  k := im_key(id);
+  k := im_key(identity);
   p := -1; j := im[0].key[k] - 1;
   while j >= 0 && j != i { p = j; j = im[0].e[j].knext; }
   if p >= 0 { im[0].e[p].knext = im[0].e[i].knext; } else { im[0].key[k] = im[0].e[i].knext + 1; }
@@ -177,22 +178,22 @@ im_drop :: (im: [] Interest, id: int) {
 
 // Drops every entity not put this tick (once a tick, after the puts).
 im_sweep :: (im: [] Interest, tick: int) {
-  for i: 0..<im[0].used { if im[0].e[i].on && im[0].e[i].put != tick { im_drop(im, im[0].e[i].id); } }
+  for i: 0..<im[0].used { if im[0].e[i].on && im[0].e[i].put != tick { im_drop(im, EntityId.{value = im[0].e[i].id}); } }
 }
 
-im_block :: (im: [] Interest, s: int, q: int, on: bool) {
+im_block :: (im: [] Interest, s_id: SeatId, q_id: SeatId, on: bool) { q := q_id.value; s := s_id.value;
   if s < 0 || s >= IM_SEATS || q < 0 || q >= IM_SEATS || s == q { return; }
   im[0].blocks[s] = ifx on then im[0].blocks[s] | (1 << q) else im[0].blocks[s] - (im[0].blocks[s] & (1 << q));
 }
-im_blocks :: (im: [] Interest, s: int, mask: int) { if s >= 0 && s < IM_SEATS { im[0].blocks[s] = mask - (mask & (1 << s)); } }
-im_party :: (im: [] Interest, s: int, party: int) { if s >= 0 && s < IM_SEATS { im[0].party[s] = party; } }
+im_blocks :: (im: [] Interest, s_id: SeatId, mask: int) { s := s_id.value; if s >= 0 && s < IM_SEATS { im[0].blocks[s] = mask - (mask & (1 << s)); } }
+im_party :: (im: [] Interest, s_id: SeatId, party: int) { s := s_id.value; if s >= 0 && s < IM_SEATS { im[0].party[s] = party; } }
 // Seat s sees hidden entity id until tick until.
-im_reveal :: (im: [] Interest, id: int, s: int, until: int) {
-  i := im_find(im, id);
+im_reveal :: (im: [] Interest, identity: EntityId, s_id: SeatId, until: int) { s := s_id.value;
+  i := im_find(im, identity);
   if i >= 0 && s >= 0 && s < IM_SEATS { im[0].reveal[s * IM_ENTS + i] = until; }
 }
 // Seat s sat or left: what it held and blocked is forgotten.
-im_seat_reset :: (im: [] Interest, s: int) {
+im_seat_reset :: (im: [] Interest, s_id: SeatId) { s := s_id.value;
   if s < 0 || s >= IM_SEATS { return; }
   im[0].blocks[s] = 0; im[0].party[s] = 0;
   for q: 0..<IM_SEATS { if q != s { im[0].blocks[q] = im[0].blocks[q] - (im[0].blocks[q] & (1 << s)); } }
@@ -200,13 +201,13 @@ im_seat_reset :: (im: [] Interest, s: int) {
 }
 
 // Why seat s may not have slot i at tick: 0 it may, 1 it blocks the player it rides on, 2 it's hidden.
-im_withheld :: (im: [] Interest, s: int, i: int, tick: int) -> int {
+im_withheld :: (im: [] Interest, s_id: SeatId, i: int, tick: int) -> int { s := s_id.value;
   e := im[0].e[i];
   if e.of >= 0 && e.of != s && ((im[0].blocks[s] >> e.of) & 1) != 0 { return 1; }
   if (e.flags & IM_HIDDEN) != 0 && e.of != s && im[0].reveal[s * IM_ENTS + i] < tick { return 2; }
   return 0;
 }
-im_take :: (im: [] Interest, s: int, i: int, prio: f32, chan: int, out: [] ImPick, n: int) -> int {
+im_take :: (im: [] Interest, s_id: SeatId, i: int, prio: f32, chan: int, out: [] ImPick, n: int) -> int { s := s_id.value;
   im[0].mark[i] = im[0].mark_n;
   if n >= out.count { return n; }
   out[n] = ImPick.{id = im[0].e[i].id, tag = im[0].e[i].tag, prio = prio, chan = chan};
@@ -217,7 +218,7 @@ im_near :: (d2: f32) -> f32 { d := sqrt(d2); return ifx d >= f32(IM_EXIT) then 0
 
 // What seat s, standing at (x, z), may receive at tick: out filled with each entity's wire ID, priority
 // and channel; the count back. Call it once per seat per tick, after the tick's puts and sweep.
-im_pick :: (im: [] Interest, s: int, x: f32, z: f32, tick: int, out: [] ImPick) -> int {
+im_pick :: (im: [] Interest, s_id: SeatId, x: f32, z: f32, tick: int, out: [] ImPick) -> int { s := s_id.value;
   if s < 0 || s >= IM_SEATS { return 0; }
   im[0].mark_n += 1;
   was := im[0].serial[s];
@@ -226,16 +227,16 @@ im_pick :: (im: [] Interest, s: int, x: f32, z: f32, tick: int, out: [] ImPick) 
   n := 0;
   // your own, always
   i := im[0].own[s] - 1;
-  while i >= 0 { im[0].visits += 1; n = im_take(im, s, i, f32(IM_PRIO_OWN), IM_FULL, out, n); i = im[0].e[i].onext; }
+  while i >= 0 { im[0].visits += 1; n = im_take(im, s_id, i, f32(IM_PRIO_OWN), IM_FULL, out, n); i = im[0].e[i].onext; }
   // the room-wide ones, wherever they are
   for r: 0..<im[0].room_n {
     i = im[0].room[r];
     im[0].visits += 1;
     if im[0].mark[i] == im[0].mark_n { continue; }
-    why := im_withheld(im, s, i, tick);
+    why := im_withheld(im, s_id, i, tick);
     if why != 0 { im[0].mark[i] = im[0].mark_n; if why == 1 { im[0].n_blocked[s] += 1; } else { im[0].n_hidden[s] += 1; } continue; }
     dx := im[0].e[i].x - x; dz := im[0].e[i].z - z;
-    n = im_take(im, s, i, f32(IM_PRIO_ROOM) + im_near(dx * dx + dz * dz), IM_FULL, out, n);
+    n = im_take(im, s_id, i, f32(IM_PRIO_ROOM) + im_near(dx * dx + dz * dz), IM_FULL, out, n);
   }
   // the cells within the exit radius
   enter2 := f32(IM_ENTER * IM_ENTER); exit2 := f32(IM_EXIT * IM_EXIT);
@@ -252,9 +253,9 @@ im_pick :: (im: [] Interest, s: int, x: f32, z: f32, tick: int, out: [] ImPick) 
         dx := e.x - x; dz := e.z - z; d2 := dx * dx + dz * dz;
         held := im[0].had[s * IM_ENTS + i] == was && was > 0;
         if d2 <= enter2 || (held && d2 <= exit2) {
-          why := im_withheld(im, s, i, tick);
+          why := im_withheld(im, s_id, i, tick);
           if why != 0 { im[0].mark[i] = im[0].mark_n; if why == 1 { im[0].n_blocked[s] += 1; } else { im[0].n_hidden[s] += 1; } }
-          else { n = im_take(im, s, i, im_near(d2), IM_FULL, out, n); }
+          else { n = im_take(im, s_id, i, im_near(d2), IM_FULL, out, n); }
         }
         i = nx;
       }
@@ -266,21 +267,21 @@ im_pick :: (im: [] Interest, s: int, x: f32, z: f32, tick: int, out: [] ImPick) 
       // the roster's visibility (aethyr/session/party.coax): the same party, neither blocking the other
       blocked := ((im[0].blocks[s] >> q) & 1) != 0 || ((im[0].blocks[q] >> s) & 1) != 0;
       if q == s || !party_sees(im[0].party[q] == im[0].party[s], false, false, blocked) { continue; }
-      i = im_find(im, q);   // a player's wire ID is its seat
+      i = im_find(im, EntityId.{value = q});   // a player's wire ID is its seat
       if i < 0 || im[0].mark[i] == im[0].mark_n { continue; }
       im[0].visits += 1;
-      n = im_take(im, s, i, f32(IM_PRIO_PARTY), IM_HEALTH, out, n);
+      n = im_take(im, s_id, i, f32(IM_PRIO_PARTY), IM_HEALTH, out, n);
     }
   }
   return n;
 }
 
 // Seat s's counts from its last pick: [picked whole, picked health-only, withheld blocked, withheld hidden].
-im_counts :: (im: [] Interest, s: int, out: [] int) {
+im_counts :: (im: [] Interest, s_id: SeatId, out: [] int) { s := s_id.value;
   if s < 0 || s >= IM_SEATS || out.count < 4 { return; }
   out[0] = im[0].n_full[s]; out[1] = im[0].n_health[s]; out[2] = im[0].n_blocked[s]; out[3] = im[0].n_hidden[s];
 }
-im_has :: (p: [] ImPick, n: int, id: int) -> int {
+im_has :: (p: [] ImPick, n: int, identity: EntityId) -> int { id := identity.value;
   for q: 0..<n { if p[q].id == id { return q; } }
   return -1;
 }
@@ -291,37 +292,37 @@ im_has :: (p: [] ImPick, n: int, id: int) -> int {
   im: [1] Interest; im_clear(im[..]);
   p: [IM_PICKS] ImPick;
   t := 1;
-  im_put(im[..], t, 0, 0, 0, 0, 0); im_put(im[..], t, 1, 200, 0, 1, 0);
-  im_put(im[..], t, 100005, 120, 0, -1, 0);   // a townsperson 120 m from seat 0: between the radii, never held
-  n := im_pick(im[..], 0, 0, 0, t, p[..]);
-  #assert im_has(p[..], n, 100005) < 0 && im_has(p[..], n, 0) >= 0 && p[im_has(p[..], n, 0)].prio == f32(IM_PRIO_OWN);
+  im_put(im[..], t, EntityId.{value = 0}, 0, 0, SeatId.{value = 0}, 0); im_put(im[..], t, EntityId.{value = 1}, 200, 0, SeatId.{value = 1}, 0);
+  im_put(im[..], t, EntityId.{value = 100005}, 120, 0, SeatId.{value = -1}, 0);   // a townsperson 120 m from seat 0: between the radii, never held
+  n := im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 100005}) < 0 && im_has(p[..], n, EntityId.{value = 0}) >= 0 && p[im_has(p[..], n, EntityId.{value = 0})].prio == f32(IM_PRIO_OWN);
   // walks to 105 m: in
-  t += 1; im_put(im[..], t, 0, 0, 0, 0, 0); im_put(im[..], t, 1, 200, 0, 1, 0); im_put(im[..], t, 100005, 105, 0, -1, 0); im_sweep(im[..], t);
-  n = im_pick(im[..], 0, 0, 0, t, p[..]);
-  #assert im_has(p[..], n, 100005) >= 0;
+  t += 1; im_put(im[..], t, EntityId.{value = 0}, 0, 0, SeatId.{value = 0}, 0); im_put(im[..], t, EntityId.{value = 1}, 200, 0, SeatId.{value = 1}, 0); im_put(im[..], t, EntityId.{value = 100005}, 105, 0, SeatId.{value = -1}, 0); im_sweep(im[..], t);
+  n = im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 100005}) >= 0;
   // back and forth across 110 and up to 129 m: still in, every tick
   for q: 0..<20 {
     t += 1;
-    im_put(im[..], t, 0, 0, 0, 0, 0); im_put(im[..], t, 1, 200, 0, 1, 0);
-    im_put(im[..], t, 100005, ifx q % 2 == 0 then 129.0f32 else 108.0f32, 0, -1, 0); im_sweep(im[..], t);
-    n = im_pick(im[..], 0, 0, 0, t, p[..]);
-    #assert im_has(p[..], n, 100005) >= 0;
+    im_put(im[..], t, EntityId.{value = 0}, 0, 0, SeatId.{value = 0}, 0); im_put(im[..], t, EntityId.{value = 1}, 200, 0, SeatId.{value = 1}, 0);
+    im_put(im[..], t, EntityId.{value = 100005}, ifx q % 2 == 0 then 129.0f32 else 108.0f32, 0, SeatId.{value = -1}, 0); im_sweep(im[..], t);
+    n = im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+    #assert im_has(p[..], n, EntityId.{value = 100005}) >= 0;
   }
   // seat 1, 71 to 92 m off the whole time, held it too; a seat it was never in range of didn't
-  n = im_pick(im[..], 1, 200, 0, t, p[..]);
-  #assert im_has(p[..], n, 100005) >= 0;
+  n = im_pick(im[..], SeatId.{value = 1}, 200, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 100005}) >= 0;
   // past 130 m: out, and 120 m doesn't bring it back
-  t += 1; im_put(im[..], t, 0, 0, 0, 0, 0); im_put(im[..], t, 1, 200, 0, 1, 0); im_put(im[..], t, 100005, -131, 0, -1, 0); im_sweep(im[..], t);
-  n = im_pick(im[..], 0, 0, 0, t, p[..]);
-  #assert im_has(p[..], n, 100005) < 0;
-  t += 1; im_put(im[..], t, 0, 0, 0, 0, 0); im_put(im[..], t, 1, 200, 0, 1, 0); im_put(im[..], t, 100005, -120, 0, -1, 0); im_sweep(im[..], t);
-  n = im_pick(im[..], 0, 0, 0, t, p[..]);
-  #assert im_has(p[..], n, 100005) < 0;
+  t += 1; im_put(im[..], t, EntityId.{value = 0}, 0, 0, SeatId.{value = 0}, 0); im_put(im[..], t, EntityId.{value = 1}, 200, 0, SeatId.{value = 1}, 0); im_put(im[..], t, EntityId.{value = 100005}, -131, 0, SeatId.{value = -1}, 0); im_sweep(im[..], t);
+  n = im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 100005}) < 0;
+  t += 1; im_put(im[..], t, EntityId.{value = 0}, 0, 0, SeatId.{value = 0}, 0); im_put(im[..], t, EntityId.{value = 1}, 200, 0, SeatId.{value = 1}, 0); im_put(im[..], t, EntityId.{value = 100005}, -120, 0, SeatId.{value = -1}, 0); im_sweep(im[..], t);
+  n = im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 100005}) < 0;
   // a dropped entity is gone, and its slot's next holder starts unheld
-  im_drop(im[..], 100005);
-  im_put(im[..], t, 200009, 120, 0, -1, 0);
-  n = im_pick(im[..], 0, 0, 0, t, p[..]);
-  #assert im_has(p[..], n, 200009) < 0 && im_has(p[..], n, 100005) < 0;
+  im_drop(im[..], EntityId.{value = 100005});
+  im_put(im[..], t, EntityId.{value = 200009}, 120, 0, SeatId.{value = -1}, 0);
+  n = im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 200009}) < 0 && im_has(p[..], n, EntityId.{value = 100005}) < 0;
 }
 
 #test "interest: a blocked player and what rides on them never reach the blocker; the other seats still get them; room-wide ones go everywhere" #steps 400000000 {
@@ -329,30 +330,30 @@ im_has :: (p: [] ImPick, n: int, id: int) -> int {
   p: [IM_PICKS] ImPick;
   c: [4] int;
   t := 1;
-  im_put(im[..], t, 0, 0, 0, 0, 0); im_put(im[..], t, 1, 5, 0, 1, 0); im_put(im[..], t, 2, 0, 5, 2, 0);
-  im_put(im[..], t, 200040, 5, 0, 1, 0);         // an effect on seat 1
-  im_put(im[..], t, 200041, 900, 900, -1, IM_ROOM);   // Darian, far off
-  im_block(im[..], 0, 1, true);
-  n := im_pick(im[..], 0, 0, 0, t, p[..]);
-  #assert im_has(p[..], n, 1) < 0 && im_has(p[..], n, 200040) < 0 && im_has(p[..], n, 2) >= 0;
-  #assert im_has(p[..], n, 200041) >= 0 && p[im_has(p[..], n, 200041)].prio >= f32(IM_PRIO_ROOM);
-  im_counts(im[..], 0, c[..]);
+  im_put(im[..], t, EntityId.{value = 0}, 0, 0, SeatId.{value = 0}, 0); im_put(im[..], t, EntityId.{value = 1}, 5, 0, SeatId.{value = 1}, 0); im_put(im[..], t, EntityId.{value = 2}, 0, 5, SeatId.{value = 2}, 0);
+  im_put(im[..], t, EntityId.{value = 200040}, 5, 0, SeatId.{value = 1}, 0);         // an effect on seat 1
+  im_put(im[..], t, EntityId.{value = 200041}, 900, 900, SeatId.{value = -1}, IM_ROOM);   // Darian, far off
+  im_block(im[..], SeatId.{value = 0}, SeatId.{value = 1}, true);
+  n := im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 1}) < 0 && im_has(p[..], n, EntityId.{value = 200040}) < 0 && im_has(p[..], n, EntityId.{value = 2}) >= 0;
+  #assert im_has(p[..], n, EntityId.{value = 200041}) >= 0 && p[im_has(p[..], n, EntityId.{value = 200041})].prio >= f32(IM_PRIO_ROOM);
+  im_counts(im[..], SeatId.{value = 0}, c[..]);
   #assert c[2] == 2 && c[0] == n;
-  n = im_pick(im[..], 2, 0, 5, t, p[..]);
-  #assert im_has(p[..], n, 1) >= 0 && im_has(p[..], n, 200040) >= 0;
+  n = im_pick(im[..], SeatId.{value = 2}, 0, 5, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 1}) >= 0 && im_has(p[..], n, EntityId.{value = 200040}) >= 0;
   // seat 1 still gets its own, and seat 0 (blocking isn't both ways)
-  n = im_pick(im[..], 1, 5, 0, t, p[..]);
-  #assert im_has(p[..], n, 1) >= 0 && im_has(p[..], n, 200040) >= 0 && p[im_has(p[..], n, 200040)].prio == f32(IM_PRIO_OWN) && im_has(p[..], n, 0) >= 0;
+  n = im_pick(im[..], SeatId.{value = 1}, 5, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 1}) >= 0 && im_has(p[..], n, EntityId.{value = 200040}) >= 0 && p[im_has(p[..], n, EntityId.{value = 200040})].prio == f32(IM_PRIO_OWN) && im_has(p[..], n, EntityId.{value = 0}) >= 0;
   // unblocked: back; a seat that leaves takes its blocks with it
-  im_block(im[..], 0, 1, false);
-  n = im_pick(im[..], 0, 0, 0, t, p[..]);
-  #assert im_has(p[..], n, 1) >= 0;
-  im_blocks(im[..], 0, 2 | 4 | 1);   // its own bit is ignored
-  n = im_pick(im[..], 0, 0, 0, t, p[..]);
-  #assert im_has(p[..], n, 0) >= 0 && im_has(p[..], n, 1) < 0 && im_has(p[..], n, 2) < 0;
-  im_seat_reset(im[..], 0);
-  n = im_pick(im[..], 0, 0, 0, t, p[..]);
-  #assert im_has(p[..], n, 1) >= 0 && im_has(p[..], n, 2) >= 0;
+  im_block(im[..], SeatId.{value = 0}, SeatId.{value = 1}, false);
+  n = im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 1}) >= 0;
+  im_blocks(im[..], SeatId.{value = 0}, 2 | 4 | 1);   // its own bit is ignored
+  n = im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 0}) >= 0 && im_has(p[..], n, EntityId.{value = 1}) < 0 && im_has(p[..], n, EntityId.{value = 2}) < 0;
+  im_seat_reset(im[..], SeatId.{value = 0});
+  n = im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 1}) >= 0 && im_has(p[..], n, EntityId.{value = 2}) >= 0;
 }
 
 #test "interest: a hidden entity goes to its own seat, and to others only while revealed; party members out of range get health only" #steps 400000000 {
@@ -360,44 +361,44 @@ im_has :: (p: [] ImPick, n: int, id: int) -> int {
   p: [IM_PICKS] ImPick;
   c: [4] int;
   t := 10;
-  im_put(im[..], t, 0, 0, 0, 0, 0); im_put(im[..], t, 1, 3, 0, 1, IM_HIDDEN);
-  n := im_pick(im[..], 0, 0, 0, t, p[..]);
-  #assert im_has(p[..], n, 1) < 0;
-  im_counts(im[..], 0, c[..]);
+  im_put(im[..], t, EntityId.{value = 0}, 0, 0, SeatId.{value = 0}, 0); im_put(im[..], t, EntityId.{value = 1}, 3, 0, SeatId.{value = 1}, IM_HIDDEN);
+  n := im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 1}) < 0;
+  im_counts(im[..], SeatId.{value = 0}, c[..]);
   #assert c[3] == 1;
-  n = im_pick(im[..], 1, 3, 0, t, p[..]);
-  #assert im_has(p[..], n, 1) >= 0;
-  im_reveal(im[..], 1, 0, 12);   // it struck near seat 0: seen until tick 12
-  n = im_pick(im[..], 0, 0, 0, 11, p[..]);
-  #assert im_has(p[..], n, 1) >= 0;
-  n = im_pick(im[..], 0, 0, 0, 13, p[..]);
-  #assert im_has(p[..], n, 1) < 0;
+  n = im_pick(im[..], SeatId.{value = 1}, 3, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 1}) >= 0;
+  im_reveal(im[..], EntityId.{value = 1}, SeatId.{value = 0}, 12);   // it struck near seat 0: seen until tick 12
+  n = im_pick(im[..], SeatId.{value = 0}, 0, 0, 11, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 1}) >= 0;
+  n = im_pick(im[..], SeatId.{value = 0}, 0, 0, 13, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 1}) < 0;
   // a party: seat 2 is 500 m off, so seat 0 gets its health; seat 3, in no party, nothing
-  im_put(im[..], t, 1, 3, 0, 1, 0);
-  im_put(im[..], t, 2, 500, 0, 2, 0); im_put(im[..], t, 3, -500, 0, 3, 0);
-  im_party(im[..], 0, 7); im_party(im[..], 2, 7);
-  n = im_pick(im[..], 0, 0, 0, t, p[..]);
-  #assert im_has(p[..], n, 2) >= 0 && p[im_has(p[..], n, 2)].chan == IM_HEALTH && im_has(p[..], n, 3) < 0;
-  #assert p[im_has(p[..], n, 1)].chan == IM_FULL;
-  im_counts(im[..], 0, c[..]);
+  im_put(im[..], t, EntityId.{value = 1}, 3, 0, SeatId.{value = 1}, 0);
+  im_put(im[..], t, EntityId.{value = 2}, 500, 0, SeatId.{value = 2}, 0); im_put(im[..], t, EntityId.{value = 3}, -500, 0, SeatId.{value = 3}, 0);
+  im_party(im[..], SeatId.{value = 0}, 7); im_party(im[..], SeatId.{value = 2}, 7);
+  n = im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 2}) >= 0 && p[im_has(p[..], n, EntityId.{value = 2})].chan == IM_HEALTH && im_has(p[..], n, EntityId.{value = 3}) < 0;
+  #assert p[im_has(p[..], n, EntityId.{value = 1})].chan == IM_FULL;
+  im_counts(im[..], SeatId.{value = 0}, c[..]);
   #assert c[1] == 1;
   // a party member who blocks seat 0, or whom it blocks, gets nothing out of range (party_sees)
-  im_block(im[..], 2, 0, true);
-  n = im_pick(im[..], 0, 0, 0, t, p[..]);
-  #assert im_has(p[..], n, 2) < 0;
-  im_block(im[..], 2, 0, false); im_block(im[..], 0, 2, true);
-  n = im_pick(im[..], 0, 0, 0, t, p[..]);
-  #assert im_has(p[..], n, 2) < 0;
-  im_block(im[..], 0, 2, false);
+  im_block(im[..], SeatId.{value = 2}, SeatId.{value = 0}, true);
+  n = im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 2}) < 0;
+  im_block(im[..], SeatId.{value = 2}, SeatId.{value = 0}, false); im_block(im[..], SeatId.{value = 0}, SeatId.{value = 2}, true);
+  n = im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+  #assert im_has(p[..], n, EntityId.{value = 2}) < 0;
+  im_block(im[..], SeatId.{value = 0}, SeatId.{value = 2}, false);
   // in range, the party member is whole again
-  im_put(im[..], t, 2, 50, 0, 2, 0);
-  n = im_pick(im[..], 0, 0, 0, t, p[..]);
-  #assert p[im_has(p[..], n, 2)].chan == IM_FULL;
+  im_put(im[..], t, EntityId.{value = 2}, 50, 0, SeatId.{value = 2}, 0);
+  n = im_pick(im[..], SeatId.{value = 0}, 0, 0, t, p[..]);
+  #assert p[im_has(p[..], n, EntityId.{value = 2})].chan == IM_FULL;
 }
 
 // A brute-force reference: every entity for every seat, with its own hysteresis.
 ImRef :: struct { id: [IM_ENTS] int; x: [IM_ENTS] f32; z: [IM_ENTS] f32; of: [IM_ENTS] int; flags: [IM_ENTS] int; n: int; had: [IM_SEATS * IM_ENTS] bool; }
-im_ref_pick :: (r: [] ImRef, blocks: int, s: int, x: f32, z: f32, out: [] int) -> int {
+im_ref_pick :: (r: [] ImRef, blocks: int, s_id: SeatId, x: f32, z: f32, out: [] int) -> int { s := s_id.value;
   n := 0;
   for i: 0..<r[0].n {
     dx := r[0].x[i] - x; dz := r[0].z[i] - z; d2 := dx * dx + dz * dz;
@@ -426,19 +427,19 @@ im_rand :: (seed: [] int) -> int { seed[0] = (seed[0] * 1103515245 + 12345) & 0x
   }
   blocks: [IM_SEATS] int;
   blocks[3] = (1 << 4) | (1 << 9); blocks[7] = 1 << 0;
-  for s: 0..<IM_SEATS { im_blocks(im[..], s, blocks[s]); }
+  for s: 0..<IM_SEATS { im_blocks(im[..], SeatId.{value = s}, blocks[s]); }
   for t: 1..<200 {
     for i: 0..<96 {
       r[0].x[i] += f32(im_rand(seed[..]) % 1601 - 800) / 100.0; r[0].z[i] += f32(im_rand(seed[..]) % 1601 - 800) / 100.0;
       if i >= 86 { r[0].x[i] = r[0].x[i - 86]; r[0].z[i] = r[0].z[i - 86]; }
-      im_put(im[..], t, r[0].id[i], r[0].x[i], r[0].z[i], r[0].of[i], r[0].flags[i]);
+      im_put(im[..], t, EntityId.{value = r[0].id[i]}, r[0].x[i], r[0].z[i], SeatId.{value = r[0].of[i]}, r[0].flags[i]);
     }
     im_sweep(im[..], t);
     for s: 0..<IM_SEATS {
-      n := im_pick(im[..], s, r[0].x[s], r[0].z[s], t, p[..]);
-      m := im_ref_pick(r[..], blocks[s], s, r[0].x[s], r[0].z[s], want[..]);
+      n := im_pick(im[..], SeatId.{value = s}, r[0].x[s], r[0].z[s], t, p[..]);
+      m := im_ref_pick(r[..], blocks[s], SeatId.{value = s}, r[0].x[s], r[0].z[s], want[..]);
       #assert n == m;
-      for q: 0..<m { #assert im_has(p[..], n, want[q]) >= 0; }
+      for q: 0..<m { #assert im_has(p[..], n, EntityId.{value = want[q]}) >= 0; }
     }
   }
 }
@@ -453,9 +454,9 @@ im_rand :: (seed: [] int) -> int { seed[0] = (seed[0] * 1103515245 + 12345) & 0x
   ticks := 30;
   picked := 0;
   for t: 1..<ticks + 1 {
-    for i: 0..<96 { im_put(im[..], t, ifx i < 16 then i else 200000 + i, x[i], z[i], ifx i < 16 then i else -1, ifx i == 50 || i == 51 then IM_ROOM else 0); }
+    for i: 0..<96 { im_put(im[..], t, EntityId.{value = ifx i < 16 then i else 200000 + i}, x[i], z[i], SeatId.{value = ifx i < 16 then i else -1}, ifx i == 50 || i == 51 then IM_ROOM else 0); }
     im_sweep(im[..], t);
-    for s: 0..<IM_SEATS { picked += im_pick(im[..], s, x[s], z[s], t, p[..]); }
+    for s: 0..<IM_SEATS { picked += im_pick(im[..], SeatId.{value = s}, x[s], z[s], t, p[..]); }
   }
   per := im[0].visits / (ticks * IM_SEATS);
   // a scan looks at all 96 every pick; the grid at the cells within 130 m of the seat (about a ninth of the square)

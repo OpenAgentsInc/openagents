@@ -11,7 +11,7 @@ CoRun :: struct {
 }
 co_run :: (r: [] CoRun, skew: int) {
   d: [1] ControlDirectory; store: [1] ControlFence;
-  a := control_acquire(d[..], 1, 10);
+  a := control_acquire(d[..], CharacterId.{value = 1}, 10);
   a_renewed := d[0].now + skew;
   b_gen := 0; b_first := -1;
   for t: 0..<1200 {
@@ -19,16 +19,16 @@ co_run :: (r: [] CoRun, skew: int) {
     paused := t >= 400 && t < 1000;
     accepted := 0;
     if !paused {
-      if a_clock - a_renewed >= 100 { _ := control_renew(d[..], 1, 10, a.gen); a_renewed = a_clock; }
-      if control_fence(store[..], 1, a.gen) == CONTROL_OK { accepted += 1; if b_first >= 0 { r[0].accepted_after_loss += 1; } }
+      if a_clock - a_renewed >= 100 { _ := control_renew(d[..], CharacterId.{value = 1}, 10, a.gen); a_renewed = a_clock; }
+      if control_fence(store[..], CharacterId.{value = 1}, a.gen) == CONTROL_OK { accepted += 1; if b_first >= 0 { r[0].accepted_after_loss += 1; } }
       else { r[0].stale_writes += 1; }
     }
     if b_gen == 0 && t >= 200 && t % 50 == 0 {
-      g := control_acquire(d[..], 1, 20);
+      g := control_acquire(d[..], CharacterId.{value = 1}, 20);
       if g.status == CONTROL_OK { b_gen = g.gen; }
     }
     if b_gen > 0 {
-      if control_fence(store[..], 1, b_gen) == CONTROL_OK { accepted += 1; if b_first < 0 { b_first = t; } }
+      if control_fence(store[..], CharacterId.{value = 1}, b_gen) == CONTROL_OK { accepted += 1; if b_first < 0 { b_first = t; } }
       else { r[0].stale_writes += 1; }
     }
     if accepted > r[0].owners_at_once { r[0].owners_at_once = accepted; }

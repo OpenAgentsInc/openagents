@@ -31,6 +31,7 @@
 #module "aethyr.session.ledger";
 #authority;
 #load "control.coax";
+#load "../ids.coax";
 
 // book:begin ledger-profile
 LEDGER_ITEMS :: 32;
@@ -50,9 +51,9 @@ LEDGER_EXHAUSTED :: 8; // a version the write would advance has no next value
 
 LOP_GRANT :: 1; LOP_TRANSFER :: 2; LOP_ESCROW :: 3; LOP_SETTLE :: 4; LOP_CANCEL :: 5;
 
-LedgerItem :: struct { live: bool; kind: int; owner: int; escrow_to: int = -1; }
-LedgerOp :: struct { live: bool; id: int; op: int; c: int; item: int; to: int; kind: int; at: int; result: int; made: int; }
-LedgerEntry :: struct { seq: int; op: int; c: int; item: int; to: int; kind: int; }
+LedgerItem :: struct { live: bool; kind: int; owner: CharacterId; escrow_to: CharacterId = CharacterId.{value = -1}; }
+LedgerOp :: struct { live: bool; id: int; op: int; c: CharacterId; item: ItemId; to: CharacterId; kind: int; at: int; result: int; made: ItemId; }
+LedgerEntry :: struct { seq: int; op: int; c: CharacterId; item: ItemId; to: CharacterId; kind: int; }
 Ledger :: struct {
   fence: [1] ControlFence;
   items: [LEDGER_ITEMS] LedgerItem;
@@ -62,15 +63,15 @@ Ledger :: struct {
 }
 // What a caller asks: op, by character c under generation gen having read inventory version ver.
 // sent: the tick it was first sent (a retry keeps it).
-LedgerAsk :: struct { id: int; op: int; c: int; gen: int; ver: int; item: int = -1; to: int = -1; kind: int; sent: int; }
-LedgerAnswer :: struct { status: int; item: int = -1; replay: bool; }
+LedgerAsk :: struct { id: int; op: int; c: CharacterId; gen: OwnerGeneration; ver: int; item: ItemId = ItemId.{value = -1}; to: CharacterId = CharacterId.{value = -1}; kind: int; sent: int; }
+LedgerAnswer :: struct { status: int; item: ItemId = ItemId.{value = -1}; replay: bool; }
 // book:end ledger-profile
 
 ledger_same :: (o: LedgerOp, a: LedgerAsk) -> bool { return o.op == a.op && o.c == a.c && o.item == a.item && o.to == a.to && o.kind == a.kind; }
 
 // One mutation, all or nothing, at tick `now`.
 ledger_apply :: (l: [] Ledger, a: LedgerAsk, now: int) -> LedgerAnswer {
-  if a.c < 0 || a.c >= CONTROL_CHARACTERS { return LedgerAnswer.{status = LEDGER_HELD}; }
+  if a.c.value < 0 || a.c.value >= CONTROL_CHARACTERS { return LedgerAnswer.{status = LEDGER_HELD}; }
   // the ID first: a retry gets its first answer, whatever changed since
   free := -1;
   for i: 0..<LEDGER_OPS {
@@ -84,10 +85,10 @@ ledger_apply :: (l: [] Ledger, a: LedgerAsk, now: int) -> LedgerAnswer {
   if now - a.sent >= LEDGER_KEEP { return LedgerAnswer.{status = LEDGER_EXPIRED}; }
   if free == -1 || l[0].out_n >= LEDGER_OUTBOX { return LedgerAnswer.{status = LEDGER_FULL}; }
   st := ledger_check(l, a);
-  made := -1;
+  made := ItemId.{value = -1};
   if st == LEDGER_OK && a.op == LOP_GRANT {
-    for i: 0..<LEDGER_ITEMS { if !l[0].items[i].live { made = i; break; } }
-    if made < 0 { st = LEDGER_FULL; }
+    for i: 0..<LEDGER_ITEMS { if !l[0].items[i].live { made = ItemId.{value = i}; break; } }
+    if made.value < 0 { st = LEDGER_FULL; }
   }
   // a refusal is recorded too, so a retry hears the same answer
   l[0].ops[free] = LedgerOp.{live = true, id = a.id, op = a.op, c = a.c, item = a.item, to = a.to, kind = a.kind, at = now, result = st, made = made};
@@ -105,41 +106,41 @@ ledger_check :: (l: [] Ledger, a: LedgerAsk) -> int {
   // every version the change advances must have a next one, or nothing changes
   if !ledger_has_next(l, a.c) { return LEDGER_EXHAUSTED; }
   if a.op == LOP_TRANSFER && !ledger_has_next(l, a.to) { return LEDGER_EXHAUSTED; }
-  if a.op == LOP_SETTLE && !ledger_has_next(l, l[0].items[a.item].escrow_to) { return LEDGER_EXHAUSTED; }
+  if a.op == LOP_SETTLE && !ledger_has_next(l, l[0].items[a.item.value].escrow_to) { return LEDGER_EXHAUSTED; }
   return LEDGER_OK;
 }
 // Whether character c's inventory version can advance.
-ledger_has_next :: (l: [] Ledger, c: int) -> bool { return add_checked(l[0].version[c], 1) != null; }
+ledger_has_next :: (l: [] Ledger, c: CharacterId) -> bool { return add_checked(l[0].version[c.value], 1) != null; }
 // Character c's inventory version advances; at its last it stays (ledger_check refused the change first).
-ledger_bump :: (l: [] Ledger, c: int) {
-  next := add_checked(l[0].version[c], 1);
-  switch next { case none {} case some(v) { l[0].version[c] = v; } }
+ledger_bump :: (l: [] Ledger, c: CharacterId) {
+  next := add_checked(l[0].version[c.value], 1);
+  switch next { case none {} case some(v) { l[0].version[c.value] = v; } }
 }
 // The writer's generation, version, item and escrow rules (nothing changes).
 ledger_allowed :: (l: [] Ledger, a: LedgerAsk) -> int {
-  if l[0].fence[0].gen[a.c] > a.gen { return LEDGER_STALE; }
-  if a.ver != l[0].version[a.c] { return LEDGER_VERSION; }
+  if l[0].fence[0].gen[a.c.value] > a.gen.value { return LEDGER_STALE; }
+  if a.ver != l[0].version[a.c.value] { return LEDGER_VERSION; }
   if a.op == LOP_GRANT { return LEDGER_OK; }
-  if a.item < 0 || a.item >= LEDGER_ITEMS || !l[0].items[a.item].live { return LEDGER_NO_ITEM; }
-  m := l[0].items[a.item];
+  if a.item.value < 0 || a.item.value >= LEDGER_ITEMS || !l[0].items[a.item.value].live { return LEDGER_NO_ITEM; }
+  m := l[0].items[a.item.value];
   if m.owner != a.c { return LEDGER_HELD; }
   if a.op == LOP_TRANSFER || a.op == LOP_ESCROW {
-    if m.escrow_to >= 0 || a.to < 0 || a.to >= CONTROL_CHARACTERS || a.to == a.c { return LEDGER_HELD; }
+    if m.escrow_to.value >= 0 || a.to.value < 0 || a.to.value >= CONTROL_CHARACTERS || a.to == a.c { return LEDGER_HELD; }
     return LEDGER_OK;
   }
-  if a.op == LOP_SETTLE || a.op == LOP_CANCEL { return ifx m.escrow_to >= 0 then LEDGER_OK else LEDGER_HELD; }
+  if a.op == LOP_SETTLE || a.op == LOP_CANCEL { return ifx m.escrow_to.value >= 0 then LEDGER_OK else LEDGER_HELD; }
   return LEDGER_HELD;
 }
 // The change itself, shared by apply and replay.
-ledger_mutate :: (l: [] Ledger, op: int, c: int, item: int, to: int, kind: int) {
-  if op == LOP_GRANT { l[0].items[item] = LedgerItem.{live = true, kind = kind, owner = c}; ledger_bump(l, c); return; }
-  if op == LOP_TRANSFER { l[0].items[item].owner = to; ledger_bump(l, c); ledger_bump(l, to); return; }
-  if op == LOP_ESCROW { l[0].items[item].escrow_to = to; ledger_bump(l, c); return; }
-  if op == LOP_SETTLE { t := l[0].items[item].escrow_to; l[0].items[item].owner = t; l[0].items[item].escrow_to = -1; ledger_bump(l, c); ledger_bump(l, t); return; }
-  if op == LOP_CANCEL { l[0].items[item].escrow_to = -1; ledger_bump(l, c); }
+ledger_mutate :: (l: [] Ledger, op: int, c: CharacterId, item: ItemId, to: CharacterId, kind: int) {
+  if op == LOP_GRANT { l[0].items[item.value] = LedgerItem.{live = true, kind = kind, owner = c}; ledger_bump(l, c); return; }
+  if op == LOP_TRANSFER { l[0].items[item.value].owner = to; ledger_bump(l, c); ledger_bump(l, to); return; }
+  if op == LOP_ESCROW { l[0].items[item.value].escrow_to = to; ledger_bump(l, c); return; }
+  if op == LOP_SETTLE { t := l[0].items[item.value].escrow_to; l[0].items[item.value].owner = t; l[0].items[item.value].escrow_to = CharacterId.{value = -1}; ledger_bump(l, c); ledger_bump(l, t); return; }
+  if op == LOP_CANCEL { l[0].items[item.value].escrow_to = CharacterId.{value = -1}; ledger_bump(l, c); }
 }
 // A new owner generation for character c reaches the store (control.coax): older writers are fenced.
-ledger_fence :: (l: [] Ledger, c: int, gen: int) -> bool { return control_fence(l[0].fence[..], c, gen) == CONTROL_OK; }
+ledger_fence :: (l: [] Ledger, c: CharacterId, gen: OwnerGeneration) -> bool { return control_fence(l[0].fence[..], c, gen.value) == CONTROL_OK; }
 
 // A consumer of the outbox: it takes entries in sequence and skips one it has seen; a gap waits for
 // the missing entry.
@@ -164,7 +165,7 @@ ledger_reconcile :: (l: [] Ledger, n: int) -> bool {
 
 // ---- checks
 
-ledger_ask :: (id: int, op: int, c: int, gen: int, ver: int, item: int, to: int, kind: int) -> LedgerAsk {
+ledger_ask :: (id: int, op: int, c: CharacterId, gen: OwnerGeneration, ver: int, item: ItemId, to: CharacterId, kind: int) -> LedgerAsk {
   return LedgerAsk.{id = id, op = op, c = c, gen = gen, ver = ver, item = item, to = to, kind = kind};
 }
 
@@ -172,59 +173,59 @@ ledger_sent :: (a: LedgerAsk, t: int) -> LedgerAsk { b := a; b.sent = t; return 
 
 #test "ledger: a duplicate grant is answered once and applied once; another payload under its ID is refused" {
   l: [1] Ledger;
-  #assert ledger_fence(l[..], 1, 1);
-  a := ledger_apply(l[..], ledger_ask(10, LOP_GRANT, 1, 1, 0, -1, -1, 7), 5);
-  #assert a.status == LEDGER_OK && a.item == 0 && !a.replay && l[0].version[1] == 1 && l[0].out_n == 1;
-  b := ledger_apply(l[..], ledger_ask(10, LOP_GRANT, 1, 1, 0, -1, -1, 7), 6);   // the response was lost; asked again
-  #assert b.status == LEDGER_OK && b.item == 0 && b.replay && l[0].version[1] == 1 && l[0].out_n == 1 && !l[0].items[1].live;
-  c := ledger_apply(l[..], ledger_ask(10, LOP_GRANT, 1, 1, 0, -1, -1, 8), 7);
+  #assert ledger_fence(l[..], CharacterId.{value = 1}, OwnerGeneration.{value = 1});
+  a := ledger_apply(l[..], ledger_ask(10, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 1}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 7), 5);
+  #assert a.status == LEDGER_OK && a.item.value == 0 && !a.replay && l[0].version[1] == 1 && l[0].out_n == 1;
+  b := ledger_apply(l[..], ledger_ask(10, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 1}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 7), 6);   // the response was lost; asked again
+  #assert b.status == LEDGER_OK && b.item.value == 0 && b.replay && l[0].version[1] == 1 && l[0].out_n == 1 && !l[0].items[1].live;
+  c := ledger_apply(l[..], ledger_ask(10, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 1}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 8), 7);
   #assert c.status == LEDGER_CONFLICT && !l[0].items[1].live && l[0].out_n == 1;
   // a refusal is recorded: its retry hears the same, even once the version would let it through
-  d := ledger_apply(l[..], ledger_ask(11, LOP_GRANT, 1, 1, 0, -1, -1, 7), 8);
+  d := ledger_apply(l[..], ledger_ask(11, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 1}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 7), 8);
   #assert d.status == LEDGER_VERSION;
-  #assert ledger_apply(l[..], ledger_ask(11, LOP_GRANT, 1, 1, 0, -1, -1, 7), 9).status == LEDGER_VERSION && l[0].out_n == 1;
+  #assert ledger_apply(l[..], ledger_ask(11, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 1}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 7), 9).status == LEDGER_VERSION && l[0].out_n == 1;
 }
 #test "ledger: two transfers of one item from one read: one applies, the other is refused, and nothing is duplicated" {
   l: [1] Ledger;
-  g := ledger_apply(l[..], ledger_ask(1, LOP_GRANT, 2, 0, 0, -1, -1, 3), 1);
+  g := ledger_apply(l[..], ledger_ask(1, LOP_GRANT, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 3), 1);
   #assert g.status == LEDGER_OK;
-  x := ledger_apply(l[..], ledger_ask(2, LOP_TRANSFER, 2, 0, 1, g.item, 4, 3), 2);
-  y := ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, 2, 0, 1, g.item, 5, 3), 2);
-  #assert x.status == LEDGER_OK && y.status == LEDGER_VERSION && l[0].items[g.item].owner == 4;
+  x := ledger_apply(l[..], ledger_ask(2, LOP_TRANSFER, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, 1, g.item, CharacterId.{value = 4}, 3), 2);
+  y := ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, 1, g.item, CharacterId.{value = 5}, 3), 2);
+  #assert x.status == LEDGER_OK && y.status == LEDGER_VERSION && l[0].items[g.item.value].owner.value == 4;
   // with a fresh read the item is no longer theirs
-  #assert ledger_apply(l[..], ledger_ask(4, LOP_TRANSFER, 2, 0, l[0].version[2], g.item, 5, 3), 3).status == LEDGER_HELD;
+  #assert ledger_apply(l[..], ledger_ask(4, LOP_TRANSFER, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, l[0].version[2], g.item, CharacterId.{value = 5}, 3), 3).status == LEDGER_HELD;
   // to themselves, or to no one: refused
-  #assert ledger_apply(l[..], ledger_ask(5, LOP_TRANSFER, 4, 0, l[0].version[4], g.item, 4, 3), 3).status == LEDGER_HELD;
-  #assert ledger_apply(l[..], ledger_ask(6, LOP_TRANSFER, 4, 0, l[0].version[4], g.item, -1, 3), 3).status == LEDGER_HELD;
-  #assert ledger_apply(l[..], ledger_ask(7, LOP_TRANSFER, 4, 0, l[0].version[4], 31, 5, 3), 3).status == LEDGER_NO_ITEM;
+  #assert ledger_apply(l[..], ledger_ask(5, LOP_TRANSFER, CharacterId.{value = 4}, OwnerGeneration.{value = 0}, l[0].version[4], g.item, CharacterId.{value = 4}, 3), 3).status == LEDGER_HELD;
+  #assert ledger_apply(l[..], ledger_ask(6, LOP_TRANSFER, CharacterId.{value = 4}, OwnerGeneration.{value = 0}, l[0].version[4], g.item, CharacterId.{value = -1}, 3), 3).status == LEDGER_HELD;
+  #assert ledger_apply(l[..], ledger_ask(7, LOP_TRANSFER, CharacterId.{value = 4}, OwnerGeneration.{value = 0}, l[0].version[4], ItemId.{value = 31}, CharacterId.{value = 5}, 3), 3).status == LEDGER_NO_ITEM;
 }
 #test "ledger: an old owner's write is refused once a new owner's generation reaches the store" {
   l: [1] Ledger;
-  #assert ledger_fence(l[..], 1, 1);
-  #assert ledger_apply(l[..], ledger_ask(1, LOP_GRANT, 1, 1, 0, -1, -1, 9), 1).status == LEDGER_OK;
-  #assert ledger_fence(l[..], 1, 2);   // the character travelled; its new room is generation 2
-  #assert ledger_apply(l[..], ledger_ask(2, LOP_GRANT, 1, 1, 1, -1, -1, 9), 2).status == LEDGER_STALE;
-  #assert ledger_apply(l[..], ledger_ask(3, LOP_GRANT, 1, 2, 1, -1, -1, 9), 2).status == LEDGER_OK && l[0].out_n == 2;
-  #assert !ledger_fence(l[..], 1, 1);
+  #assert ledger_fence(l[..], CharacterId.{value = 1}, OwnerGeneration.{value = 1});
+  #assert ledger_apply(l[..], ledger_ask(1, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 1}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 9), 1).status == LEDGER_OK;
+  #assert ledger_fence(l[..], CharacterId.{value = 1}, OwnerGeneration.{value = 2});   // the character travelled; its new room is generation 2
+  #assert ledger_apply(l[..], ledger_ask(2, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 1}, 1, ItemId.{value = -1}, CharacterId.{value = -1}, 9), 2).status == LEDGER_STALE;
+  #assert ledger_apply(l[..], ledger_ask(3, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 2}, 1, ItemId.{value = -1}, CharacterId.{value = -1}, 9), 2).status == LEDGER_OK && l[0].out_n == 2;
+  #assert !ledger_fence(l[..], CharacterId.{value = 1}, OwnerGeneration.{value = 1});
 }
 #test "ledger: an escrowed item can't be spent elsewhere until it settles or cancels" {
   l: [1] Ledger;
-  g := ledger_apply(l[..], ledger_ask(1, LOP_GRANT, 1, 0, 0, -1, -1, 2), 1);
-  #assert ledger_apply(l[..], ledger_ask(2, LOP_ESCROW, 1, 0, 1, g.item, 2, 0), 2).status == LEDGER_OK;
+  g := ledger_apply(l[..], ledger_ask(1, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 2), 1);
+  #assert ledger_apply(l[..], ledger_ask(2, LOP_ESCROW, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, 1, g.item, CharacterId.{value = 2}, 0), 2).status == LEDGER_OK;
   v := l[0].version[1];
-  #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, 1, 0, v, g.item, 3, 0), 3).status == LEDGER_HELD;
-  #assert ledger_apply(l[..], ledger_ask(4, LOP_ESCROW, 1, 0, v, g.item, 3, 0), 3).status == LEDGER_HELD;
-  #assert ledger_apply(l[..], ledger_ask(5, LOP_CANCEL, 1, 0, v, g.item, -1, 0), 4).status == LEDGER_OK && l[0].items[g.item].owner == 1;
-  #assert ledger_apply(l[..], ledger_ask(6, LOP_CANCEL, 1, 0, l[0].version[1], g.item, -1, 0), 4).status == LEDGER_HELD;
-  #assert ledger_apply(l[..], ledger_ask(7, LOP_ESCROW, 1, 0, l[0].version[1], g.item, 3, 0), 5).status == LEDGER_OK;
-  #assert ledger_apply(l[..], ledger_ask(8, LOP_SETTLE, 1, 0, l[0].version[1], g.item, -1, 0), 6).status == LEDGER_OK;
-  #assert l[0].items[g.item].owner == 3 && l[0].items[g.item].escrow_to == -1 && l[0].version[3] == 1;
-  #assert ledger_apply(l[..], ledger_ask(9, LOP_SETTLE, 3, 0, l[0].version[3], g.item, -1, 0), 6).status == LEDGER_HELD;
+  #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, v, g.item, CharacterId.{value = 3}, 0), 3).status == LEDGER_HELD;
+  #assert ledger_apply(l[..], ledger_ask(4, LOP_ESCROW, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, v, g.item, CharacterId.{value = 3}, 0), 3).status == LEDGER_HELD;
+  #assert ledger_apply(l[..], ledger_ask(5, LOP_CANCEL, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, v, g.item, CharacterId.{value = -1}, 0), 4).status == LEDGER_OK && l[0].items[g.item.value].owner.value == 1;
+  #assert ledger_apply(l[..], ledger_ask(6, LOP_CANCEL, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, l[0].version[1], g.item, CharacterId.{value = -1}, 0), 4).status == LEDGER_HELD;
+  #assert ledger_apply(l[..], ledger_ask(7, LOP_ESCROW, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, l[0].version[1], g.item, CharacterId.{value = 3}, 0), 5).status == LEDGER_OK;
+  #assert ledger_apply(l[..], ledger_ask(8, LOP_SETTLE, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, l[0].version[1], g.item, CharacterId.{value = -1}, 0), 6).status == LEDGER_OK;
+  #assert l[0].items[g.item.value].owner.value == 3 && l[0].items[g.item.value].escrow_to.value == -1 && l[0].version[3] == 1;
+  #assert ledger_apply(l[..], ledger_ask(9, LOP_SETTLE, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, l[0].version[3], g.item, CharacterId.{value = -1}, 0), 6).status == LEDGER_HELD;
 }
 #test "ledger: the outbox is redelivered safely, a restore replays to the same state, and an old ID expires" {
   l: [1] Ledger; v: [1] LedgerView;
-  g := ledger_apply(l[..], ledger_ask(1, LOP_GRANT, 1, 0, 0, -1, -1, 2), 1);
-  #assert ledger_apply(l[..], ledger_ask(2, LOP_TRANSFER, 1, 0, 1, g.item, 2, 0), 2).status == LEDGER_OK;
+  g := ledger_apply(l[..], ledger_ask(1, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 2), 1);
+  #assert ledger_apply(l[..], ledger_ask(2, LOP_TRANSFER, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, 1, g.item, CharacterId.{value = 2}, 0), 2).status == LEDGER_OK;
   #assert ledger_consume(v[..], l[0].out[0]) && !ledger_consume(v[..], l[0].out[0]);   // redelivered
   #assert ledger_consume(v[..], l[0].out[1]) && v[0].seen == 2;
   w: [1] LedgerView;
@@ -232,117 +233,117 @@ ledger_sent :: (a: LedgerAsk, t: int) -> LedgerAsk { b := a; b.sent = t; return 
   #assert ledger_reconcile(l[..], l[0].out_n) && !ledger_reconcile(l[..], 1);
   // a retry within its window is answered from the record; one first sent LEDGER_KEEP ago or more is
   // refused, not applied twice, once its record is gone
-  old := ledger_ask(1, LOP_GRANT, 1, 0, 0, -1, -1, 2); old.sent = 1;
+  old := ledger_ask(1, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 2); old.sent = 1;
   r := ledger_apply(l[..], old, LEDGER_KEEP);
   #assert r.status == LEDGER_OK && r.replay && l[0].out_n == 2;
-  late := ledger_ask(3, LOP_GRANT, 2, 0, 1, -1, -1, 4); late.sent = LEDGER_KEEP + 10;
+  late := ledger_ask(3, LOP_GRANT, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, 1, ItemId.{value = -1}, CharacterId.{value = -1}, 4); late.sent = LEDGER_KEEP + 10;
   #assert ledger_apply(l[..], late, LEDGER_KEEP + 10).status == LEDGER_OK;
   #assert ledger_apply(l[..], old, LEDGER_KEEP + 11).status == LEDGER_EXPIRED;
   #assert l[0].out_n == 3 && ledger_reconcile(l[..], 3);
 }
 #test "ledger: the store's limits refuse rather than overwrite" {
   l: [1] Ledger;
-  for i: 0..<LEDGER_ITEMS { #assert ledger_apply(l[..], ledger_ask(i + 1, LOP_GRANT, 0, 0, i, -1, -1, 1), 1).status == LEDGER_OK; }
-  #assert ledger_apply(l[..], ledger_ask(100, LOP_GRANT, 0, 0, LEDGER_ITEMS, -1, -1, 1), 1).status == LEDGER_FULL && l[0].version[0] == LEDGER_ITEMS;
-  #assert ledger_apply(l[..], ledger_ask(1, LOP_GRANT, 40, 0, 0, -1, -1, 1), 1).status == LEDGER_HELD;
+  for i: 0..<LEDGER_ITEMS { #assert ledger_apply(l[..], ledger_ask(i + 1, LOP_GRANT, CharacterId.{value = 0}, OwnerGeneration.{value = 0}, i, ItemId.{value = -1}, CharacterId.{value = -1}, 1), 1).status == LEDGER_OK; }
+  #assert ledger_apply(l[..], ledger_ask(100, LOP_GRANT, CharacterId.{value = 0}, OwnerGeneration.{value = 0}, LEDGER_ITEMS, ItemId.{value = -1}, CharacterId.{value = -1}, 1), 1).status == LEDGER_FULL && l[0].version[0] == LEDGER_ITEMS;
+  #assert ledger_apply(l[..], ledger_ask(1, LOP_GRANT, CharacterId.{value = 40}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 1), 1).status == LEDGER_HELD;
   // full, a refusal stays the refusal it is
-  #assert ledger_apply(l[..], ledger_ask(101, LOP_GRANT, 0, 0, 0, -1, -1, 1), 1).status == LEDGER_VERSION;
-  #assert ledger_apply(l[..], ledger_ask(102, LOP_TRANSFER, 0, 0, 0, 3, 1, 0), 1).status == LEDGER_VERSION;
+  #assert ledger_apply(l[..], ledger_ask(101, LOP_GRANT, CharacterId.{value = 0}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 1), 1).status == LEDGER_VERSION;
+  #assert ledger_apply(l[..], ledger_ask(102, LOP_TRANSFER, CharacterId.{value = 0}, OwnerGeneration.{value = 0}, 0, ItemId.{value = 3}, CharacterId.{value = 1}, 0), 1).status == LEDGER_VERSION;
 }
 #test "ledger: a version at the largest int refuses the change before anything moves, in every build (#12927)" {
   l: [1] Ledger;
   // character 2 one below the largest: its grant applies and reaches it; the next is refused
   l[0].version[2] = 9223372036854775806;
-  #assert ledger_apply(l[..], ledger_ask(1, LOP_GRANT, 2, 0, 9223372036854775806, -1, -1, 4), 1).status == LEDGER_OK && l[0].version[2] == 9223372036854775807 && l[0].out_n == 1;
-  r := ledger_apply(l[..], ledger_ask(2, LOP_GRANT, 2, 0, 9223372036854775807, -1, -1, 4), 2);
-  #assert r.status == LEDGER_EXHAUSTED && r.item == -1 && l[0].version[2] == 9223372036854775807 && l[0].out_n == 1 && !l[0].items[1].live;
+  #assert ledger_apply(l[..], ledger_ask(1, LOP_GRANT, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, 9223372036854775806, ItemId.{value = -1}, CharacterId.{value = -1}, 4), 1).status == LEDGER_OK && l[0].version[2] == 9223372036854775807 && l[0].out_n == 1;
+  r := ledger_apply(l[..], ledger_ask(2, LOP_GRANT, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, 9223372036854775807, ItemId.{value = -1}, CharacterId.{value = -1}, 4), 2);
+  #assert r.status == LEDGER_EXHAUSTED && r.item.value == -1 && l[0].version[2] == 9223372036854775807 && l[0].out_n == 1 && !l[0].items[1].live;
   // its retry hears the same, and nothing changes
-  #assert ledger_apply(l[..], ledger_ask(2, LOP_GRANT, 2, 0, 9223372036854775807, -1, -1, 4), 3).status == LEDGER_EXHAUSTED && l[0].out_n == 1;
+  #assert ledger_apply(l[..], ledger_ask(2, LOP_GRANT, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, 9223372036854775807, ItemId.{value = -1}, CharacterId.{value = -1}, 4), 3).status == LEDGER_EXHAUSTED && l[0].out_n == 1;
   // a transfer to a character at the largest: refused; the item and both versions stay
-  g := ledger_apply(l[..], ledger_ask(3, LOP_GRANT, 1, 0, 0, -1, -1, 5), 3);
+  g := ledger_apply(l[..], ledger_ask(3, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 5), 3);
   l[0].version[5] = 9223372036854775807;
-  #assert ledger_apply(l[..], ledger_ask(4, LOP_TRANSFER, 1, 0, 1, g.item, 5, 0), 4).status == LEDGER_EXHAUSTED;
-  #assert l[0].items[g.item].owner == 1 && l[0].version[1] == 1 && l[0].version[5] == 9223372036854775807 && l[0].out_n == 2;
+  #assert ledger_apply(l[..], ledger_ask(4, LOP_TRANSFER, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, 1, g.item, CharacterId.{value = 5}, 0), 4).status == LEDGER_EXHAUSTED;
+  #assert l[0].items[g.item.value].owner.value == 1 && l[0].version[1] == 1 && l[0].version[5] == 9223372036854775807 && l[0].out_n == 2;
   // escrowed to it, the settle is refused and the escrow stands; to one below, it settles
-  #assert ledger_apply(l[..], ledger_ask(5, LOP_ESCROW, 1, 0, 1, g.item, 5, 0), 5).status == LEDGER_OK && l[0].version[1] == 2;
-  #assert ledger_apply(l[..], ledger_ask(6, LOP_SETTLE, 1, 0, 2, g.item, -1, 0), 6).status == LEDGER_EXHAUSTED && l[0].items[g.item].escrow_to == 5 && l[0].version[1] == 2;
+  #assert ledger_apply(l[..], ledger_ask(5, LOP_ESCROW, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, 1, g.item, CharacterId.{value = 5}, 0), 5).status == LEDGER_OK && l[0].version[1] == 2;
+  #assert ledger_apply(l[..], ledger_ask(6, LOP_SETTLE, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, 2, g.item, CharacterId.{value = -1}, 0), 6).status == LEDGER_EXHAUSTED && l[0].items[g.item.value].escrow_to.value == 5 && l[0].version[1] == 2;
   l[0].version[5] = 9223372036854775806;
-  #assert ledger_apply(l[..], ledger_ask(7, LOP_SETTLE, 1, 0, 2, g.item, -1, 0), 7).status == LEDGER_OK && l[0].items[g.item].owner == 5 && l[0].version[5] == 9223372036854775807 && l[0].version[1] == 3;
+  #assert ledger_apply(l[..], ledger_ask(7, LOP_SETTLE, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, 2, g.item, CharacterId.{value = -1}, 0), 7).status == LEDGER_OK && l[0].items[g.item.value].owner.value == 5 && l[0].version[5] == 9223372036854775807 && l[0].version[1] == 3;
   // the writer itself at the largest: an escrow or a cancel is refused
   l[0].version[5] = 9223372036854775807;
-  #assert ledger_apply(l[..], ledger_ask(8, LOP_ESCROW, 5, 0, 9223372036854775807, g.item, 1, 0), 8).status == LEDGER_EXHAUSTED && l[0].items[g.item].escrow_to == -1;
+  #assert ledger_apply(l[..], ledger_ask(8, LOP_ESCROW, CharacterId.{value = 5}, OwnerGeneration.{value = 0}, 9223372036854775807, g.item, CharacterId.{value = 1}, 0), 8).status == LEDGER_EXHAUSTED && l[0].items[g.item.value].escrow_to.value == -1;
   // a bump at the largest leaves it; one below reaches it
-  ledger_bump(l[..], 5); #assert l[0].version[5] == 9223372036854775807;
-  l[0].version[6] = 9223372036854775806; ledger_bump(l[..], 6); #assert l[0].version[6] == 9223372036854775807 && ledger_has_next(l[..], 4) && !ledger_has_next(l[..], 6);
+  ledger_bump(l[..], CharacterId.{value = 5}); #assert l[0].version[5] == 9223372036854775807;
+  l[0].version[6] = 9223372036854775806; ledger_bump(l[..], CharacterId.{value = 6}); #assert l[0].version[6] == 9223372036854775807 && ledger_has_next(l[..], CharacterId.{value = 4}) && !ledger_has_next(l[..], CharacterId.{value = 6});
 }
 #test "ledger: each mutation's exact versions, slots and outbox; a retry differing in any field is a conflict" {
   l: [1] Ledger;
-  g := ledger_apply(l[..], ledger_ask(1, LOP_GRANT, 3, 0, 0, -1, -1, 6), 1);
-  #assert g.item == 0 && l[0].ops[0].id == 1 && l[0].ops[0].made == 0 && l[0].items[0].kind == 6 && l[0].items[0].owner == 3 && l[0].version[3] == 1;
-  h := ledger_apply(l[..], ledger_ask(2, LOP_GRANT, 3, 0, 1, -1, -1, 6), 1);
-  #assert h.item == 1 && l[0].ops[1].id == 2 && l[0].version[3] == 2;
-  #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, 3, 0, 2, 0, 4, 0), 2).status == LEDGER_OK && l[0].version[3] == 3 && l[0].version[4] == 1;
+  g := ledger_apply(l[..], ledger_ask(1, LOP_GRANT, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 6), 1);
+  #assert g.item.value == 0 && l[0].ops[0].id == 1 && l[0].ops[0].made.value == 0 && l[0].items[0].kind == 6 && l[0].items[0].owner.value == 3 && l[0].version[3] == 1;
+  h := ledger_apply(l[..], ledger_ask(2, LOP_GRANT, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 1, ItemId.{value = -1}, CharacterId.{value = -1}, 6), 1);
+  #assert h.item.value == 1 && l[0].ops[1].id == 2 && l[0].version[3] == 2;
+  #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 2, ItemId.{value = 0}, CharacterId.{value = 4}, 0), 2).status == LEDGER_OK && l[0].version[3] == 3 && l[0].version[4] == 1;
   e := l[0].out[2];
-  #assert e.seq == 3 && e.op == LOP_TRANSFER && e.c == 3 && e.item == 0 && e.to == 4;
-  #assert ledger_apply(l[..], ledger_ask(4, LOP_ESCROW, 3, 0, 3, 1, 5, 0), 3).status == LEDGER_OK && l[0].version[3] == 4 && l[0].version[5] == 0;
-  #assert ledger_apply(l[..], ledger_ask(5, LOP_SETTLE, 3, 0, 4, 1, -1, 0), 4).status == LEDGER_OK && l[0].version[3] == 5 && l[0].version[5] == 1 && l[0].items[1].owner == 5;
-  #assert ledger_apply(l[..], ledger_ask(6, LOP_ESCROW, 5, 0, 1, 1, 3, 0), 5).status == LEDGER_OK && l[0].version[5] == 2;
-  #assert ledger_apply(l[..], ledger_ask(7, LOP_CANCEL, 5, 0, 2, 1, -1, 0), 6).status == LEDGER_OK && l[0].version[5] == 3 && l[0].version[3] == 5 && l[0].items[1].escrow_to == -1;
+  #assert e.seq == 3 && e.op == LOP_TRANSFER && e.c.value == 3 && e.item.value == 0 && e.to.value == 4;
+  #assert ledger_apply(l[..], ledger_ask(4, LOP_ESCROW, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 3, ItemId.{value = 1}, CharacterId.{value = 5}, 0), 3).status == LEDGER_OK && l[0].version[3] == 4 && l[0].version[5] == 0;
+  #assert ledger_apply(l[..], ledger_ask(5, LOP_SETTLE, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 4, ItemId.{value = 1}, CharacterId.{value = -1}, 0), 4).status == LEDGER_OK && l[0].version[3] == 5 && l[0].version[5] == 1 && l[0].items[1].owner.value == 5;
+  #assert ledger_apply(l[..], ledger_ask(6, LOP_ESCROW, CharacterId.{value = 5}, OwnerGeneration.{value = 0}, 1, ItemId.{value = 1}, CharacterId.{value = 3}, 0), 5).status == LEDGER_OK && l[0].version[5] == 2;
+  #assert ledger_apply(l[..], ledger_ask(7, LOP_CANCEL, CharacterId.{value = 5}, OwnerGeneration.{value = 0}, 2, ItemId.{value = 1}, CharacterId.{value = -1}, 0), 6).status == LEDGER_OK && l[0].version[5] == 3 && l[0].version[3] == 5 && l[0].items[1].escrow_to.value == -1;
   // one ID, one payload: any field changed is a conflict
-  #assert ledger_apply(l[..], ledger_ask(3, LOP_ESCROW, 3, 0, 2, 0, 4, 0), 7).status == LEDGER_CONFLICT;
-  #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, 2, 0, 2, 0, 4, 0), 7).status == LEDGER_CONFLICT;
-  #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, 3, 0, 2, 1, 4, 0), 7).status == LEDGER_CONFLICT;
-  #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, 3, 0, 2, 0, 5, 0), 7).status == LEDGER_CONFLICT;
-  #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, 3, 0, 2, 0, 4, 1), 7).status == LEDGER_CONFLICT;
-  #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, 3, 0, 2, 0, 4, 0), 7).replay && l[0].out_n == 7;
+  #assert ledger_apply(l[..], ledger_ask(3, LOP_ESCROW, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 2, ItemId.{value = 0}, CharacterId.{value = 4}, 0), 7).status == LEDGER_CONFLICT;
+  #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, 2, ItemId.{value = 0}, CharacterId.{value = 4}, 0), 7).status == LEDGER_CONFLICT;
+  #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 2, ItemId.{value = 1}, CharacterId.{value = 4}, 0), 7).status == LEDGER_CONFLICT;
+  #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 2, ItemId.{value = 0}, CharacterId.{value = 5}, 0), 7).status == LEDGER_CONFLICT;
+  #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 2, ItemId.{value = 0}, CharacterId.{value = 4}, 1), 7).status == LEDGER_CONFLICT;
+  #assert ledger_apply(l[..], ledger_ask(3, LOP_TRANSFER, CharacterId.{value = 3}, OwnerGeneration.{value = 0}, 2, ItemId.{value = 0}, CharacterId.{value = 4}, 0), 7).replay && l[0].out_n == 7;
   // the character, the item and the receiver must be real
-  #assert ledger_apply(l[..], ledger_ask(20, LOP_GRANT, -1, 0, 0, -1, -1, 1), 8).status == LEDGER_HELD;
-  #assert ledger_apply(l[..], ledger_ask(21, LOP_GRANT, CONTROL_CHARACTERS, 0, 0, -1, -1, 1), 8).status == LEDGER_HELD;
-  #assert ledger_apply(l[..], ledger_ask(22, LOP_GRANT, CONTROL_CHARACTERS - 1, 0, 0, -1, -1, 1), 8).status == LEDGER_OK;
-  #assert ledger_apply(l[..], ledger_ask(23, LOP_TRANSFER, 4, 0, 1, -1, 5, 0), 8).status == LEDGER_NO_ITEM;
-  #assert ledger_apply(l[..], ledger_ask(24, LOP_TRANSFER, 4, 0, 1, LEDGER_ITEMS, 5, 0), 8).status == LEDGER_NO_ITEM;
-  #assert ledger_apply(l[..], ledger_ask(25, LOP_TRANSFER, 4, 0, 1, 0, CONTROL_CHARACTERS, 0), 8).status == LEDGER_HELD;
-  #assert ledger_apply(l[..], ledger_ask(26, LOP_TRANSFER, 4, 0, 1, 0, CONTROL_CHARACTERS - 1, 0), 8).status == LEDGER_OK;
-  #assert ledger_apply(l[..], ledger_ask(27, 9, 5, 0, 3, 1, 4, 0), 8).status == LEDGER_HELD;   // no such operation
+  #assert ledger_apply(l[..], ledger_ask(20, LOP_GRANT, CharacterId.{value = -1}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 1), 8).status == LEDGER_HELD;
+  #assert ledger_apply(l[..], ledger_ask(21, LOP_GRANT, CharacterId.{value = CONTROL_CHARACTERS}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 1), 8).status == LEDGER_HELD;
+  #assert ledger_apply(l[..], ledger_ask(22, LOP_GRANT, CharacterId.{value = CONTROL_CHARACTERS - 1}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 1), 8).status == LEDGER_OK;
+  #assert ledger_apply(l[..], ledger_ask(23, LOP_TRANSFER, CharacterId.{value = 4}, OwnerGeneration.{value = 0}, 1, ItemId.{value = -1}, CharacterId.{value = 5}, 0), 8).status == LEDGER_NO_ITEM;
+  #assert ledger_apply(l[..], ledger_ask(24, LOP_TRANSFER, CharacterId.{value = 4}, OwnerGeneration.{value = 0}, 1, ItemId.{value = LEDGER_ITEMS}, CharacterId.{value = 5}, 0), 8).status == LEDGER_NO_ITEM;
+  #assert ledger_apply(l[..], ledger_ask(25, LOP_TRANSFER, CharacterId.{value = 4}, OwnerGeneration.{value = 0}, 1, ItemId.{value = 0}, CharacterId.{value = CONTROL_CHARACTERS}, 0), 8).status == LEDGER_HELD;
+  #assert ledger_apply(l[..], ledger_ask(26, LOP_TRANSFER, CharacterId.{value = 4}, OwnerGeneration.{value = 0}, 1, ItemId.{value = 0}, CharacterId.{value = CONTROL_CHARACTERS - 1}, 0), 8).status == LEDGER_OK;
+  #assert ledger_apply(l[..], ledger_ask(27, 9, CharacterId.{value = 5}, OwnerGeneration.{value = 0}, 3, ItemId.{value = 1}, CharacterId.{value = 4}, 0), 8).status == LEDGER_HELD;   // no such operation
   // character 0 is a character like any other: it receives, and an escrow to it holds the item
-  #assert ledger_apply(l[..], ledger_ask(28, LOP_TRANSFER, 5, 0, 3, 1, 0, 0), 9).status == LEDGER_OK && l[0].items[1].owner == 0;
-  #assert ledger_apply(l[..], ledger_ask(29, LOP_TRANSFER, 0, 0, 1, 1, 5, 0), 9).status == LEDGER_OK;
-  #assert ledger_apply(l[..], ledger_ask(30, LOP_ESCROW, 5, 0, 5, 1, 0, 0), 9).status == LEDGER_OK && l[0].items[1].escrow_to == 0;
-  #assert ledger_apply(l[..], ledger_ask(31, LOP_TRANSFER, 5, 0, 6, 1, 4, 0), 9).status == LEDGER_HELD;
-  #assert ledger_apply(l[..], ledger_ask(32, LOP_SETTLE, 5, 0, 6, 1, -1, 0), 9).status == LEDGER_OK && l[0].items[1].owner == 0;
+  #assert ledger_apply(l[..], ledger_ask(28, LOP_TRANSFER, CharacterId.{value = 5}, OwnerGeneration.{value = 0}, 3, ItemId.{value = 1}, CharacterId.{value = 0}, 0), 9).status == LEDGER_OK && l[0].items[1].owner.value == 0;
+  #assert ledger_apply(l[..], ledger_ask(29, LOP_TRANSFER, CharacterId.{value = 0}, OwnerGeneration.{value = 0}, 1, ItemId.{value = 1}, CharacterId.{value = 5}, 0), 9).status == LEDGER_OK;
+  #assert ledger_apply(l[..], ledger_ask(30, LOP_ESCROW, CharacterId.{value = 5}, OwnerGeneration.{value = 0}, 5, ItemId.{value = 1}, CharacterId.{value = 0}, 0), 9).status == LEDGER_OK && l[0].items[1].escrow_to.value == 0;
+  #assert ledger_apply(l[..], ledger_ask(31, LOP_TRANSFER, CharacterId.{value = 5}, OwnerGeneration.{value = 0}, 6, ItemId.{value = 1}, CharacterId.{value = 4}, 0), 9).status == LEDGER_HELD;
+  #assert ledger_apply(l[..], ledger_ask(32, LOP_SETTLE, CharacterId.{value = 5}, OwnerGeneration.{value = 0}, 6, ItemId.{value = 1}, CharacterId.{value = -1}, 0), 9).status == LEDGER_OK && l[0].items[1].owner.value == 0;
   #assert ledger_reconcile(l[..], l[0].out_n);
 }
 #test "ledger: an operation is remembered exactly LEDGER_KEEP ticks, and its slot is reused after" {
   l: [1] Ledger;
-  a := ledger_ask(1, LOP_GRANT, 1, 0, 0, -1, -1, 2); a.sent = 10;
+  a := ledger_ask(1, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 2); a.sent = 10;
   #assert ledger_apply(l[..], a, 10).status == LEDGER_OK;
   #assert ledger_apply(l[..], a, 10 + LEDGER_KEEP - 1).replay && l[0].ops[0].live;
   #assert ledger_apply(l[..], a, 10 + LEDGER_KEEP).status == LEDGER_EXPIRED && !l[0].ops[0].live && l[0].out_n == 1;
   // every slot taken by refusals: the next is refused as full; once they age out, slots come back
-  for i: 0..<LEDGER_OPS { #assert ledger_apply(l[..], ledger_sent(ledger_ask(100 + i, LOP_GRANT, 2, 0, 9, -1, -1, 1), 20000), 20000).status == LEDGER_VERSION; }
-  #assert ledger_apply(l[..], ledger_sent(ledger_ask(500, LOP_GRANT, 2, 0, 0, -1, -1, 1), 20000), 20000).status == LEDGER_FULL;
-  b := ledger_ask(500, LOP_GRANT, 2, 0, 0, -1, -1, 1); b.sent = 20000 + LEDGER_KEEP;
+  for i: 0..<LEDGER_OPS { #assert ledger_apply(l[..], ledger_sent(ledger_ask(100 + i, LOP_GRANT, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, 9, ItemId.{value = -1}, CharacterId.{value = -1}, 1), 20000), 20000).status == LEDGER_VERSION; }
+  #assert ledger_apply(l[..], ledger_sent(ledger_ask(500, LOP_GRANT, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 1), 20000), 20000).status == LEDGER_FULL;
+  b := ledger_ask(500, LOP_GRANT, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 1); b.sent = 20000 + LEDGER_KEEP;
   #assert ledger_apply(l[..], b, 20000 + LEDGER_KEEP).status == LEDGER_OK && l[0].ops[0].id == 500;
 }
 #test "ledger: a full outbox refuses the next mutation" {
   l: [1] Ledger;
-  #assert ledger_apply(l[..], ledger_ask(1, LOP_GRANT, 1, 0, 0, -1, -1, 1), 0).status == LEDGER_OK;
+  #assert ledger_apply(l[..], ledger_ask(1, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 1), 0).status == LEDGER_OK;
   for i: 1..<LEDGER_OUTBOX {
     from := ifx i % 2 == 1 then 1 else 2; to := 3 - from;
-    #assert ledger_apply(l[..], ledger_sent(ledger_ask(i + 1, LOP_TRANSFER, from, 0, l[0].version[from], 0, to, 0), i * LEDGER_KEEP), i * LEDGER_KEEP).status == LEDGER_OK;
+    #assert ledger_apply(l[..], ledger_sent(ledger_ask(i + 1, LOP_TRANSFER, CharacterId.{value = from}, OwnerGeneration.{value = 0}, l[0].version[from], ItemId.{value = 0}, CharacterId.{value = to}, 0), i * LEDGER_KEEP), i * LEDGER_KEEP).status == LEDGER_OK;
   }
   #assert l[0].out_n == LEDGER_OUTBOX && l[0].out[LEDGER_OUTBOX - 1].seq == LEDGER_OUTBOX;
-  last := ledger_ask(999, LOP_TRANSFER, 2, 0, l[0].version[2], 0, 1, 0); last.sent = LEDGER_OUTBOX * LEDGER_KEEP;
-  #assert ledger_apply(l[..], last, LEDGER_OUTBOX * LEDGER_KEEP).status == LEDGER_FULL && l[0].items[0].owner == 2;
+  last := ledger_ask(999, LOP_TRANSFER, CharacterId.{value = 2}, OwnerGeneration.{value = 0}, l[0].version[2], ItemId.{value = 0}, CharacterId.{value = 1}, 0); last.sent = LEDGER_OUTBOX * LEDGER_KEEP;
+  #assert ledger_apply(l[..], last, LEDGER_OUTBOX * LEDGER_KEEP).status == LEDGER_FULL && l[0].items[0].owner.value == 2;
 }
 #test "ledger: reconciliation notices any field that differs" {
   l: [1] Ledger;
-  #assert ledger_apply(l[..], ledger_ask(1, LOP_GRANT, 1, 0, 0, -1, -1, 4), 0).status == LEDGER_OK;
-  #assert ledger_apply(l[..], ledger_ask(2, LOP_ESCROW, 1, 0, 1, 0, 2, 0), 0).status == LEDGER_OK;
+  #assert ledger_apply(l[..], ledger_ask(1, LOP_GRANT, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, 0, ItemId.{value = -1}, CharacterId.{value = -1}, 4), 0).status == LEDGER_OK;
+  #assert ledger_apply(l[..], ledger_ask(2, LOP_ESCROW, CharacterId.{value = 1}, OwnerGeneration.{value = 0}, 1, ItemId.{value = 0}, CharacterId.{value = 2}, 0), 0).status == LEDGER_OK;
   #assert ledger_reconcile(l[..], 2);
   l[0].items[0].kind = 5; #assert !ledger_reconcile(l[..], 2); l[0].items[0].kind = 4;
-  l[0].items[0].owner = 3; #assert !ledger_reconcile(l[..], 2); l[0].items[0].owner = 1;
-  l[0].items[0].escrow_to = 3; #assert !ledger_reconcile(l[..], 2); l[0].items[0].escrow_to = 2;
+  l[0].items[0].owner = CharacterId.{value = 3}; #assert !ledger_reconcile(l[..], 2); l[0].items[0].owner = CharacterId.{value = 1};
+  l[0].items[0].escrow_to = CharacterId.{value = 3}; #assert !ledger_reconcile(l[..], 2); l[0].items[0].escrow_to = CharacterId.{value = 2};
   l[0].items[5].live = true; #assert !ledger_reconcile(l[..], 2); l[0].items[5].live = false;
   l[0].version[CONTROL_CHARACTERS - 1] = 1; #assert !ledger_reconcile(l[..], 2); l[0].version[CONTROL_CHARACTERS - 1] = 0;
   l[0].version[0] = 1; #assert !ledger_reconcile(l[..], 2); l[0].version[0] = 0;

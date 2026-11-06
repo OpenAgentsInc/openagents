@@ -1,3 +1,4 @@
+#load "../../../aethyr/ids.coax";
 // Pages from before wire 3, for a week after its release (#12783, #12788).
 //
 // A page loaded before wire 3 says hello "H 1" and reads the old state: "D TICK ACK F " and its
@@ -17,7 +18,7 @@ EG_OLD_FOLK_CM :: 30; EG_OLD_FOLK_CRAD :: 15;   // how far a townsperson moves o
 eg_old_open :: (v: [] RmServer) -> bool { return !v[0].ctl.old_shut && v[0].wall_ms < WIRE_OLD_UNTIL_MS; }
 
 // Seat seat's hello was an old page's: from now its state goes on the old wire, a snapshot first.
-eg_old_seat :: (v: [] RmServer, k: int, seat: int) {
+eg_old_seat :: (v: [] RmServer, k: int, seat_id: SeatId) { seat := seat_id.value;
   st := v[0].eg[k].seat[seat..<seat + 1];
   if st[0].old { return; }
   st[0].old = true; st[0].full = true; st[0].full_t = 0; st[0].pieces = 0;
@@ -26,7 +27,7 @@ eg_old_seat :: (v: [] RmServer, k: int, seat: int) {
 
 // I SEQ KX KY PX PY THETA B: an old page's step (THETA in centiradians, kept in WIRE_FINE units), queued
 // as eg_heard_input does.
-eg_old_input :: (v: [] RmServer, k: int, seat: int, text: string) {
+eg_old_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   if eg_fields(text) != 8 { return; }
   r: [1] WireRd; r[0] = wire_rd(text, 1);
   seq := wire_num(text, r[..]); kx := wire_num(text, r[..]); ky := wire_num(text, r[..]);
@@ -135,7 +136,7 @@ eg_old_rows :: (st: [] WireSeat, h: [] WireHist, me: int, pick: [] f32, only_me:
 // last) of its entries, who each seat is and their WANTED levels on a change, the world's event, and
 // the events near it. Its first after the hello is a snapshot (F 1 on its last part), the town's broken
 // pieces with it; the old page needs no word back to end it.
-eg_old_send :: (v: [] RmServer, k: int, s: int) {
+eg_old_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   st := v[0].eg[k].seat[s..<s + 1];
   full := st[0].full;
   f := ifx full then 1 else 0;
@@ -147,8 +148,8 @@ eg_old_send :: (v: [] RmServer, k: int, s: int) {
     for q: 0..<EG_SEATS { st[0].heard_n[q] = 0; st[0].heard_w[q] = 0; }
     st[0].full = false; st[0].pieces = EG_PIECES_ALL;
     for q: 0..<EG_PIECES {
-      if v[0].eg[k].broken[q] { n := eg_put_break(e[..], q, 0, 0, 0); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
-      else if v[0].eg[k].burning[q] { n := eg_put_burn(e[..], q, true); eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); }
+      if v[0].eg[k].broken[q] { n := eg_put_break(e[..], q, 0, 0, 0); eg_out_entry(o[..], v, k, s_id, f, cast(string) e[0..<n]); }
+      else if v[0].eg[k].burning[q] { n := eg_put_burn(e[..], q, true); eg_out_entry(o[..], v, k, s_id, f, cast(string) e[0..<n]); }
     }
   }
   eg_table(v, k);
@@ -158,33 +159,33 @@ eg_old_send :: (v: [] RmServer, k: int, s: int) {
   behind := !full && c >= 0 && c < CONNS && v[0].conns[c].waiting > EG_BEHIND;
   if behind { v[0].eg[k].behind_n += 1; }
   pick: [WIRE_SLOTS] f32;
-  eg_im_pick(v, k, s, me.x, me.z, pick[..]);
-  unseen := eg_im_unseen(v, k, s, pick[..]);
+  eg_im_pick(v, k, s_id, me.x, me.z, pick[..]);
+  unseen := eg_im_unseen(v, k, s_id, pick[..]);
   n := eg_old_rows(st[0].rep[..], rm[0].hist[..], s, pick[..], behind, rows[..]);
   for q: 0..<wire_entries(cast(string) rows[0..<n], 0) {
     en := wire_entry(cast(string) rows[0..<n], 0, q);
-    if en.count > 0 { eg_out_entry(o[..], v, k, s, f, en); }
+    if en.count > 0 { eg_out_entry(o[..], v, k, s_id, f, en); }
   }
   for q: 0..<EG_SEATS {
     other := v[0].eg[k].seat[q];
     if !other.live || !other.placed || ((unseen >> q) & 1) != 0 { st[0].heard_n[q] = 0; st[0].heard_w[q] = 0; continue; }
     h := rm[0].cn_h[q];
-    if h != st[0].heard_n[q] { a := q * EG_ENT; eg_out_entry(o[..], v, k, s, f, cast(string) rm[0].cn[a..<a + rm[0].cn_n[q]]); st[0].heard_n[q] = h; }
+    if h != st[0].heard_n[q] { a := q * EG_ENT; eg_out_entry(o[..], v, k, s_id, f, cast(string) rm[0].cn[a..<a + rm[0].cn_n[q]]); st[0].heard_n[q] = h; }
     w1 := v[0].eg[k].wanted[q] + 1;
     if w1 != st[0].heard_w[q] {
       m := wire_put(e[..], 0, "w"); m = wire_int(e[..], m, q); m = wire_int(e[..], m, v[0].eg[k].wanted[q]);
-      eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<m]);
+      eg_out_entry(o[..], v, k, s_id, f, cast(string) e[0..<m]);
       st[0].heard_w[q] = w1;
     }
   }
-  ev_send(v, k, s, full, unseen, o[..]);
+  ev_send(v, k, s_id, full, unseen, o[..]);
   for q: 0..<v[0].eg[k].ev_n {
     if !v[0].eg[k].ev_all[q] && ((v[0].eg[k].ev_who[q] >> s) & 1) == 0 && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }   // (aimed at s: wherever it is)
-    if eg_im_event_withheld(v, k, s, q, unseen) { continue; }
+    if eg_im_event_withheld(v, k, s_id, SeatId.{value = q}, unseen) { continue; }
     a := v[0].eg[k].ev_at[q];
-    eg_out_entry(o[..], v, k, s, f, cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]]);
+    eg_out_entry(o[..], v, k, s_id, f, cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]]);
   }
-  eg_out_send(o[..], v, k, s, f);
+  eg_out_send(o[..], v, k, s_id, f);
 }
 
 #test "everglade room: a page from before wire 3 plays on the old wire for the window, beside a new page; after it, it is refused (#12783)" #steps 2000000000 {

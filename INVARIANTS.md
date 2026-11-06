@@ -1543,6 +1543,29 @@ mutation 0 survivors) and `aethyr/walk.coax` ("a press in a frame with no
 step jumps on the next one, and a frame of two jumps once", "the keyboard
 and the touch stick drive the same session to the same states").
 
+## Nominal integer domains require explicit conversion
+
+A nongeneric `struct @id` holds one concrete integer field named `value`.
+Only the same nominal domain compares for equality; `@id(ordered)` also
+admits ordering. Construction and `.value` extraction are explicit. Integer
+arithmetic and numeric constraints never implicitly accept a wrapper.
+Checked and saturating arithmetic operate on its extracted integer;
+`#counter` continues to restrict writes to the integer field. Generic keys
+and read-only views preserve the domain. The checker lowers comparisons to
+field projections, evaluated once in source order by the evaluator and C.
+Generated C uses distinct records with the integer's size and alignment;
+its new `coax-c-id-lp64-v1` header schema includes the ordering opt-in.
+Existing header schemas retain their identity. Device output refuses E0962.
+
+`aethyr/ids.coax` defines the shared seat, entity, character, item and
+owner-generation domains. Codec adapters construct/extract them; a decoded
+wrapper grants no liveness or permission. Entity liveness requires a
+canonical 32-bit handle and the live slot's generation. Handle construction
+refuses out-of-range components. Stable entity ID exhaustion refuses before
+reserving a slot. Checks: `coax/tests/nominal-ids.py`, compiler parser/checker
+checks and zero-survivor mutation gates, and `aethyr/entity.coax`'s decoded
+handle and exhaustion checks. Store IDs remain session-local.
+
 ## Entities change only at the step's flush
 
 An entity in `aethyr/entity.coax` has a handle (slot and generation) for use

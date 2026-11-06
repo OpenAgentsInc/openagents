@@ -1,3 +1,4 @@
+#load "../../../aethyr/ids.coax";
 // Character checkpoint profile 2. All effects here consume the shared checked
 // capture/flow policies. A schema 1 seat keeps the legacy path unchanged.
 #load "../../../aethyr/session/checkpoint-flow.coax";
@@ -20,7 +21,7 @@ RmCheckpoints :: struct {
 #test "checkpoint: restore the signed dead body and resources once; only an exact receipt releases initial gameplay" #steps 4000000000 {
   v:[1]RmServer;ck_test_init(v[..]);c:=cc_fixture();c.state[7]=0;k:=ck_test_join(v[..],0,7,c);#assert k>=0;
   h:=v[0].eg[k].rules[0].b[0].c[E5RR_SEAT];#assert h.hp==0&&h.dead&&h.temp==4&&h.slots[1]==0;
-  #assert rm_eg_back(v[..],k,0,0)==1&&rm_eg_back(v[..],k,0,1)<-1.23&&rm_eg_back(v[..],k,0,1)>-1.24;
+  #assert rm_eg_back(v[..],k, SeatId.{value = 0},0)==1&&rm_eg_back(v[..],k, SeatId.{value = 0},1)<-1.23&&rm_eg_back(v[..],k, SeatId.{value = 0},1)>-1.24;
   rm_heard(v[..],0,"H 4 ranger.0.0.0 druid 0 Ash");#assert v[0].eg[k].rules[0].klass[0]==1&&v[0].eg[k].rules[0].b[0].c[E5RR_SEAT].hp==0;
   #assert rm_checkpoint_paused(v[..],k);ck_test_place(v[..],k);
   #assert rm_checkpoint_due(v[..])>0&&rm_checkpoint_pending(v[..])==1;
@@ -32,7 +33,7 @@ RmCheckpoints :: struct {
 #test "checkpoint: mailbox coalesces without changing a lost-response retry, and a late answer cannot acknowledge it" #steps 4000000000 {
   v:[1]RmServer;ck_test_init(v[..]);c:=CharacterCapture.{};k:=ck_test_join(v[..],0,7,c);ck_test_place(v[..],k);
   #assert rm_checkpoint_due(v[..])>0;first:=cc_read(cast(string)v[0].ck.out[0..<v[0].ck.out_n],true);#assert first.ok&&first.n[9]==7;
-  v[0].eg[k].rules[0].b[0].c[E5RR_SEAT].hp=5;ck_capture(v[..],k,0);rm_checkpoint_answer(v[..],1,500,"");
+  v[0].eg[k].rules[0].b[0].c[E5RR_SEAT].hp=5;ck_capture(v[..],k, SeatId.{value = 0});rm_checkpoint_answer(v[..],1,500,"");
   rm_clock(v[..],v[0].ck.retry_at,1762190001000);#assert rm_checkpoint_due(v[..])>0;again:=cc_read(cast(string)v[0].ck.out[0..<v[0].ck.out_n],true);
   #assert again.n[9]==7&&again.n[3]==first.n[3]&&again.n[4]==first.n[4]&&again.n[5]>first.n[5];
   b:[256]u8;rm_checkpoint_answer(v[..],1,200,ck_test_receipt(v[..],"applied",b[..]));#assert v[0].ck.late==1&&rm_checkpoint_pending(v[..])==1;
@@ -59,16 +60,16 @@ RmCheckpoints :: struct {
 #test "checkpoint: placement waits for the hello that restores the signed capture" #steps 4000000000 {
   v:[1]RmServer;ck_test_init(v[..]);k:=ck_test_join(v[..],0,7,cc_fixture());
   v[0].eg[k].seat[0].checkpoint_hello=false;
-  #assert !rm_eg_unplaced(v[..],k,0);
+  #assert !rm_eg_unplaced(v[..],k, SeatId.{value = 0});
   rm_heard(v[..],0,"H 4 ranger.0.0.0 druid 0 Ash");
-  #assert rm_eg_unplaced(v[..],k,0)&&rm_eg_back(v[..],k,0,1)<-1.23;
+  #assert rm_eg_unplaced(v[..],k, SeatId.{value = 0})&&rm_eg_back(v[..],k, SeatId.{value = 0},1)<-1.23;
 }
 
 ck_find :: (v:[]RmServer,pid:string)->int {
   for i:0..<CF_CAP{e:=v[0].ck.slot[i..<i+1];if e[0].live&&cast(string)e[0].pid[0..<e[0].pid_n]==pid{return i;}}return -1;
 }
 ck_seated :: (v:[]RmServer,pid:string)->bool {
-  for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<EG_SEATS{if !v[0].eg[k].seat[s].live{continue;}tk:=eg_ticket(v,k,s);if tk.ok&&tk.schema==2&&cast(string)tk.pid[0..<tk.pid_n]==pid{return true;}}}return false;
+  for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<EG_SEATS{if !v[0].eg[k].seat[s].live{continue;}tk:=eg_ticket(v,k, SeatId.{value = s});if tk.ok&&tk.schema==2&&cast(string)tk.pid[0..<tk.pid_n]==pid{return true;}}}return false;
 }
 ck_reserve :: (v:[]RmServer,tk:Ticket)->bool {
   if tk.schema!=2{return true;}pid:=tk.pid;name:=cast(string)pid[0..<tk.pid_n];i:=ck_find(v,name);
@@ -77,24 +78,24 @@ ck_reserve :: (v:[]RmServer,tk:Ticket)->bool {
   if i<0{v[0].ck.refused+=1;return false;}
   v[0].ck.slot[i]=CheckpointSlot.{live=true,owner=tk.owner,pid_n=tk.pid_n};v[0].ck.force=true;for q:0..<tk.pid_n{v[0].ck.slot[i].pid[q]=pid[q];}return true;
 }
-ck_slot_seat :: (v:[]RmServer,k:int,s:int)->int {
-  tk:=eg_ticket(v,k,s);if !tk.ok||tk.schema!=2{return -1;}return ck_find(v,cast(string)tk.pid[0..<tk.pid_n]);
+ck_slot_seat :: (v:[]RmServer,k:int, s_id: SeatId)->int {
+  tk:=eg_ticket(v,k, s_id);if !tk.ok||tk.schema!=2{return -1;}return ck_find(v,cast(string)tk.pid[0..<tk.pid_n]);
 }
-ck_capture :: (v:[]RmServer,k:int,s:int) {
+ck_capture :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   if v[0].ck.finalizing{return;}
-  i:=ck_slot_seat(v,k,s);if i<0{return;}st:=v[0].eg[k].seat[s];if !st.placed||!st.checkpoint_hello{return;}
-  tk:=eg_ticket(v,k,s);if v[0].ck.slot[i].owner!=tk.owner{return;}
+  i:=ck_slot_seat(v,k, s_id);if i<0{return;}st:=v[0].eg[k].seat[s];if !st.placed||!st.checkpoint_hello{return;}
+  tk:=eg_ticket(v,k, s_id);if v[0].ck.slot[i].owner!=tk.owner{return;}
   r:=v[0].eg[k].relay;if r<0{return;}v[0].ck.rev+=1;
   c:=CharacterCapture.{ok=true,pid_n=tk.pid_n,room_n=v[0].relays[r].code_n};c.pid=tk.pid;c.room=v[0].relays[r].code;
   pins:=WirePins.{};hero:=v[0].eg[k].rules[0].b[0].c[E5RR_SEAT+s];
-  c.n=[17]int.[2,tk.owner,v[0].vit.gen,v[0].ck.rev,v[0].wall_ms,v[0].wall_ms,pins.engine,pins.rules,pins.content,hero.hp,hero.hp_max,ev_xp_of(v,k,s),v[0].eg[k].wanted[s],eg_round(st.pose.x*1000),eg_round(st.pose.y*1000),eg_round(st.pose.z*1000),eg_round(st.pose.yaw*1000)];
+  c.n=[17]int.[2,tk.owner,v[0].vit.gen,v[0].ck.rev,v[0].wall_ms,v[0].wall_ms,pins.engine,pins.rules,pins.content,hero.hp,hero.hp_max,ev_xp_of(v,k, s_id),v[0].eg[k].wanted[s],eg_round(st.pose.x*1000),eg_round(st.pose.y*1000),eg_round(st.pose.z*1000),eg_round(st.pose.yaw*1000)];
   c.dead=hero.dead&&hero.hp<=0;c.state[0]=v[0].eg[k].rules[0].klass[s];c.state[1]=ifx (st.flags&EV_DEMO_FLAG)!=0&&tk.admin then 1 else 0;c.state[2]=hero.temp;
   c.state[3]=rs_max(0,trv_repair_ticks()-(v[0].eg[k].tick-st.repaired));c.state[4]=rs_max(0,EG_CAST_GAP-(v[0].eg[k].tick-st.last_cast));c.state[5]=v[0].ev[k].down[s];
   for q:0..<10{c.state[6+q]=hero.slots[q];}for q:0..<RS_USES{c.state[16+q]=hero.uses[q];}
   v[0].ck.slot[i].latest=c;v[0].ck.slot[i].capture_mono=v[0].mono_ms;
 }
-ck_restore :: (v:[]RmServer,k:int,s:int) {
-  tk:=eg_ticket(v,k,s);c:=tk.capture;if tk.schema!=2||!c.ok{return;}
+ck_restore :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
+  tk:=eg_ticket(v,k, s_id);c:=tk.capture;if tk.schema!=2||!c.ok{return;}
   hero:=v[0].eg[k].rules[0].b[0].c[E5RR_SEAT+s..<E5RR_SEAT+s+1];
   hero[0].hp=rs_min(c.n[9],hero[0].hp_max);hero[0].dead=c.dead;hero[0].temp=c.state[2];
   for q:0..<10{hero[0].slots[q]=rs_min(c.state[6+q],hero[0].slots_max[q]);}for q:0..<RS_USES{hero[0].uses[q]=rs_min(c.state[16+q],hero[0].uses_max[q]);}
@@ -104,18 +105,18 @@ ck_restore :: (v:[]RmServer,k:int,s:int) {
   r:=v[0].eg[k].relay;room:=c.room;v[0].eg[k].seat[s].back=false;
   if r>=0&&cast(string)room[0..<c.room_n]==cast(string)v[0].relays[r].code[0..<v[0].relays[r].code_n]{st:=v[0].eg[k].seat[s..<s+1];st[0].back=true;st[0].back_x=f32(c.n[13])/1000;st[0].back_y=f32(c.n[14])/1000;st[0].back_z=f32(c.n[15])/1000;st[0].back_yaw=f32(c.n[16])/1000;}
 }
-ck_can_play :: (v:[]RmServer,k:int,s:int)->bool {
-  tk:=eg_ticket(v,k,s);if tk.schema!=2{return true;}i:=ck_slot_seat(v,k,s);return i>=0&&cf_fresh(v[0].ck.slot[i].accepted,v[0].mono_ms-v[0].ck.slot[i].accepted_mono);
+ck_can_play :: (v:[]RmServer,k:int, s_id: SeatId)->bool {
+  tk:=eg_ticket(v,k, s_id);if tk.schema!=2{return true;}i:=ck_slot_seat(v,k, s_id);return i>=0&&cf_fresh(v[0].ck.slot[i].accepted,v[0].mono_ms-v[0].ck.slot[i].accepted_mono);
 }
 rm_checkpoint_paused :: (v:[]RmServer,k:int)->bool #export_c {
   if k<0||k>=EG_ROOMS||!v[0].eg[k].live{return false;}
-  for s:0..<EG_SEATS{if v[0].eg[k].seat[s].live&&v[0].eg[k].seat[s].checkpoint_hello&&(v[0].ck.finalizing||!ck_can_play(v,k,s)){return true;}}return false;
+  for s:0..<EG_SEATS{if v[0].eg[k].seat[s].live&&v[0].eg[k].seat[s].checkpoint_hello&&(v[0].ck.finalizing||!ck_can_play(v,k, SeatId.{value = s})){return true;}}return false;
 }
 ck_pause :: (v:[]RmServer,k:int) {
   for s:0..<EG_SEATS{st:=v[0].eg[k].seat[s..<s+1];if !st[0].live{continue;}st[0].q_n=0;st[0].bank=0;st[0].sat_ms=v[0].mono_ms;st[0].earned=0;}
 }
 rm_checkpoint_flush :: (v:[]RmServer) #export_c {
-  for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<EG_SEATS{if v[0].eg[k].seat[s].live{ck_capture(v,k,s);}}}v[0].ck.force=true;
+  for k:0..<EG_ROOMS{if !v[0].eg[k].live{continue;}for s:0..<EG_SEATS{if v[0].eg[k].seat[s].live{ck_capture(v,k, SeatId.{value = s});}}}v[0].ck.force=true;
 }
 rm_checkpoint_finish :: (v:[]RmServer) #export_c {rm_checkpoint_flush(v);v[0].ck.finalizing=true;}
 rm_checkpoint_clean :: (v:[]RmServer)->bool #export_c {return rm_checkpoint_pending(v)==0&&!v[0].ck.fly;}
@@ -141,8 +142,8 @@ rm_checkpoint_answer :: (v:[]RmServer,request:int,status:int,body:string) #expor
   nodes:[32]JvNode;d:[1]Jv;valid:=status==200&&jv_parse(d[..],body,nodes[..]);f:=v[0].ck.fly_capture;
   word:[24]u8;wn:=ifx valid then jv_str(d[0],jv_get(d[0],0,"status"),word[..]) else -1;name:=ifx wn>=0 then cast(string)word[0..<wn] else "";
   version:=jv_int(d[0],jv_get(d[0],0,"v"),0);owner:=jv_int(d[0],jv_get(d[0],0,"owner"),0);process:=jv_int(d[0],jv_get(d[0],0,"process"),0);rev:=jv_int(d[0],jv_get(d[0],0,"rev"),0);accepted:=jv_int(d[0],jv_get(d[0],0,"accepted_at"),0);
-  if !valid||!cf_ack(version,name,owner,process,rev,accepted,f.n[1],f.n[2],f.n[3]){
-    if valid&&cf_fenced(version,name,owner,process,rev,f.n[1],f.n[2],f.n[3]){v[0].ck.fenced+=1;pid:=f.pid;_:=rl_owner_drop(v,cast(string)pid[0..<f.pid_n],owner+1,-1);i:=v[0].ck.fly_i;if v[0].ck.slot[i].owner==owner{v[0].ck.slot[i].live=false;}v[0].ck.fly=false;v[0].ck.waiting=false;return;}
+  if !valid||!cf_ack(version,name,OwnerGeneration.{value=owner},process,rev,accepted,OwnerGeneration.{value=f.n[1]},f.n[2],f.n[3]){
+    if valid&&cf_fenced(version,name,OwnerGeneration.{value=owner},process,rev,OwnerGeneration.{value=f.n[1]},f.n[2],f.n[3]){v[0].ck.fenced+=1;pid:=f.pid;_:=rl_owner_drop(v,cast(string)pid[0..<f.pid_n],owner+1,-1);i:=v[0].ck.fly_i;if v[0].ck.slot[i].owner==owner{v[0].ck.slot[i].live=false;}v[0].ck.fly=false;v[0].ck.waiting=false;return;}
     ck_failed(v);return;
   }
   i:=v[0].ck.fly_i;if v[0].ck.slot[i].owner==owner{v[0].ck.slot[i].acked=rev;v[0].ck.slot[i].accepted=true;v[0].ck.slot[i].accepted_mono=v[0].ck.fly_mono;v[0].ck.slot[i].receipt_mono=v[0].mono_ms;v[0].ck.slot[i].accepted_at=accepted;v[0].ck.slot[i].accepted_process=process;v[0].ck.slot[i].accepted_capture_wall=f.n[4];}

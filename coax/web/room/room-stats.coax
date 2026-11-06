@@ -1,3 +1,4 @@
+#load "../../../aethyr/ids.coax";
 // What the room server counts about its own work for the admins' room view (#12791; research
 // docs/research/mmo.md section 15): the parts of the action path the Coax side sees. The host
 // (room-host.c with room-stats.h) times the tick, counts the bytes, the queues and the join bursts,
@@ -92,8 +93,8 @@ rm_st_code :: (v: [] RmServer, k: int) -> string #export_c {
 }
 
 // When seat s's newest acknowledged input was heard (mono ms), once each time it moves on; -1 none since.
-rm_st_ack :: (v: [] RmServer, k: int, s: int) -> int #export_c {
-  if !rm_eg_seat_live(v, k, s) { return -1; }
+rm_st_ack :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c { s := s_id.value;
+  if !rm_eg_seat_live(v, k, s_id) { return -1; }
   st := v[0].eg[k].seat[s..<s + 1];
   if st[0].ack <= st[0].ack_told || st[0].ack_at <= 0 { return -1; }
   st[0].ack_told = st[0].ack;
@@ -102,10 +103,10 @@ rm_st_ack :: (v: [] RmServer, k: int, s: int) -> int #export_c {
 
 // What seat s's page may be told about this tick, as its last interest pick had it (room-interest.coax,
 // #12789): the entities picked whole or health-only, its own among them.
-rm_st_relevant :: (v: [] RmServer, k: int, s: int) -> int #export_c {
-  if !rm_eg_seat_live(v, k, s) || !v[0].eg[k].seat[s].placed { return 0; }
+rm_st_relevant :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c { s := s_id.value;
+  if !rm_eg_seat_live(v, k, s_id) || !v[0].eg[k].seat[s].placed { return 0; }
   c: [4] int;
-  im_counts(v[0].eg[k].im[..], s, c[..]);
+  im_counts(v[0].eg[k].im[..], s_id, c[..]);
   return c[0] + c[1];
 }
 
@@ -118,8 +119,8 @@ rm_st_interest :: (v:[]RmServer,out:[]int) #export_c {
   if out.count<15{return;}for i:0..<15{out[i]=0;}out[9]=-1;out[10]=-1;
   best:=-1;
   for k:0..<EG_ROOMS{for s:0..<EG_SEATS{
-    if !rm_eg_seat_live(v,k,s)||!v[0].eg[k].seat[s].placed{continue;}
-    c:[4]int;im_counts(v[0].eg[k].im[..],s,c[..]);out[0]+=1;
+    if !rm_eg_seat_live(v,k, SeatId.{value = s})||!v[0].eg[k].seat[s].placed{continue;}
+    c:[4]int;im_counts(v[0].eg[k].im[..], SeatId.{value = s},c[..]);out[0]+=1;
     for i:0..<4{out[1+i]+=c[i];if c[i]>out[5+i]{out[5+i]=c[i];}}
     if c[0]+c[1]>best{best=c[0]+c[1];out[9]=k;out[10]=s;for i:0..<4{out[11+i]=c[i];}}
   }}
@@ -128,8 +129,8 @@ rm_st_interest :: (v:[]RmServer,out:[]int) #export_c {
 // Seat s's replication counters (everglade-wire.coax WireSeat, #12836) into out: rows sent for their age
 // so far (WIRE_MAX_AGE), the ticks the oldest changed row still waiting has waited, the rows the last
 // tick left for a later one, and that tick's row bytes; false for no such seat.
-rm_st_wire :: (v: [] RmServer, k: int, s: int, out: [] int) -> bool #export_c {
-  if !rm_eg_seat_live(v, k, s) || out.count < 4 { return false; }
+rm_st_wire :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #export_c { s := s_id.value;
+  if !rm_eg_seat_live(v, k, s_id) || out.count < 4 { return false; }
   r := v[0].eg[k].seat[s].rep[0];
   out[0] = r.aged_all; out[1] = r.oldest; out[2] = r.left; out[3] = r.bytes;
   return true;
@@ -176,7 +177,7 @@ ST_BODY :: 14000;   // the host's report at most (its poster's config holds 16 K
 #test "stats: production replication picks feed the interest gauges (#12840)" #steps 2000000000 {
   v:[1]RmServer;k:=rc_test_room(v[..],"pair-interest-path",2,false);
   a:[4]int;b:[4]int;out:[15]int;
-  im_counts(v[0].eg[k].im[..],0,a[..]);im_counts(v[0].eg[k].im[..],1,b[..]);
+  im_counts(v[0].eg[k].im[..], SeatId.{value = 0},a[..]);im_counts(v[0].eg[k].im[..], SeatId.{value = 1},b[..]);
   rm_st_interest(v[..],out[..]);#assert out[0]==2;
   for i:0..<4{#assert out[i+1]==a[i]+b[i];}#assert out[1]>0;
 }
@@ -208,6 +209,6 @@ ST_BODY :: 14000;   // the host's report at most (its poster's config holds 16 K
   eg_test_input(v[..], 1);
   rm_clock(v[..], 520, 1762190000520);
   eg_test_tick(v[..], k);
-  #assert rm_st_ack(v[..], k, 0) == 500 && rm_st_ack(v[..], k, 0) == -1;
-  #assert rm_st_relevant(v[..], k, 0) >= 1;
+  #assert rm_st_ack(v[..], k, SeatId.{value = 0}) == 500 && rm_st_ack(v[..], k, SeatId.{value = 0}) == -1;
+  #assert rm_st_relevant(v[..], k, SeatId.{value = 0}) >= 1;
 }

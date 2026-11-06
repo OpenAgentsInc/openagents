@@ -1,3 +1,4 @@
+#load "../../../aethyr/ids.coax";
 // A player's travel from one everglade room to another (#12850): the room server's side of
 // aethyr/session/travel.coax, for two rooms of one realm. The page asks with
 //   T SEQ CODE        go to the instance CODE (everglade-wire.coax)
@@ -72,7 +73,7 @@ trv_free :: (v: [] RmServer, r: int) -> int {
     if c.live && c.relay == r && c.seat >= 0 && c.seat < RELAY_SEATS { taken[c.seat] = true; }
   }
   k := ifx v[0].relays[r].limited then eg_room_at(v, r) else -1;
-  if k >= 0 { for s: 0..<EG_SEATS { if eg_held(v, k, s) { taken[s] = true; } } }
+  if k >= 0 { for s: 0..<EG_SEATS { if eg_held(v, k, SeatId.{value = s}) { taken[s] = true; } } }
   for s: 0..<v[0].relays[r].seats { if !taken[s] { n += 1; } }
   return n;
 }
@@ -97,7 +98,7 @@ trv_code_ok :: (t: string) -> bool {
 }
 
 // T SEQ CODE from seat `seat` of everglade room k.
-eg_heard_travel :: (v: [] RmServer, k: int, seat: int, text: string) {
+eg_heard_travel :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   rd: [1] WireRd; rd[0] = wire_rd(text, 1);
   seq := wire_num(text, rd[..]);
   to := wire_word(text, rd[..]);
@@ -105,18 +106,18 @@ eg_heard_travel :: (v: [] RmServer, k: int, seat: int, text: string) {
   r := v[0].eg[k].relay;
   if !rd[0].ok || r < 0 || !trv_code_ok(to) { v[0].trv.refused += 1; return; }
   here := cast(string) v[0].relays[r].code[0..<v[0].relays[r].code_n];
-  tk := eg_ticket(v, k, seat);
+  tk := eg_ticket(v, k, seat_id);
   // a ticketed player, to another instance of this realm, not already on the way
-  if !tk.ok || tk.pid_n == 0 { v[0].trv.refused += 1; eg_refuse(v, k, seat, seq, "ticket"); return; }
-  if to == here || trv_realm(to) != trv_realm(here) || trv_realm(to).count == 0 { v[0].trv.refused += 1; eg_refuse(v, k, seat, seq, "room"); return; }
-  if eg_travelling(v, k, seat) { v[0].trv.refused += 1; return; }
+  if !tk.ok || tk.pid_n == 0 { v[0].trv.refused += 1; eg_refuse(v, k, seat_id, seq, "ticket"); return; }
+  if to == here || trv_realm(to) != trv_realm(here) || trv_realm(to).count == 0 { v[0].trv.refused += 1; eg_refuse(v, k, seat_id, seq, "room"); return; }
+  if eg_travelling(v, k, seat_id) { v[0].trv.refused += 1; return; }
   pid := cast(string) tk.pid[0..<tk.pid_n];
   // 1. reserve: a seat in the destination when it runs here
   d := trv_room(v, to);
   // (the session contract's admission, aethyr/session/travel.coax travel_admits; a room running here is up and ready)
   if d >= 0 {
     seats := v[0].relays[d].seats;
-    if travel_admits(true, true, seats - trv_free(v, d), trv_held_for_others(v, to, pid), seats) == TRAVEL_FULL { v[0].trv.full += 1; eg_refuse(v, k, seat, seq, "full"); return; }
+    if travel_admits(true, true, seats - trv_free(v, d), trv_held_for_others(v, to, pid), seats) == TRAVEL_FULL { v[0].trv.full += 1; eg_refuse(v, k, seat_id, seq, "full"); return; }
   }
   slot := -1;
   for j: 0..<TRAVELS {
@@ -124,19 +125,19 @@ eg_heard_travel :: (v: [] RmServer, k: int, seat: int, text: string) {
     e := v[0].trv.t[j];
     if trv_live(v, j) && cast(string) e.pid[0..<e.pid_n] == pid { slot = j; break; }   // a journey of theirs before: this one replaces it
   }
-  if slot < 0 { v[0].trv.full += 1; eg_refuse(v, k, seat, seq, "busy"); return; }
+  if slot < 0 { v[0].trv.full += 1; eg_refuse(v, k, seat_id, seq, "busy"); return; }
   e := RmTravel.{live = true, pid_n = pid.count, to_n = to.count, until = v[0].mono_ms + TRAVEL_MS, k = k, seat = seat};
   for i: 0..<pid.count { e.pid[i] = pid[i]; }
   for i: 0..<to.count { e.to[i] = to[i]; }
   v[0].trv.t[slot] = e;
   // 2. prepare: the cutover, and what the destination starts from
   v[0].eg[k].seat[seat].travel_until = v[0].mono_ms + TRAVEL_MS;
-  rc_cutover(v, k, seat);
-  trv_capture(v, slot, k, seat);
-  rv_note_seat(v, k, seat); v[0].vit.flush = true;
+  rc_cutover(v, k, seat_id);
+  trv_capture(v, slot, k, seat_id);
+  rv_note_seat(v, k, seat_id); v[0].vit.flush = true;
   i := rv_find(v, pid);
   v[0].trv.t[slot].rev = ifx i >= 0 then v[0].vit.v[i].rev else 0;
-  ci:=ck_slot_seat(v,k,seat);
+  ci:=ck_slot_seat(v,k, seat_id);
   if ci>=0 { v[0].trv.t[slot].checkpoint_rev=v[0].ck.slot[ci].latest.n[3]; }
   // 3. route, when that is saved
   trv_route_due(v);
@@ -153,7 +154,7 @@ trv_route_due :: (v: [] RmServer) {
     ci := ck_find(v, cast(string) e.pid[0..<e.pid_n]);
     if !travel_saved(e.checkpoint_rev > 0, e.checkpoint_rev, ifx ci >= 0 then v[0].ck.slot[ci].acked else -1) { continue; }
     v[0].trv.t[j].routed = true;
-    if !v[0].eg[e.k].live || !eg_travelling(v, e.k, e.seat) { continue; }
+    if !v[0].eg[e.k].live || !eg_travelling(v, e.k, SeatId.{value = e.seat}) { continue; }
     b: [64] u8;
     n := wire_put_go(b[..], 0, cast(string) e.to[0..<e.to_n]);
     c := v[0].eg[e.k].seat[e.seat].conn;
@@ -161,12 +162,12 @@ trv_route_due :: (v: [] RmServer) {
   }
 }
 // Seat `seat` of room k is cut over for travel: its page was told to go, and hasn't yet.
-eg_travelling :: (v: [] RmServer, k: int, seat: int) -> bool {
+eg_travelling :: (v: [] RmServer, k: int, seat_id: SeatId) -> bool { seat := seat_id.value;
   return travel_cut(v[0].eg[k].seat[seat].travel_until, v[0].mono_ms) == TRAVEL_CUT_HELD;
 }
 // An intent from a seat cut over for travel: dropped while the cutover lasts; past it the journey is
 // called off and the seat takes commands again. Whether it is dropped.
-eg_travel_drops :: (v: [] RmServer, k: int, seat: int) -> bool {
+eg_travel_drops :: (v: [] RmServer, k: int, seat_id: SeatId) -> bool { seat := seat_id.value;
   cut := travel_cut(v[0].eg[k].seat[seat].travel_until, v[0].mono_ms);
   if cut == TRAVEL_CUT_NONE { return false; }
   if cut == TRAVEL_CUT_HELD { v[0].trv.dropped += 1; return true; }
@@ -187,7 +188,7 @@ trv_arrived :: (v: [] RmServer, code: string, pid: string) {
 // The Repair wait in ticks (room-casts.coax, less its third of a second's grace).
 trv_repair_ticks :: () -> int { return cast(int) (f32(CR_REPAIR_EVERY) * f32(EG_HZ)) - EG_HZ / 3; }
 // Journey j's capture of seat `seat` of room k at its cutover.
-trv_capture :: (v: [] RmServer, j: int, k: int, seat: int) {
+trv_capture :: (v: [] RmServer, j: int, k: int, seat_id: SeatId) { seat := seat_id.value;
   c := v[0].eg[k].rules[0].b[0].c[E5RR_SEAT + seat];
   e := v[0].trv.t[j..<j + 1];
   e[0].temp = c.temp; e[0].slots = c.slots; e[0].slots_max = c.slots_max; e[0].uses = c.uses; e[0].uses_max = c.uses_max;
@@ -197,8 +198,8 @@ trv_capture :: (v: [] RmServer, j: int, k: int, seat: int) {
 // Seat s of room k was just built by its hello: a journey that landed it here lays on what it carried
 // (once, within TRAVEL_MS of the arrival). Slots and uses only onto the same build (the same maxima),
 // and never more than the build has.
-trv_carry :: (v: [] RmServer, k: int, s: int) {
-  tk := eg_ticket(v, k, s);
+trv_carry :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
+  tk := eg_ticket(v, k, s_id);
   r := v[0].eg[k].relay;
   if !tk.ok || r < 0 { return; }
   pid := cast(string) tk.pid[0..<tk.pid_n];

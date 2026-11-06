@@ -282,8 +282,8 @@ static void relay_flush(void) {
     st_cost_us += now_us() - t0;
   }
 }
-#define ROOM_LATENCY_STEP(k,s,seq,began,ended) rm_lt_step(view(),k,s,seq,began,ended)
-#define ROOM_LATENCY_ACTIVE(k,s) rm_lt_active(view(),k,s)
+#define ROOM_LATENCY_STEP(k,s,seq,began,ended) rm_lt_step(view(),k, (coax_t_SeatId){s},seq,began,ended)
+#define ROOM_LATENCY_ACTIVE(k,s) rm_lt_active(view(),k, (coax_t_SeatId){s})
 #define ROOM_LATENCY_SERIALIZED(k,simulation,began,ended) rm_lt_serialized(view(),k,simulation,began,ended)
 #include "room-tick.c"   /* the tick both hosts run (room-worker.c too) */
 static bool rooms_warmed;
@@ -307,7 +307,7 @@ static void everglade_tick(void) {
     /* each seat's input that this tick's D acknowledges: heard to sent, plus its socket's round trip */
     int64_t tk = now_us(), ms = now_ms();
     for (int s = 0; s < WORLD_SEATS; s++) {
-      int64_t at = rm_st_ack(view(), k, s);
+      int64_t at = rm_st_ack(view(), k, (coax_t_SeatId){ s});
       int c = at >= 0 ? (int)server->eg.e[k].seat.e[s].conn : -1;
       if (c >= 0 && c < CONNS) st_ack_add(c, ms - at + (st_c[c].rtt_ms > 0 ? st_c[c].rtt_ms : 0));
     }
@@ -789,10 +789,10 @@ static void stats_sample(void) {
   int64_t t0 = now_us(), ks[2];
   for (int i = 0; i < CONNS; i++) {
     if (conns[i].fd < 0 || !conns[i].ws || !rm_st_conn(view(), i, (coax_v_s64){ks, 2})) continue;
-    st_c[i].relevant = (int)rm_st_relevant(view(), ks[0], ks[1]);
+    st_c[i].relevant = (int)rm_st_relevant(view(), ks[0], (coax_t_SeatId){ ks[1]});
     st_c[i].rtt_ms = st_rtt(conns[i].fd);
     int64_t w[4];
-    if (rm_st_wire(view(), ks[0], ks[1], (coax_v_s64){w, 4})) {
+    if (rm_st_wire(view(), ks[0], (coax_t_SeatId){ ks[1]}, (coax_v_s64){w, 4})) {
       st_c[i].aged += w[0] >= st_c[i].aged_was ? w[0] - st_c[i].aged_was : w[0];   /* a new seat counts from 0 */
       st_c[i].aged_was = w[0];
       if (w[1] > st_c[i].wait_most) st_c[i].wait_most = w[1];

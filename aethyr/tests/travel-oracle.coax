@@ -12,7 +12,7 @@ TravelOutcome :: struct {
 
 travel_owners :: (w: [] TravelWorld, c: int) -> int {
   n := 0;
-  for r: 0..<2 { b := w[0].rooms[r].bodies[c]; if b.here && control_holds(w[0].dir[..], c, w[0].rooms[r].id, b.gen) == CONTROL_OK { n += 1; } }
+  for r: 0..<2 { b := w[0].rooms[r].bodies[c]; if b.here && control_holds(w[0].dir[..], CharacterId.{value = c}, w[0].rooms[r].id, b.gen) == CONTROL_OK { n += 1; } }
   return n;
 }
 travel_bodies :: (w: [] TravelWorld, c: int) -> int { n := 0; for r: 0..<2 { if w[0].rooms[r].bodies[c].here { n += 1; } } return n; }

@@ -74,12 +74,12 @@ travel_world :: (w: [] TravelWorld) {
 }
 // Character c joins room r (index) with body b: the directory grants it, and the store is fenced.
 travel_join :: (w: [] TravelWorld, r: int, c: int, b: TravelBody) -> bool {
-  g := control_acquire(w[0].dir[..], c, w[0].rooms[r].id);
+  g := control_acquire(w[0].dir[..], CharacterId.{value = c}, w[0].rooms[r].id);
   if g.status != CONTROL_OK { return false; }
   body := b; body.here = true; body.gen = g.gen;
   w[0].rooms[r].bodies[c] = body; w[0].rooms[r].used += 1;
   w[0].route[c] = r;
-  return control_fence(w[0].store[..], c, g.gen) == CONTROL_OK;
+  return control_fence(w[0].store[..], CharacterId.{value = c}, g.gen) == CONTROL_OK;
 }
 // Room r runs command `seq` for character c (it adds `xp`): only its owner, outside a cutover, and
 // only commands newer than the last it accepted. A lapsed cutover calls its journey off first.
@@ -92,7 +92,7 @@ travel_command :: (w: [] TravelWorld, r: int, c: int, seq: int, xp: int) -> bool
     if rec.c == c && rec.from == r { _ := travel_abort(w); }
   }
   ok := w[0].rooms[r].up && b.here && cut != TRAVEL_CUT_HELD && seq > b.last_cmd &&
-        control_holds(w[0].dir[..], c, w[0].rooms[r].id, b.gen) == CONTROL_OK && control_fence(w[0].store[..], c, b.gen) == CONTROL_OK;
+        control_holds(w[0].dir[..], CharacterId.{value = c}, w[0].rooms[r].id, b.gen) == CONTROL_OK && control_fence(w[0].store[..], CharacterId.{value = c}, b.gen) == CONTROL_OK;
   if !ok { w[0].rooms[r].refused += 1; return false; }
   w[0].rooms[r].bodies[c].last_cmd = seq; w[0].rooms[r].bodies[c].xp += xp;
   return true;
@@ -132,7 +132,7 @@ travel_prepare :: (w: [] TravelWorld) -> int {
   if rec.status != TRAVEL_RESERVED { return TRAVEL_WRONG_STEP; }
   if !w[0].rooms[rec.from].up { return TRAVEL_DOWN; }
   b := w[0].rooms[rec.from].bodies[rec.c];
-  if !b.here || control_holds(w[0].dir[..], rec.c, w[0].rooms[rec.from].id, b.gen) != CONTROL_OK { return TRAVEL_NOT_OWNER; }
+  if !b.here || control_holds(w[0].dir[..], CharacterId.{value = rec.c}, w[0].rooms[rec.from].id, b.gen) != CONTROL_OK { return TRAVEL_NOT_OWNER; }
   w[0].rooms[rec.from].cut_until[rec.c] = w[0].now + TRAVEL_HOLD_MS;
   w[0].rec[0].status = TRAVEL_PREPARED; w[0].rec[0].gen = b.gen; w[0].rec[0].state = b;
   return TRAVEL_OK;
@@ -142,7 +142,7 @@ travel_commit :: (w: [] TravelWorld) -> int {
   rec := w[0].rec[0];
   if rec.status == TRAVEL_COMMITTED { return TRAVEL_OK; }
   if rec.status != TRAVEL_PREPARED { return TRAVEL_WRONG_STEP; }
-  g := control_transfer(w[0].dir[..], rec.c, w[0].rooms[rec.from].id, rec.gen, w[0].rooms[rec.to].id);
+  g := control_transfer(w[0].dir[..], CharacterId.{value = rec.c}, w[0].rooms[rec.from].id, rec.gen, w[0].rooms[rec.to].id);
   if g.status != CONTROL_OK { w[0].rec[0].status = TRAVEL_ABORTED; return TRAVEL_NOT_OWNER; }
   w[0].rec[0].status = TRAVEL_COMMITTED; w[0].rec[0].gen = g.gen;
   return TRAVEL_OK;
@@ -155,7 +155,7 @@ travel_activate :: (w: [] TravelWorld) -> int {
     b := rec.state; b.gen = rec.gen;   // captured while here
     w[0].rooms[rec.to].bodies[rec.c] = b; w[0].rooms[rec.to].used += 1;
     if w[0].rooms[rec.to].reserved > 0 { w[0].rooms[rec.to].reserved -= 1; }
-    _ := control_fence(w[0].store[..], rec.c, rec.gen);
+    _ := control_fence(w[0].store[..], CharacterId.{value = rec.c}, rec.gen);
   }
   return TRAVEL_OK;
 }
@@ -170,7 +170,7 @@ travel_route :: (w: [] TravelWorld) -> int {
 // The source lets its copy go once it no longer owns the character; a down room does it on restart.
 travel_drop :: (w: [] TravelWorld, r: int, c: int) {
   b := w[0].rooms[r].bodies[c];
-  if !w[0].rooms[r].up || !b.here || control_holds(w[0].dir[..], c, w[0].rooms[r].id, b.gen) == CONTROL_OK { return; }
+  if !w[0].rooms[r].up || !b.here || control_holds(w[0].dir[..], CharacterId.{value = c}, w[0].rooms[r].id, b.gen) == CONTROL_OK { return; }
   w[0].rooms[r].bodies[c].here = false; w[0].rooms[r].used -= 1; w[0].rooms[r].cut_until[c] = 0;
 }
 // Before commit only: the travel is called off, and the source takes commands again.

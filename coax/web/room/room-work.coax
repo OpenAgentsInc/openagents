@@ -1,3 +1,4 @@
+#load "../../../aethyr/ids.coax";
 // The room's measured work budget. Both SDK hosts charge the same complete
 // simulation/serialization call. Transport remains separately socket-bounded.
 #load "work-budget.coax";
@@ -84,7 +85,7 @@ rm_work_begin::(v:[]RmServer,k:int)->bool {
   // A waiting intent has a wall-clock bound even if simulation time slows.
   for q:0..<EG_CASTS{c:=v[0].eg[k].casts[q];
     if c.on&&c.phase==RC_WAIT&&!wb_waitable(v[0].mono_ms,c.queued_ms){
-      v[0].eg[k].casts[q].on=false;eg_refuse(v,k,c.seat,c.seq,"busy");
+      v[0].eg[k].casts[q].on=false;eg_refuse(v,k, SeatId.{value = c.seat},c.seq,"busy");
     }
   }
   b:=rm_work_of(v,k);if wb_ready(b,v[0].mono_ms){return true;}

@@ -35,7 +35,7 @@ wait until the end of the step.
 
 An entity has two identities:
 
-- A **handle** packs a slot and the slot's generation into one `int`. Use it
+- A **handle** packs a slot and the slot's generation into an `EntityHandle`. Use it
   inside a step: it's fast, and `entity_alive` checks it. A despawn raises
   the slot's generation, so an old handle fails `entity_alive` instead of
   reaching the slot's next owner.
@@ -69,9 +69,10 @@ Dead Gears does.
 ```jai
 ENTITY_SLOT_BITS :: 20;
 ENTITY_SLOT_MASK :: 1048575;   // (1 << 20) - 1
+ENTITY_HANDLE_MAX :: 4294967295; // canonical 32-bit handle word
 ENTITY_GEN_MASK :: 4095;       // 12 bits: 4,096 owners a slot, then it is retired
-ENTITY_NONE :: -1;             // no handle
-ENTITY_NO_ID :: 0;             // no EntityId: IDs start at 1
+ENTITY_NONE :: EntityHandle.{value = -1};             // no handle
+ENTITY_NO_ID :: EntityId.{value = 0};             // no EntityId: IDs start at 1
 
 // The store's counters, at these places in `n` (ENTITY_COUNTERS of them).
 ENTITY_HIGH :: 0;      // slots ever used
@@ -102,28 +103,37 @@ spawn when every slot is in use is refused, and `ENTITY_REFUSED` counts it.
 
 ## Handles and IDs
 
+`aethyr/ids.coax` declares `EntityHandle`, `EntityId` and
+`EntityGeneration` as nominal integer wrappers. The checker refuses a saved
+ID where a handle is required. Codecs construct a wrapper explicitly and
+extract `.value` to write its integer. Construction does not establish
+liveness: `entity_alive` rejects noncanonical words and checks the live slot
+and its generation. `entity_handle` also refuses out-of-range slots or
+generations. The stable ID counter refuses exhaustion before reserving a
+slot. These checks belong to the engine library.
+
 <!-- source: aethyr/entity.coax handles -->
 ```jai
 // Whether h names a live entity: its slot is in use, holds a live entity, and has h's generation.
-entity_alive :: (w: EntityStore, h: int) -> bool {
-  if h < 0 { return false; }
+entity_alive :: (w: EntityStore, h: EntityHandle) -> bool {
+  if !entity_canonical(h) { return false; }
   i := entity_slot(h);
-  return i < w.n[ENTITY_HIGH] && w.live[i] && w.gen[i] == entity_generation(h);
+  return i < w.n[ENTITY_HIGH] && w.live[i] && w.gen[i] == entity_generation(h).value;
 }
 // The live entity in slot i, or ENTITY_NONE: the ordered walk is slots 0..<entity_high.
-entity_at :: (w: EntityStore, i: int) -> int {
+entity_at :: (w: EntityStore, i: int) -> EntityHandle {
   if i < 0 || i >= w.n[ENTITY_HIGH] || !w.live[i] { return ENTITY_NONE; }
-  return entity_handle(i, w.gen[i]);
+  return entity_handle(i, EntityGeneration.{value = w.gen[i]});
 }
 // A live entity's EntityId, or ENTITY_NO_ID.
-entity_id :: (w: EntityStore, h: int) -> int {
+entity_id :: (w: EntityStore, h: EntityHandle) -> EntityId {
   if !entity_alive(w, h) { return ENTITY_NO_ID; }
-  return w.ids[entity_slot(h)];
+  return EntityId.{value = w.ids[entity_slot(h)]};
 }
 // The live entity with EntityId id, or ENTITY_NONE: how a save, a message or an edit finds it.
-entity_find :: (w: EntityStore, id: int) -> int {
+entity_find :: (w: EntityStore, id: EntityId) -> EntityHandle {
   if id == ENTITY_NO_ID { return ENTITY_NONE; }
-  for i: 0..<w.n[ENTITY_HIGH] { if w.live[i] && w.ids[i] == id { return entity_handle(i, w.gen[i]); } }
+  for i: 0..<w.n[ENTITY_HIGH] { if w.live[i] && w.ids[i] == id.value { return entity_handle(i, EntityGeneration.{value = w.gen[i]}); } }
   return ENTITY_NONE;
 }
 ```
@@ -139,8 +149,14 @@ replays need.
 // A spawn: the new entity's handle and EntityId, or ENTITY_NONE and no ID when every slot is in
 // use (counted in ENTITY_REFUSED). Its slot is the realm's to fill now; it is alive from the
 // next flush.
-Spawned :: struct { handle: int = ENTITY_NONE; id: int; }
+Spawned :: struct { handle: EntityHandle = ENTITY_NONE; id: EntityId; }
 entity_spawn :: (w: EntityStore) -> Spawned {
+  // Stable IDs never wrap. Decide before taking a free slot or raising high.
+  next := add_checked(w.n[ENTITY_NEXT_ID], 1); id: int;
+  switch next {
+    case none { w.n[ENTITY_REFUSED] = add_sat(w.n[ENTITY_REFUSED], 1); return Spawned.{}; }
+    case some(value) { id = value; }
+  }
   i: int;
   if w.n[ENTITY_FREE] > 0 {
     w.n[ENTITY_FREE] -= 1;
@@ -149,35 +165,35 @@ entity_spawn :: (w: EntityStore) -> Spawned {
     i = w.n[ENTITY_HIGH];
     w.n[ENTITY_HIGH] += 1;
   } else {
-    w.n[ENTITY_REFUSED] += 1;
+    w.n[ENTITY_REFUSED] = add_sat(w.n[ENTITY_REFUSED], 1);
     return Spawned.{};
   }
-  w.n[ENTITY_NEXT_ID] += 1;
+  w.n[ENTITY_NEXT_ID] = id;
   w.born[i] = true;
   w.ids[i] = w.n[ENTITY_NEXT_ID];
   w.spawns[w.n[ENTITY_SPAWNS]] = i;
   w.n[ENTITY_SPAWNS] += 1;
-  return Spawned.{handle = entity_handle(i, w.gen[i]), id = w.ids[i]};
+  return Spawned.{handle = entity_handle(i, EntityGeneration.{value = w.gen[i]}), id = EntityId.{value = w.ids[i]}};
 }
 // Whether h names a spawn waiting for the next flush.
-entity_waiting :: (w: EntityStore, h: int) -> bool {
-  if h < 0 { return false; }
+entity_waiting :: (w: EntityStore, h: EntityHandle) -> bool {
+  if !entity_canonical(h) { return false; }
   i := entity_slot(h);
-  return i < w.n[ENTITY_HIGH] && w.born[i] && w.gen[i] == entity_generation(h);
+  return i < w.n[ENTITY_HIGH] && w.born[i] && w.gen[i] == entity_generation(h).value;
 }
 // A despawn: the entity stays alive and visible until the next flush. Asking twice is asking once.
 // A despawn of a waiting spawn cancels it: it never becomes alive.
-entity_despawn :: (w: EntityStore, h: int) {
+entity_despawn :: (w: EntityStore, h: EntityHandle) {
   if !entity_alive(w, h) && !entity_waiting(w, h) { return; }
   i := entity_slot(h);
   if !w.doomed[i] { w.doomed[i] = true; w.n[ENTITY_DOOMED] += 1; }
 }
-entity_doomed :: (w: EntityStore, h: int) -> bool { return (entity_alive(w, h) || entity_waiting(w, h)) && w.doomed[entity_slot(h)]; }
+entity_doomed :: (w: EntityStore, h: EntityHandle) -> bool { return (entity_alive(w, h) || entity_waiting(w, h)) && w.doomed[entity_slot(h)]; }
 
 // A slot given up: its generation goes up and it is free again, unless its generation would wrap:
 // then it is retired and counted.
 entity_release :: (w: EntityStore, i: int) {
-  w.doomed[i] = false; w.ids[i] = ENTITY_NO_ID;
+  w.doomed[i] = false; w.ids[i] = ENTITY_NO_ID.value;
   if w.gen[i] == ENTITY_GEN_MASK { w.n[ENTITY_RETIRED] += 1; return; }
   w.gen[i] = add_sat(w.gen[i], 1);
   w.free[w.n[ENTITY_FREE]] = i;
@@ -266,20 +282,20 @@ main :: () {
   ids: [8] int; free: [8] int; spawns: [8] int; n: [ENTITY_COUNTERS] int;
   w := EntityStore.{gen = gen[..], live = live[..], born = born[..], doomed = doomed[..], ids = ids[..], free = free[..], spawns = spawns[..], n = n[..]};
   first := entity_spawn(w);
-  for k: 0..<2 { made := entity_spawn(w); print("spawned id % in slot %\n", made.id, entity_slot(made.handle)); }
+  for k: 0..<2 { made := entity_spawn(w); print("spawned id % in slot %\n", made.id.value, entity_slot(made.handle)); }
   print("before the flush: alive %, count %\n", entity_alive(w, first.handle), entity_count(w));
   entity_flush(w);
   print("after the flush: alive %, count %\n", entity_alive(w, first.handle), entity_count(w));
   for i: 0..<entity_high(w) {
     h := entity_at(w, i);
     if i == 0 { entity_despawn(w, h); }
-    print("walk: slot %, id %, alive %, despawning %\n", i, entity_id(w, h), entity_alive(w, h), entity_doomed(w, h));
+    print("walk: slot %, id %, alive %, despawning %\n", i, entity_id(w, h).value, entity_alive(w, h), entity_doomed(w, h));
   }
   entity_flush(w);
   next := entity_spawn(w);
   entity_flush(w);
-  print("new cone: id % in slot %, generation %\n", next.id, entity_slot(next.handle), entity_generation(next.handle));
-  print("old handle alive %, id 1 found %, id 4 found %\n", entity_alive(w, first.handle), entity_find(w, 1) != ENTITY_NONE, entity_find(w, 4) == next.handle);
+  print("new cone: id % in slot %, generation %\n", next.id.value, entity_slot(next.handle), entity_generation(next.handle).value);
+  print("old handle alive %, id 1 found %, id 4 found %\n", entity_alive(w, first.handle), entity_find(w, EntityId.{value = 1}) != ENTITY_NONE, entity_find(w, EntityId.{value = 4}) == next.handle);
 }
 ```
 
@@ -334,7 +350,7 @@ and after the flush exactly the despawned ones must be gone.
 ```jai
 #forall "despawning while walking: every live entity is visited once, and none after its flush" seed: 0..<32 {
   b: [1] OracleBacking; w := oracle_store(b[..]);
-  for k: 0..<40 { #assert entity_spawn(w).id == k + 1; }
+  for k: 0..<40 { #assert entity_spawn(w).id.value == k + 1; }
   entity_flush(w);
   r := seed * 7919 + 1;
   visits: [ORACLE_SLOTS] int;
@@ -394,7 +410,7 @@ must end with the same digest and the same `EntityId` in every slot.
   // every ID live at the save that is still live maps to the same value
   for i: 0..<ORACLE_SLOTS {
     if !saved[0].live[i] { continue; }
-    h := entity_find(w, saved[0].ids[i]);
+    h := entity_find(w, EntityId.{value = saved[0].ids[i]});
     if h != ENTITY_NONE { #assert b[0].value[entity_slot(h)] == saved[0].value[i] && entity_slot(h) == i; }
   }
   #assert entity_count(w) > 0 && w.n[ENTITY_NEXT_ID] > 40 && w.n[ENTITY_RETIRED] == 0;

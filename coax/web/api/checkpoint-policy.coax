@@ -1,6 +1,7 @@
 // character-checkpoint-v1 ingress. Publication/ordering is one owner-row-locked
 // database transaction; player.c supplies authenticated bytes and its clock only.
 #authority;
+#load "../../../aethyr/ids.coax";
 #load "../../lib/json/json.coax";
 #load "tests/checkpoint-fixture.coax";
 CP_KEYS :: [17]string.["v","owner","process","rev","at","sent","engine","rules","content","hp","max","xp","wanted","x_mm","y_mm","z_mm","yaw_mrad"];
@@ -27,7 +28,7 @@ room_checkpoint_input :: (text:string,now:int)->bool #export_c {
 
 // Decisions consumed as SDK transaction effects: 0 writes, all others leave the
 // checkpoint unchanged. Directory and current-checkpoint facts stay locked.
-room_checkpoint_decide :: (durable:bool,known:bool,owner:int,directory:int,process:int,rev:int,xp:int,old_owner:int,old_process:int,old_rev:int,old_xp:int,same:bool)->int #export_c {
+room_checkpoint_decide :: (durable:bool,known:bool,owner:OwnerGeneration,directory:OwnerGeneration,process:int,rev:int,xp:int,old_owner:OwnerGeneration,old_process:int,old_rev:int,old_xp:int,same:bool)->int #export_c {
   if !durable{return 7;}if !known{return 6;}if owner!=directory{return 3;}
   if old_owner==owner {
     if old_process!=process{return 5;}

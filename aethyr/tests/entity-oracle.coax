@@ -49,7 +49,7 @@ oracle_model_flush :: (m: [] OracleModel) {
 oracle_agrees :: (w: EntityStore, value: [] int, m: [] OracleModel) -> bool {
   if entity_count(w) != m[0].n { return false; }
   for k: 0..<m[0].n {
-    h := entity_find(w, m[0].id[k]);
+    h := entity_find(w, EntityId.{value = m[0].id[k]});
     if !entity_alive(w, h) || value[entity_slot(h)] != m[0].value[k] { return false; }
   }
   // and nothing else: every live slot's ID is in the model
@@ -59,7 +59,7 @@ oracle_agrees :: (w: EntityStore, value: [] int, m: [] OracleModel) -> bool {
     if h == ENTITY_NONE { continue; }
     seen += 1;
     found := false;
-    for k: 0..<m[0].n { if m[0].id[k] == entity_id(w, h) { found = true; } }
+    for k: 0..<m[0].n { if m[0].id[k] == entity_id(w, h).value { found = true; } }
     if !found { return false; }
   }
   return seen == m[0].n;
@@ -78,10 +78,10 @@ oracle_session :: (w: EntityStore, value: [] int, m: [] OracleModel, seed: int, 
       made := entity_spawn(w);
       if made.handle == ENTITY_NONE { continue; }
       value[entity_slot(made.handle)] = r % 1000;
-      if m.count > 0 { #assert oracle_model_spawn(m, r % 1000) == made.id; }
+      if m.count > 0 { #assert oracle_model_spawn(m, r % 1000) == made.id.value; }
       // now and then a spawn is cancelled before the flush
       if (r / 1024) % 7 == 0 {
-        if m.count > 0 { oracle_model_despawn(m, made.id); }
+        if m.count > 0 { oracle_model_despawn(m, made.id.value); }
         entity_despawn(w, made.handle);
       }
     }
@@ -91,7 +91,7 @@ oracle_session :: (w: EntityStore, value: [] int, m: [] OracleModel, seed: int, 
       if h == ENTITY_NONE { continue; }
       r = oracle_rng(r);
       if (r / 4096) % 5 == 0 {
-        if m.count > 0 { oracle_model_despawn(m, entity_id(w, h)); }
+        if m.count > 0 { oracle_model_despawn(m, entity_id(w, h).value); }
         entity_despawn(w, h);
       }
     }

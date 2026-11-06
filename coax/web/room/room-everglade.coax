@@ -1,3 +1,4 @@
+#load "../../../aethyr/ids.coax";
 // The room server's Everglade rooms: the server is the authority (spec
 // docs/verse/2026-11-03-everglade-multiplayer-spec.md sections 3.1 and 3.6; GitHub #12705).
 // An everglade relay room (room-relay.coax, game "everglade") relays nothing: its seats' frames are
@@ -131,7 +132,7 @@ EgSeat :: struct {
   // its generation: one more each time a socket takes the seat (a join or its player's rejoin); a
   // socket's frames count only while its generation is the seat's (room-relay.coax rl_heard, #12792);
   // a #counter, so it moves only through the named integer operations (#12927)
-  gen: int #counter;
+  gen: SeatGeneration;
   held: bool; held_at: int;      // its socket closed and its character waits for its player, since held_at (mono ms)
   q: [EG_INPUTS] EgIn; q_n: int; bank: int; took: int; ack: int;   // took: inputs stepped this tick
   sat_ms: int = -1; earned: int;   // the server's clock when it sat (mono ms), and the steps of time earned since
@@ -326,16 +327,16 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
 }
 // A seat sat down in everglade relay room r: it hears the world's header (after the relay's y), and
 // its first D is a snapshot. The host puts it in the world (rm_eg_unplaced, rm_eg_moved) first.
-eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
+eg_join :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat_id.value;
   k := eg_room_of(v, r);
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
   v[0].eg[k].seat[seat] = EgSeat.{live = true, conn = conn, full = true, bank = EG_JOIN_BANK, fresh = true, born = true, gen = v[0].conns[conn].gen};
   v[0].eg[k].tk[seat] = v[0].conns[conn].ticket;
   v[0].eg[k].wanted[seat] = 0;
   e5rr_join(v[0].eg[k].rules[..], seat, 0, 0);
-  rv_join(v, k, seat);   // the HP its player left with (room-vitals.coax, #12715)
-  rv_back(v, k, seat);   // and where they stood in this room, if lately
-  ev_join(v, k, seat);   // its XP and its character's level (room-events.coax, #12739)
+  rv_join(v, k, seat_id);   // the HP its player left with (room-vitals.coax, #12715)
+  rv_back(v, k, seat_id);   // and where they stood in this room, if lately
+  ev_join(v, k, seat_id);   // its XP and its character's level (room-events.coax, #12739)
   v[0].eg[k].rules[0].pvp = v[0].ctl.pvp;   // the realm's pvp row (room-control.coax, #12714)
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   b: [128] u8;
@@ -345,7 +346,7 @@ eg_join :: (v: [] RmServer, r: int, conn: int, seat: int) {
   rl_queue(v, r, conn, -1, cast(string) b[0..<n], "");
   for s: 0..<EG_SEATS { v[0].eg[k].seat[s].heard_n[seat] = 0; }
   v[0].eg[k].im_blk[seat] = ImBlockList.{};   // its page sends its blocks after its hello
-  im_seat_reset(v[0].eg[k].im[..], seat); im_room_blocks(v, k);
+  im_seat_reset(v[0].eg[k].im[..], seat_id); im_room_blocks(v, k);
 }
 // How long a closed socket's character waits for its player (#12792): standing, AWAY once
 // WIRE_AWAY_MS passes, still in the rules and the world. Their rejoin within it takes the same seat.
@@ -354,7 +355,7 @@ EG_GRACE_MS :: LIFECYCLE_HOLD_MS;   // the session lifecycle's hold (aethyr/sess
 // to this one (room-relay.coax rl_take_back): the character, its conditions, effects, cooldowns, XP
 // and place are kept; what the server knows of the page is not. Its next D is a snapshot, its inputs
 // count from the new page's first, and it hears the world's header again. The others never saw it go.
-eg_rejoin :: (v: [] RmServer, r: int, conn: int, seat: int) {
+eg_rejoin :: (v: [] RmServer, r: int, conn: int, seat_id: SeatId) { seat := seat_id.value;
   k := eg_room_at(v, r);
   if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live { return; }
   o := v[0].eg[k].seat[seat];
@@ -376,52 +377,52 @@ eg_rejoin :: (v: [] RmServer, r: int, conn: int, seat: int) {
   m := wire_put_world(b[..], 0, w);
   rl_queue(v, r, conn, -1, cast(string) b[0..<m], "");
   v[0].eg[k].im_blk[seat] = ImBlockList.{};   // its page sends its blocks after its hello
-  im_seat_reset(v[0].eg[k].im[..], seat); im_room_blocks(v, k);
+  im_seat_reset(v[0].eg[k].im[..], seat_id); im_room_blocks(v, k);
 }
 // Seat s's socket closed with a ticket naming its player: the seat waits for them EG_GRACE_MS. Its
 // HP and place are noted and posted now, as a leave's are, so a crash in the grace loses no more; a
 // cast still waiting for inputs that will never come goes, and its queued inputs are stepped.
-eg_hold :: (v: [] RmServer, k: int, s: int) {
+eg_hold :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   v[0].eg[k].seat[s].conn = -1; v[0].eg[k].seat[s].held = true; v[0].eg[k].seat[s].held_at = v[0].mono_ms;
   v[0].eg[k].seat[s].ends_n = 0;
-  rv_note_seat(v, k, s); v[0].vit.flush = true;
+  rv_note_seat(v, k, s_id); v[0].vit.flush = true;
   for c: 0..<EG_CASTS { if v[0].eg[k].casts[c].on && v[0].eg[k].casts[c].seat == s && v[0].eg[k].casts[c].phase == RC_WAIT { v[0].eg[k].casts[c].on = false; } }
   v[0].st.held += 1;
 }
 // Whether seat s's ticket names player pid.
-eg_held_for :: (v: [] RmServer, k: int, s: int, pid: string) -> bool {
+eg_held_for :: (v: [] RmServer, k: int, s_id: SeatId, pid: string) -> bool { s := s_id.value;
   tk := v[0].eg[k].tk[s..<s + 1];
   return tk[0].ok && cast(string) tk[0].pid[0..<tk[0].pid_n] == pid;
 }
-eg_held :: (v: [] RmServer, k: int, s: int) -> bool { return v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].conn < 0 && v[0].eg[k].seat[s].held; }
+eg_held :: (v: [] RmServer, k: int, s_id: SeatId) -> bool { s := s_id.value; return v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].conn < 0 && v[0].eg[k].seat[s].held; }
 // The held seats whose grace ran out leave as a closed socket's did before the grace: everyone hears
 // "l SEAT", and a room nobody is in or waits for closes.
 eg_grace_ends :: (v: [] RmServer, k: int) {
   r := v[0].eg[k].relay;
   out := false;
   for s: 0..<EG_SEATS {
-    if !v[0].eg[k].seat[s].held || !v[0].eg[k].live || !eg_held(v, k, s) || life_room_holds(v[0].eg[k].seat[s].held_at, v[0].mono_ms) { continue; }
+    if !v[0].eg[k].seat[s].held || !v[0].eg[k].live || !eg_held(v, k, SeatId.{value = s}) || life_room_holds(v[0].eg[k].seat[s].held_at, v[0].mono_ms) { continue; }
     h: [16] u8;
-    rl_queue(v, r, -1, -1, rl_head(h[..], 'l', s, false), "");
-    eg_left(v, r, s);
+    rl_queue(v, r, -1, -1, rl_head(h[..], 'l', SeatId.{value = s}, false), "");
+    eg_left(v, r, SeatId.{value = s});
     v[0].st.held_out += 1; out = true;
   }
   if out && r >= 0 && r < RELAYS && rl_people(v, r) == 0 { v[0].relays[r].live = false; }
 }
-eg_left :: (v: [] RmServer, r: int, seat: int) {
+eg_left :: (v: [] RmServer, r: int, seat_id: SeatId) { seat := seat_id.value;
   k := eg_room_at(v, r);
   if k < 0 || seat < 0 || seat >= EG_SEATS { return; }
-  rv_note_seat(v, k, seat);   // its HP kept for its player (room-vitals.coax, #12715)
+  rv_note_seat(v, k, seat_id);   // its HP kept for its player (room-vitals.coax, #12715)
   v[0].vit.flush = true;      // and posted at the host's next second; the note stays until a receipt covers it (#12793)
   v[0].eg[k].seat[seat].live = false; v[0].eg[k].seat[seat].conn = -1; v[0].eg[k].seat[seat].held = false;
   e5rr_leave(v[0].eg[k].rules[..], seat);
-  rc_left(v, k, seat);   // its casts on their bars stop where everyone hears (room-casts.coax)
-  v[0].eg[k].im_blk[seat] = ImBlockList.{}; im_seat_reset(v[0].eg[k].im[..], seat); im_room_blocks(v, k);
+  rc_left(v, k, seat_id);   // its casts on their bars stop where everyone hears (room-casts.coax)
+  v[0].eg[k].im_blk[seat] = ImBlockList.{}; im_seat_reset(v[0].eg[k].im[..], seat_id); im_room_blocks(v, k);
   any := false;
   for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live { any = true; } }
   if !any { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
 }
-eg_refuse :: (v: [] RmServer, k: int, seat: int, seq: int, why: string) {
+eg_refuse :: (v: [] RmServer, k: int, seat_id: SeatId, seq: int, why: string) { seat := seat_id.value;
   if v[0].eg[k].seat[seat].conn < 0 { return; }   // (held: no socket to tell)
   b: [64] u8;
   n := wire_put_refused(b[..], 0, seq, why);
@@ -457,25 +458,25 @@ eg_event_who :: (v: [] RmServer, k: int, text: string, x: f32, z: f32, all: bool
 // ---- intents
 
 // A seat's frame (past the relay's rate limits and pings).
-eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
+eg_heard :: (v: [] RmServer, r: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   k := eg_room_at(v, r);
   if k < 0 || seat < 0 || seat >= EG_SEATS || !v[0].eg[k].seat[seat].live || text.count < 3 || text[1] != ' ' { return; }
   v[0].eg[k].seat[seat].heard_ms = v[0].mono_ms;
   c := text[0];
   // a seat cut over for travel takes no intents while its page goes (room-travel.coax, #12850)
-  if (c == 'I' || c == 'C' || c == 'E' || c == 'L' || c == 'R' || c == 'T') && (eg_travel_drops(v, k, seat) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat)) { return; }
-  if c == 'T' { eg_heard_travel(v, k, seat, text); return; }
-  if c == 'I' { eg_heard_input(v, k, seat, text); return; }
-  if c == 'C' { eg_heard_cast(v, k, seat, text); return; }
+  if (c == 'I' || c == 'C' || c == 'E' || c == 'L' || c == 'R' || c == 'T') && (eg_travel_drops(v, k, seat_id) || rm_checkpoint_paused(v, k) || !ck_can_play(v, k, seat_id)) { return; }
+  if c == 'T' { eg_heard_travel(v, k, seat_id, text); return; }
+  if c == 'I' { eg_heard_input(v, k, seat_id, text); return; }
+  if c == 'C' { eg_heard_cast(v, k, seat_id, text); return; }
   if c == 'P' {   // the page's build, for its hello's admission (#12839)
     rp: [1] WireRd; rp[0] = wire_rd(text, 1);
     pins := wire_read_pins(text, rp[..]);
     if rp[0].ok && eg_fields(text) == 4 { v[0].eg[k].seat[seat].pins = pins; v[0].eg[k].seat[seat].pinned = true; }
     return;
   }
-  if c == 'H' { eg_heard_hello(v, k, seat, text); return; }
-  if c == 'K' { im_heard_blocks(v, k, seat, text); return; }   // who it blocks (room-interest.coax, #12789)
-  if c == 'O' { eg_heard_missed(v, k, seat); return; }   // it missed an outcome (#12902)
+  if c == 'H' { eg_heard_hello(v, k, seat_id, text); return; }
+  if c == 'K' { im_heard_blocks(v, k, seat_id, text); return; }   // who it blocks (room-interest.coax, #12789)
+  if c == 'O' { eg_heard_missed(v, k, seat_id); return; }   // it missed an outcome (#12902)
   if c == 'E' {
     rd: [1] WireRd; rd[0] = wire_rd(text, 1);
     u := wire_read_use(text, rd[..]);
@@ -489,34 +490,34 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
       if u.kind == WE_BOAT && (u.id < -1 || u.id >= 999) { return; }
       if u.kind == WE_TALK && (u.id < -1 || u.id >= 999) { return; }
       uses:=0;releases:=0;for q:0..<v[0].eg[k].use_ask_n{code:=v[0].eg[k].use_ask[q];if code/1000%1000!=seat{continue;}if code%1000==0{releases+=1;}else{uses+=1;}}
-      if !ef_use_admit(u.id== -1,uses,releases)||v[0].eg[k].use_ask_n>=EG_USE_ASKS{eg_refuse(v,k,seat,u.seq,"busy");return;}
-      v[0].eg[k].use_ask[v[0].eg[k].use_ask_n]=eg_use_code(u.kind,seat,u.id);v[0].eg[k].use_ask_n+=1;
+      if !ef_use_admit(u.id== -1,uses,releases)||v[0].eg[k].use_ask_n>=EG_USE_ASKS{eg_refuse(v,k, seat_id,u.seq,"busy");return;}
+      v[0].eg[k].use_ask[v[0].eg[k].use_ask_n]=eg_use_code(u.kind, seat_id,u.id);v[0].eg[k].use_ask_n+=1;
       return;
     }
     // the quest board is the page's (its own quest stages): only ending a slot is
-    if u.kind != WE_END { eg_refuse(v, k, seat, u.seq, "unbuilt"); return; }
+    if u.kind != WE_END { eg_refuse(v, k, seat_id, u.seq, "unbuilt"); return; }
     // an end takes its place among the seat's inputs, as a cast does (rc_ready): with inputs sent
     // before it still queued, it waits for them (eg_ends_due), and the inputs after it wait for it
     st := v[0].eg[k].seat[seat..<seat + 1];
     if st[0].q_n > 0 && st[0].q[0].seq < u.seq {
-      if st[0].ends_n>=EG_ENDS{eg_refuse(v,k,seat,u.seq,"busy");return;}
+      if st[0].ends_n>=EG_ENDS{eg_refuse(v,k, seat_id,u.seq,"busy");return;}
       st[0].ends[st[0].ends_n] = EgEnd.{seq = u.seq, slot = u.id}; st[0].ends_n += 1;
       return;
     }
-    eg_end_now(v, k, seat, u.seq, u.id);
+    eg_end_now(v, k, seat_id, u.seq, u.id);
     return;
   }
-  if c == 'L' { eg_heard_rest(v, k, seat, text); return; }   // a Long Rest (room-events.coax ev_rest_ok)
+  if c == 'L' { eg_heard_rest(v, k, seat_id, text); return; }   // a Long Rest (room-events.coax ev_rest_ok)
   if c == 'R' {
     // a room's town is rebuilt by the room (the aftermath's ev_rebuild) or by an admin, never a player's R (#12801)
-    if !eg_ticket(v, k, seat).admin { rr0: [1] WireRd; rr0[0] = wire_rd(text, 1); eg_refuse(v, k, seat, wire_num(text, rr0[..]), "admin"); return; }
+    if !eg_ticket(v, k, seat_id).admin { rr0: [1] WireRd; rr0[0] = wire_rd(text, 1); eg_refuse(v, k, seat_id, wire_num(text, rr0[..]), "admin"); return; }
     // the world stands its pieces and people up (rm_eg_rebuild), the rules the people, every page hears it:
     // if no spell struck the town in the last EG_REBUILD_QUIET s, and at most once every EG_REBUILD_EVERY s (spec 6.6)
     rr: [1] WireRd; rr[0] = wire_rd(text, 1);
     seq := wire_num(text, rr[..]);
     now := v[0].eg[k].tick;
-    if now - v[0].eg[k].broke_at < EG_REBUILD_QUIET * EG_HZ { eg_refuse(v, k, seat, seq, "breaking"); return; }
-    if now - v[0].eg[k].rebuilt_at < EG_REBUILD_EVERY * EG_HZ { eg_refuse(v, k, seat, seq, "cooldown"); return; }
+    if now - v[0].eg[k].broke_at < EG_REBUILD_QUIET * EG_HZ { eg_refuse(v, k, seat_id, seq, "breaking"); return; }
+    if now - v[0].eg[k].rebuilt_at < EG_REBUILD_EVERY * EG_HZ { eg_refuse(v, k, seat_id, seq, "cooldown"); return; }
     v[0].eg[k].rebuilt_at = now;
     v[0].eg[k].rebuild = true;
     e5rr_folk_restore(v[0].eg[k].rules[..]);
@@ -532,7 +533,7 @@ eg_heard :: (v: [] RmServer, r: int, seat: int, text: string) {
 }
 // Seat seat's page heard tick `heard` whole: what went out that tick is its page's (rows, n and w
 // entries), and its snapshots end once it is one of them.
-eg_seat_heard :: (v: [] RmServer, k: int, seat: int, heard: int) {
+eg_seat_heard :: (v: [] RmServer, k: int, seat_id: SeatId, heard: int) { seat := seat_id.value;
   st := v[0].eg[k].seat[seat..<seat + 1];
   if st[0].full && st[0].full_t > 0 && heard >= st[0].full_t { st[0].full = false; }
   if st[0].full || heard <= st[0].rep[0].heard { return; }
@@ -562,7 +563,7 @@ eg_seat_heard :: (v: [] RmServer, k: int, seat: int, heard: int) {
   #assert v[0].eg[k].use_ask_n==2;
   eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 2 busy");
   n=wire_put_use(b[..],0,WireUse.{seq=100,kind=WE_TALK,id= -1});rm_heard(v[..],0,cast(string)b[0..<n]);
-  #assert v[0].eg[k].use_ask_n==3&&rm_eg_use_ask(v[..],k,2)==eg_use_code(WE_TALK,0,-1);
+  #assert v[0].eg[k].use_ask_n==3&&rm_eg_use_ask(v[..],k,2)==eg_use_code(WE_TALK, SeatId.{value = 0},-1);
   n=wire_put_use(b[..],0,WireUse.{seq=101,kind=WE_BOAT,id= -1});rm_heard(v[..],0,cast(string)b[0..<n]);
   #assert v[0].eg[k].use_ask_n==3;
   eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 101 busy");
@@ -579,15 +580,15 @@ eg_seat_heard :: (v: [] RmServer, k: int, seat: int, heard: int) {
   rm_ra_heard(v[..],k);for q:0..<EF_ENDS{#assert ra_queue(v[..],k,RaCast.{by=0,on=false});}
   spell:=e5rr_entry(v[0].eg[k].rules[..],5).sp;
   v[0].eg[k].rules[0].b[0].c[E5RR_SEAT].conc=spell;v[0].ab[k].live[1].on=true;
-  eg_end_now(v[..],k,0,100,5);#assert v[0].eg[k].rules[0].b[0].c[E5RR_SEAT].conc==spell&&v[0].ab[k].q_n==EF_ENDS;
+  eg_end_now(v[..],k, SeatId.{value = 0},100,5);#assert v[0].eg[k].rules[0].b[0].c[E5RR_SEAT].conc==spell&&v[0].ab[k].q_n==EF_ENDS;
   eg_test_drain(v[..],box[..]);#assert eg_test_has(eg_test_of(box[..],0),"r 100 busy");
 }
 
-eg_end_now :: (v: [] RmServer, k: int, seat: int, seq: int, slot: int) {
-  if ra_world_slot(slot)&&v[0].ab[k].live[seat*RA_ABS+slot-EG_SP_SLOTS].on&&!ra_may_queue(v,k,seat,false){eg_refuse(v,k,seat,seq,"busy");return;}
-  world := ra_end(v, k, seat, slot);
+eg_end_now :: (v: [] RmServer, k: int, seat_id: SeatId, seq: int, slot: int) { seat := seat_id.value;
+  if ra_world_slot(slot)&&v[0].ab[k].live[seat*RA_ABS+slot-EG_SP_SLOTS].on&&!ra_may_queue(v,k, seat_id,false){eg_refuse(v,k, seat_id,seq,"busy");return;}
+  world := ra_end(v, k, seat_id, slot);
   if ra_whole(slot) { return; }
-  if !e5rr_end(v[0].eg[k].rules[..], seat, slot) && !world { eg_refuse(v, k, seat, seq, "nothing"); }
+  if !e5rr_end(v[0].eg[k].rules[..], seat, slot) && !world { eg_refuse(v, k, seat_id, seq, "nothing"); }
 }
 // The ends that waited for the inputs before them (eg_heard): each once those are stepped.
 eg_ends_due :: (v: [] RmServer, k: int) {
@@ -597,7 +598,7 @@ eg_ends_due :: (v: [] RmServer, k: int) {
       e := st[0].ends[0];
       for i: 1..<st[0].ends_n { st[0].ends[i - 1] = st[0].ends[i]; }
       st[0].ends_n -= 1;
-      if st[0].live { eg_end_now(v, k, s, e.seq, e.slot); }
+      if st[0].live { eg_end_now(v, k, SeatId.{value = s}, e.seq, e.slot); }
     }
   }
 }
@@ -605,7 +606,7 @@ eg_ends_due :: (v: [] RmServer, k: int) {
 // yet (room-casts.coax rc_ready, eg_ends_due). The cast starts at the tick's end, once the inputs
 // before it are stepped, and its world takes it before the next tick's steps (room-tick.c), so the
 // server steps the inputs after a cast with what it holds up, as the page that pressed it did.
-eg_waits :: (v: [] RmServer, k: int, s: int, seq: int) -> bool {
+eg_waits :: (v: [] RmServer, k: int, s_id: SeatId, seq: int) -> bool { s := s_id.value;
   st := v[0].eg[k].seat[s];
   if st.ends_n > 0 && st.ends[0].seq < seq { return true; }
   for q: 0..<EG_CASTS {
@@ -617,12 +618,12 @@ eg_waits :: (v: [] RmServer, k: int, s: int, seq: int) -> bool {
 // book:begin intent-queue
 // I SEQ KX KY PX PY THETA B HEARD: one step's input (THETA in WIRE_FINE units), queued for the tick; and the state tick its page
 // heard whole, which is now its page's (wire_seat_ack), and ends its snapshots once it is one of them.
-eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
-  if v[0].eg[k].seat[seat].old { eg_old_input(v, k, seat, text); return; }   // (room-oldwire.coax)
+eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
+  if v[0].eg[k].seat[seat].old { eg_old_input(v, k, seat_id, text); return; }   // (room-oldwire.coax)
   r: [1] WireRd; r[0] = wire_rd(text, 1);
   w := wire_read_in(text, r[..]);
   if !r[0].ok || eg_fields(text) != 9 { return; }
-  eg_seat_heard(v, k, seat, w.heard);
+  eg_seat_heard(v, k, seat_id, w.heard);
   if w.heard > 0 { v[0].eg[k].seat[seat].said_heard = w.heard; v[0].eg[k].seat[seat].said_ms = v[0].mono_ms; }
   st := v[0].eg[k].seat[seat..<seat + 1];
   seq := w.seq;
@@ -639,7 +640,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
 }
 // book:end intent-queue
 // H 3 LOOK CLASS FLAGS NAME
-eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
+eg_heard_hello :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   r: [1] WireRd; r[0] = wire_rd(text, 1);
   h := wire_read_hello(text, r[..]);
   if !r[0].ok { return; }
@@ -651,27 +652,27 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
   // (eg_admit). Both are told "version", so the page reloads into the build that is out, and counted by why.
   // a draining room seats nobody new (#12797): told why, and its socket closed; the page sits elsewhere
   if v[0].drain {
-    eg_refuse(v, k, seat, 0, WIRE_REFUSE_RESTARTING);
+    eg_refuse(v, k, seat_id, 0, WIRE_REFUSE_RESTARTING);
     if st[0].conn >= 0 && st[0].conn < CONNS { v[0].conns[st[0].conn].kicked = true; }
     return;
   }
-  if h.version == WIRE_OLD_HELLO && eg_old_open(v) { eg_old_seat(v, k, seat); }
+  if h.version == WIRE_OLD_HELLO && eg_old_open(v) { eg_old_seat(v, k, seat_id); }
   else {
-    why := eg_admit(v, k, seat, h.version);
+    why := eg_admit(v, k, seat_id, h.version);
     if why != CP_OK {
-      eg_refuse(v, k, seat, 0, WIRE_REFUSE_VERSION);
+      eg_refuse(v, k, seat_id, 0, WIRE_REFUSE_VERSION);
       if st[0].conn >= 0 && st[0].conn < CONNS { v[0].conns[st[0].conn].kicked = true; }
       v[0].eg[k].stale_n += 1;
       _ := st_refuse(v, st_compat(why));
       return;
     }
   }
-  tk := eg_ticket(v, k, seat);
+  tk := eg_ticket(v, k, seat_id);
   if tk.schema == 2 {
     if st[0].checkpoint_hello { return; }
     cap := tk.capture;
     if cap.ok && compat_admit(eg_server(), CompatPins.{engine=cap.n[6],rules=cap.n[7],content=cap.n[8],wire=h.version,schema=2}) != CP_OK {
-      eg_refuse(v,k,seat,0,WIRE_REFUSE_VERSION);
+      eg_refuse(v,k, seat_id,0,WIRE_REFUSE_VERSION);
       if st[0].conn>=0 && st[0].conn<CONNS { v[0].conns[st[0].conn].kicked=true; }
       return;
     }
@@ -682,13 +683,13 @@ eg_heard_hello :: (v: [] RmServer, k: int, seat: int, text: string) {
   st[0].klass_n = eg_word(kind, st[0].klass[..]);
   // CLASS warlock: the seat's caster is the level 17 Warlock (fivebar.coax fb_warlock_hero), else the druid
   wl := ifx cast(string) st[0].klass[0..<st[0].klass_n] == "warlock" then 1 else 0;
-  if v[0].eg[k].rules[0].klass[seat] != wl { e5rr_join_as(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl); ev_class(v, k, seat); }
+  if v[0].eg[k].rules[0].klass[seat] != wl { e5rr_join_as(v[0].eg[k].rules[..], seat, st[0].pose.x, st[0].pose.z, wl); ev_class(v, k, seat_id); }
   st[0].flags = eg_clamp(h.flags, 0, 255);
   if tk.schema == 2 && tk.capture.ok { st[0].flags = (st[0].flags & (255-EV_DEMO_FLAG)) | (ifx tk.capture.state[1]==1 && tk.admin then EV_DEMO_FLAG else 0); }
-  ev_hello(v, k, seat, st[0].flags);   // an admin's demo character (room-events.coax)
-  rv_hp_back(v, k, seat); st[0].back_hp = -1;   // built: the HP its player came back with, once (#12883)
-  trv_carry(v, k, seat);   // arrived by travel: what the rules spend, as it left (room-travel.coax, #12850)
-  ck_restore(v,k,seat);
+  ev_hello(v, k, seat_id, st[0].flags);   // an admin's demo character (room-events.coax)
+  rv_hp_back(v, k, seat_id); st[0].back_hp = -1;   // built: the HP its player came back with, once (#12883)
+  trv_carry(v, k, seat_id);   // arrived by travel: what the rules spend, as it left (room-travel.coax, #12850)
+  ck_restore(v,k, seat_id);
   if tk.schema == 2 { st[0].checkpoint_hello=true; v[0].ck.force=true; }
   // the name: letters, digits, spaces, '-' and '_' ("-" none)
   m := 0;
@@ -716,15 +717,15 @@ eg_server :: () -> CompatServer {
   return CompatServer.{pins = CompatPins.{engine = p.engine, rules = p.rules, content = p.content, wire = WIRE_VERSION, schema = RV_SCHEMA},
                        wire_min = WIRE_MIN, up = true, ready = true, room = 1};
 }
-eg_pins :: (v: [] RmServer, k: int, seat: int, wire: int) -> CompatPins {
+eg_pins :: (v: [] RmServer, k: int, seat_id: SeatId, wire: int) -> CompatPins { seat := seat_id.value;
   st := v[0].eg[k].seat[seat];
   p := ifx st.pinned then st.pins else WIRE_PINS_FIRST;
-  return CompatPins.{engine = p.engine, rules = p.rules, content = p.content, wire = wire, schema = eg_ticket(v, k, seat).schema};
+  return CompatPins.{engine = p.engine, rules = p.rules, content = p.content, wire = wire, schema = eg_ticket(v, k, seat_id).schema};
 }
 // Whether seat s's hello on wire `wire` may play in this room: CP_OK, else why not (CP_*).
-eg_admit :: (v: [] RmServer, k: int, seat: int, wire: int) -> int { return compat_admit(eg_server(), eg_pins(v, k, seat, wire)); }
+eg_admit :: (v: [] RmServer, k: int, seat_id: SeatId, wire: int) -> int { seat := seat_id.value; return compat_admit(eg_server(), eg_pins(v, k, seat_id, wire)); }
 // The seat's ticket (ok false: none, in a room that needs none).
-eg_ticket :: (v: [] RmServer, k: int, seat: int) -> Ticket {
+eg_ticket :: (v: [] RmServer, k: int, seat_id: SeatId) -> Ticket { seat := seat_id.value;
   c := v[0].eg[k].seat[seat].conn;
   if !v[0].eg[k].seat[seat].live { return Ticket.{}; }
   if c < 0 || c >= CONNS || !v[0].conns[c].live { return v[0].eg[k].tk[seat]; }   // held, or its socket closing (eg_left): the one it sat with
@@ -732,7 +733,7 @@ eg_ticket :: (v: [] RmServer, k: int, seat: int) -> Ticket {
 }
 // C SEQ SLOT AX AY AZ TGT: a cast at the aim. The checks that need no place here (the slot, the class,
 // the level); the rest at its start, once the inputs before it are stepped (room-casts.coax).
-eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
+eg_heard_cast :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   r: [1] WireRd; r[0] = wire_rd(text, 1);
   wc := wire_read_cast(text, r[..]);
   nf := eg_fields(text);
@@ -742,23 +743,23 @@ eg_heard_cast :: (v: [] RmServer, k: int, seat: int, text: string) {
   slot := wc.slot;
   // the druid's bar, or the Warlock's (FB_WL0 on) for a Warlock's seat
   wl := v[0].eg[k].rules[0].klass[seat] == 1;
-  if !e5r_has(slot) || (slot >= FB_WL0) != wl { eg_refuse(v, k, seat, seq, "slot"); return; }
+  if !e5r_has(slot) || (slot >= FB_WL0) != wl { eg_refuse(v, k, seat_id, seq, "slot"); return; }
   a := e5rr_entry(v[0].eg[k].rules[..], slot);
-  if a.kind == FB_WORLD && !cr_repair(slot) { eg_refuse(v, k, seat, seq, "slot"); return; }   // R is Repair (everglade-repair.coax)
-  if !ev_may_cast(v, k, seat, slot, a) { eg_refuse(v, k, seat, seq, "level"); return; }   // levels 1 to 3 (room-events.coax)
-  if !(wc.ax == wc.ax) || !(wc.az == wc.az) || !(wc.ay == wc.ay) { eg_refuse(v, k, seat, seq, cr_word(CR_AIM)); return; }
-  if !rm_work_admit(v,k){eg_refuse(v,k,seat,seq,"busy");return;}
-  if !rc_hear(v, k, seat, seq, slot, wc.ax, wc.ay, wc.az, wc.tgt, mode) { eg_refuse(v, k, seat, seq, "busy"); return; }
-  if !cr_repair(slot) { ev_fought(v, k, seat); }   // casting is fighting (a Repair isn't): no Long Rest for EV_CALM_S
+  if a.kind == FB_WORLD && !cr_repair(slot) { eg_refuse(v, k, seat_id, seq, "slot"); return; }   // R is Repair (everglade-repair.coax)
+  if !ev_may_cast(v, k, seat_id, slot, a) { eg_refuse(v, k, seat_id, seq, "level"); return; }   // levels 1 to 3 (room-events.coax)
+  if !(wc.ax == wc.ax) || !(wc.az == wc.az) || !(wc.ay == wc.ay) { eg_refuse(v, k, seat_id, seq, cr_word(CR_AIM)); return; }
+  if !rm_work_admit(v,k){eg_refuse(v,k, seat_id,seq,"busy");return;}
+  if !rc_hear(v, k, seat_id, seq, slot, wc.ax, wc.ay, wc.az, wc.tgt, mode) { eg_refuse(v, k, seat_id, seq, "busy"); return; }
+  if !cr_repair(slot) { ev_fought(v, k, seat_id); }   // casting is fighting (a Repair isn't): no Long Rest for EV_CALM_S
 }
 // L SEQ: a Long Rest. Between raids and out of combat only (room-events.coax ev_rest_ok); then the seat
 // is whole again and hears e rest SEAT, its page its own rest (everglade-rest.coax).
-eg_heard_rest :: (v: [] RmServer, k: int, seat: int, text: string) {
+eg_heard_rest :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
   r: [1] WireRd; r[0] = wire_rd(text, 1);
   seq := wire_num(text, r[..]);
   if !r[0].ok { return; }
-  if !ev_rest_ok(v, k, seat) { eg_refuse(v, k, seat, seq, ifx v[0].ev[k].phase != EV_IDLE && v[0].ev[k].phase != EV_AFTER then "raid" else "combat"); return; }
-  ev_long_rest(v, k, seat);
+  if !ev_rest_ok(v, k, seat_id) { eg_refuse(v, k, seat_id, seq, ifx v[0].ev[k].phase != EV_IDLE && v[0].ev[k].phase != EV_AFTER then "raid" else "combat"); return; }
+  ev_long_rest(v, k, seat_id);
   b: [32] u8;
   p := v[0].eg[k].seat[seat].pose;
   eg_event(v, k, cast(string) b[0..<wire_put_rested(b[..], 0, seat)], p.x, p.z, false);
@@ -799,11 +800,11 @@ rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
 }
 // Seat s's next input to step this tick, EG_IN_FIELDS into out (SEQ KX KY PX PY THETA B); false when
 // none is queued, none owed, or EG_TICK_STEPS were stepped this tick.
-rm_eg_input :: (v: [] RmServer, k: int, s: int, out: [] int) -> bool #export_c {
+rm_eg_input :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #export_c { s := s_id.value;
   if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < EG_IN_FIELDS { return false; }
   st := v[0].eg[k].seat[s..<s + 1];
   if !st[0].live || !st[0].placed || st[0].q_n == 0 || st[0].bank <= 0 || st[0].took >= EG_TICK_STEPS { return false; }
-  if eg_waits(v, k, s, st[0].q[0].seq) { return false; }
+  if eg_waits(v, k, s_id, st[0].q[0].seq) { return false; }
   i := st[0].q[0];
   for q: 1..<st[0].q_n { st[0].q[q - 1] = st[0].q[q]; }
   st[0].q_n -= 1; st[0].bank -= 1; st[0].took += 1;
@@ -812,7 +813,7 @@ rm_eg_input :: (v: [] RmServer, k: int, s: int, out: [] int) -> bool #export_c {
   return true;
 }
 // Where seat s stands after the step of input seq (0: just placed), as the step left it.
-rm_eg_moved :: (v: [] RmServer, k: int, s: int, seq: int, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: f32, vz: f32, g: int, clip: int, carry: int) #export_c {
+rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, z: f32, yaw: f32, vx: f32, vy: f32, vz: f32, g: int, clip: int, carry: int) #export_c { s := s_id.value;
   if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || !v[0].eg[k].live || !v[0].eg[k].seat[s].live { return; }
   st := v[0].eg[k].seat[s..<s + 1];
   st[0].pose = EgPose.{x = x, y = y, z = z, yaw = yaw, vx = vx, vy = vy, vz = vz, g = g, clip = clip, carry = carry};
@@ -822,14 +823,14 @@ rm_eg_moved :: (v: [] RmServer, k: int, s: int, seq: int, x: f32, y: f32, z: f32
   e5rr_place(v[0].eg[k].rules[..], s, x, z);
 }
 // Whether seat s sits and is still to be put in the world.
-rm_eg_unplaced :: (v: [] RmServer, k: int, s: int) -> bool #export_c {
-  return k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS && v[0].eg[k].live && v[0].eg[k].seat[s].live && !v[0].eg[k].seat[s].placed && (v[0].eg[k].seat[s].checkpoint_hello || eg_ticket(v,k,s).schema!=2);
+rm_eg_unplaced :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c { s := s_id.value;
+  return k >= 0 && k < EG_ROOMS && s >= 0 && s < EG_SEATS && v[0].eg[k].live && v[0].eg[k].seat[s].live && !v[0].eg[k].seat[s].placed && (v[0].eg[k].seat[s].checkpoint_hello || eg_ticket(v,k, s_id).schema!=2);
 }
 rm_eg_rooms :: () -> int #export_c { return EG_ROOMS; }
 rm_eg_seats :: () -> int #export_c { return EG_SEATS; }
 rm_eg_hz :: () -> int #export_c { return EG_HZ; }
 rm_eg_live :: (v: [] RmServer, k: int) -> bool #export_c { return k >= 0 && k < EG_ROOMS && v[0].eg[k].live; }
-rm_eg_seat_live :: (v: [] RmServer, k: int, s: int) -> bool #export_c { return rm_eg_live(v, k) && s >= 0 && s < EG_SEATS && v[0].eg[k].seat[s].live; }
+rm_eg_seat_live :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c { s := s_id.value; return rm_eg_live(v, k) && s >= 0 && s < EG_SEATS && v[0].eg[k].seat[s].live; }
 // Summoned creatures: how many places, where q stands (x, z) when it is on, and the ground's height
 // under it, which the host's world knows (before rm_eg_end: a new one is heard once it has it).
 rm_eg_beasts :: () -> int #export_c { return E5RR_BEASTS; }
@@ -863,7 +864,7 @@ rm_eg_rules :: (v: [] RmServer, k: int) #export_c {
 }
 rm_eg_send :: (v: [] RmServer, k: int) #export_c {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live || v[0].eg[k].tick % EG_SEND != 0 { return; }
-  for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed && v[0].eg[k].seat[s].conn >= 0 { eg_send(v, k, s); } }
+  for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].placed && v[0].eg[k].seat[s].conn >= 0 { eg_send(v, k, SeatId.{value = s}); } }
   v[0].eg[k].ev_n = 0; v[0].eg[k].ev_bytes = 0;
 }
 // Where a TGT code is now (a seat's place, a summoned creature's), else (x, z).
@@ -901,12 +902,12 @@ eg_folk_saved :: (v: [] RmServer, k: int, sp: int, by: int, who: int, saved: boo
   r := v[0].eg[k].rules[..];
   for slot: EG_SP_SLOTS..<FB_EG_SLOTS {
     if r[0].bar[slot].kind != FB_SPELL || r[0].bar[slot].sp != sp || !ra_world_slot(slot) { continue; }
-    v[0].eg[k].folk_save[who] = eg_save_code(slot - EG_SP_SLOTS, by - EG_TGT_SEAT, saved);
+    v[0].eg[k].folk_save[who] = eg_save_code(slot - EG_SP_SLOTS, SeatId.{value = by - EG_TGT_SEAT}, saved);
     return;
   }
 }
 // A save's code: 1 + (ability * EG_SEATS + seat) * 2 + 1 if it succeeded (0: none).
-eg_save_code :: (ab: int, seat: int, saved: bool) -> int { return 1 + (ab * EG_SEATS + seat) * 2 + (ifx saved then 1 else 0); }
+eg_save_code :: (ab: int, seat_id: SeatId, saved: bool) -> int { seat := seat_id.value; return 1 + (ab * EG_SEATS + seat) * 2 + (ifx saved then 1 else 0); }
 // Person j's save the rules rolled since the world last heard: its ABILITY SEAT SAVED (1 a success),
 // once (it is heard as it is read). Whether there was one.
 rm_eg_folk_save :: (v: [] RmServer, k: int, j: int, out: [] f32) -> bool #export_c {
@@ -940,10 +941,10 @@ rm_eg_fresh :: (v: [] RmServer, k: int) -> bool #export_c {
   return true;
 }
 // Seat s for the world: X Y Z LIVE HP MAX COND (everglade-watch.coax EG_ROOM_SEAT_FLOATS; LIVE 2 just sat).
-rm_eg_seat_town :: (v: [] RmServer, k: int, s: int, out: [] f32) #export_c {
+rm_eg_seat_town :: (v: [] RmServer, k: int, s_id: SeatId, out: [] f32) #export_c { s := s_id.value;
   if out.count < 7 { return; }
   for q: 0..<7 { out[q] = 0; }
-  if !rm_eg_seat_live(v, k, s) || !v[0].eg[k].seat[s].placed { return; }
+  if !rm_eg_seat_live(v, k, s_id) || !v[0].eg[k].seat[s].placed { return; }
   o: [E5RR_OUT_FLOATS] f32;
   e5rr_seat_out(v[0].eg[k].rules[..], s, o[..]);
   p := v[0].eg[k].seat[s].pose;
@@ -971,7 +972,7 @@ rm_eg_crime :: (v: [] RmServer, k: int, q: int, out: [] f32) #export_c {
 }
 rm_eg_crimes_heard :: (v: [] RmServer, k: int) #export_c { if rm_eg_live(v, k) { v[0].eg[k].crime_n = 0; } }
 // The doors and talks since the world last heard: q's KIND * 1000000 + SEAT * 1000 + ID + 1 (eg_use_code).
-eg_use_code :: (kind: int, seat: int, id: int) -> int { return kind * 1000000 + seat * 1000 + id + 1; }
+eg_use_code :: (kind: int, seat_id: SeatId, id: int) -> int { seat := seat_id.value; return kind * 1000000 + seat * 1000 + id + 1; }
 rm_eg_use_asks :: (v: [] RmServer, k: int) -> int #export_c { return ifx rm_eg_live(v, k) then v[0].eg[k].use_ask_n else 0; }
 rm_eg_use_ask :: (v: [] RmServer, k: int, q: int) -> int #export_c {
   if !rm_eg_live(v, k) || q < 0 || q >= v[0].eg[k].use_ask_n { return -1; }
@@ -1060,8 +1061,8 @@ eg_put_burn :: (e: [] u8, piece: int, on: bool) -> int {
 // What all the watch's blows took from seat s this tick, and who dealt them
 // (a watch actor, -1 none). The producer supplies a whole-tick aggregate once
 // per seat; a repeated report replaces that snapshot, never adds a new hit.
-rm_eg_hurt :: (v: [] RmServer, k: int, s: int, amount: int, by: int) #export_c {
-  if !rm_eg_seat_live(v, k, s) { return; }
+rm_eg_hurt :: (v: [] RmServer, k: int, s_id: SeatId, amount: int, by: int) #export_c { s := s_id.value;
+  if !rm_eg_seat_live(v, k, s_id) { return; }
   _ := hb_put(v[0].eg[k].hurts[..],s,amount,by);
 }
 // Person i as pages hear them (X Z YAW CLIP MODE HP SHOWN CASTING KIND FOE), and seat s's WANTED level.
@@ -1098,11 +1099,11 @@ rm_eg_missile :: (v: [] RmServer, k: int, m: [] f32) #export_c {
   foe := cast(int) m[2];
   eg_event_who(v, k, cast(string) b[0..<n], m[3], m[5], false, ifx foe >= 0 && foe < EG_SEATS then 1 << foe else 0);
 }
-rm_eg_cond :: (v: [] RmServer, k: int, s: int, bits: int) #export_c { if rm_eg_seat_live(v, k, s) { v[0].eg[k].seat[s].wcond = bits; } }
+rm_eg_cond :: (v: [] RmServer, k: int, s_id: SeatId, bits: int) #export_c { s := s_id.value; if rm_eg_seat_live(v, k, s_id) { v[0].eg[k].seat[s].wcond = bits; } }
 // Seat s's watch effect by cause (WE_*): its seconds left, 0 none. A new one, or one cast again (more
 // left than last tick's), starts now (T0) and lasts what is left (DUR, ticks).
-rm_eg_cond_left :: (v: [] RmServer, k: int, s: int, cause: int, left: f32) #export_c {
-  if !rm_eg_seat_live(v, k, s) || cause < 0 || cause >= WE_WATCH { return; }
+rm_eg_cond_left :: (v: [] RmServer, k: int, s_id: SeatId, cause: int, left: f32) #export_c { s := s_id.value;
+  if !rm_eg_seat_live(v, k, s_id) || cause < 0 || cause >= WE_WATCH { return; }
   st := v[0].eg[k].seat[s..<s + 1];
   was := st[0].fx_left[cause];
   if left > 0 && (was <= 0 || left > was + 0.1) { st[0].fx_t0[cause] = v[0].eg[k].tick; st[0].fx_dur[cause] = cast(int) floor(left * f32(WIRE_HZ) + 0.5); }
@@ -1110,29 +1111,29 @@ rm_eg_cond_left :: (v: [] RmServer, k: int, s: int, cause: int, left: f32) #expo
 }
 // Whether seat s is to be held by a scripted Hold Person (room-control.coax "hold"), once: the host
 // lays the watch's hold on it in the world (room-tick.c everglade_town, room-world.c world_hold).
-rm_eg_hold_take :: (v: [] RmServer, k: int, s: int) -> bool #export_c {
-  if !rm_eg_seat_live(v, k, s) || !v[0].eg[k].seat[s].hold_due { return false; }
+rm_eg_hold_take :: (v: [] RmServer, k: int, s_id: SeatId) -> bool #export_c { s := s_id.value;
+  if !rm_eg_seat_live(v, k, s_id) || !v[0].eg[k].seat[s].hold_due { return false; }
   v[0].eg[k].seat[s].hold_due = false;
   return true;
 }
 // Seat s moved in one jump this tick (room-world.c world_cut_take: placed, teleported, into or out of a
 // boat): its next row is a WARP, so no page draws it between (#12835).
-rm_eg_cut :: (v: [] RmServer, k: int, s: int) #export_c { if rm_eg_seat_live(v, k, s) { v[0].eg[k].seat[s].cut = true; } }
+rm_eg_cut :: (v: [] RmServer, k: int, s_id: SeatId) #export_c { s := s_id.value; if rm_eg_seat_live(v, k, s_id) { v[0].eg[k].seat[s].cut = true; } }
 // The rowboat seat s is to be put beside (room-control.coax "place", #12861), once: -1 none. The host
 // puts it there in the world (room-tick.c everglade_town, room-world.c world_place_boat).
-rm_eg_place_take :: (v: [] RmServer, k: int, s: int) -> int #export_c {
-  if !rm_eg_seat_live(v, k, s) || v[0].eg[k].seat[s].place_due <= 0 { return -1; }
+rm_eg_place_take :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c { s := s_id.value;
+  if !rm_eg_seat_live(v, k, s_id) || v[0].eg[k].seat[s].place_due <= 0 { return -1; }
   b := v[0].eg[k].seat[s].place_due - 1;
   v[0].eg[k].seat[s].place_due = 0;
   return b;
 }
 // Whether room k's dice are fixed (room-control.coax "dice fixed"): the host fixes its world's alike.
 rm_eg_dice_fixed :: (v: [] RmServer, k: int) -> bool #export_c { return rm_eg_live(v, k) && v[0].eg[k].rules[0].b[0].dice[0].fixed; }
-rm_eg_wanted :: (v: [] RmServer, k: int, s: int, level: int) #export_c { if rm_eg_seat_live(v, k, s) { v[0].eg[k].wanted[s] = level; } }
+rm_eg_wanted :: (v: [] RmServer, k: int, s_id: SeatId, level: int) #export_c { s := s_id.value; if rm_eg_seat_live(v, k, s_id) { v[0].eg[k].wanted[s] = level; } }
 // The WANTED level seat s comes back with (rv_join, #12794), once: the host lays it on the world's town
 // when the town first steps the seat. 0 none.
-rm_eg_want_take :: (v: [] RmServer, k: int, s: int) -> int #export_c {
-  if !rm_eg_seat_live(v, k, s) { return 0; }
+rm_eg_want_take :: (v: [] RmServer, k: int, s_id: SeatId) -> int #export_c { s := s_id.value;
+  if !rm_eg_seat_live(v, k, s_id) { return 0; }
   w := v[0].eg[k].seat[s].want_seed;
   v[0].eg[k].seat[s].want_seed = 0;
   return w;
@@ -1141,15 +1142,15 @@ rm_eg_want_take :: (v: [] RmServer, k: int, s: int) -> int #export_c {
 // ---- what a seat hears
 
 EgOut :: struct { b: [EG_CHUNK + 512] u8; n: int; any: bool; part: int; old: bool; }   // old: D's header on the old wire (room-oldwire.coax)
-eg_out_entry :: (o: [] EgOut, v: [] RmServer, k: int, s: int, f: int, entry: string) {
-  if o[0].any && o[0].n + entry.count + 1 > EG_CHUNK { eg_out_send(o, v, k, s, f | 2); }
+eg_out_entry :: (o: [] EgOut, v: [] RmServer, k: int, s_id: SeatId, f: int, entry: string) { s := s_id.value;
+  if o[0].any && o[0].n + entry.count + 1 > EG_CHUNK { eg_out_send(o, v, k, s_id, f | 2); }
   if entry.count > 2 && entry[0] == 'e' && wire_outcome(entry) { v[0].eg[k].seat[s].out_n = add_sat(v[0].eg[k].seat[s].out_n, 1); }
   if o[0].any { o[0].b[o[0].n] = ';'; o[0].n += 1; }
   o[0].n = put(o[0].b[..], o[0].n, entry);
   o[0].any = true;
 }
 // The entries so far out as one D frame with F f, the tick's next part; the next start a new frame.
-eg_out_send :: (o: [] EgOut, v: [] RmServer, k: int, s: int, f: int) {
+eg_out_send :: (o: [] EgOut, v: [] RmServer, k: int, s_id: SeatId, f: int) { s := s_id.value;
   h: [64] u8;
   n := wire_put_d(h[..], 0, WireD.{tick = v[0].eg[k].tick, ack = v[0].eg[k].seat[s].ack, f = f, part = o[0].part});
   if o[0].old { n = wire_put(h[..], wire_int(h[..], wire_int(h[..], wire_int(h[..], wire_put(h[..], 0, "D"), v[0].eg[k].tick), v[0].eg[k].seat[s].ack), f), " "); }
@@ -1190,7 +1191,7 @@ eg_table :: (v: [] RmServer, k: int) {
                                hp = cast(int) out[0], max = cast(int) out[1], temp = cast(int) out[2], cond = cast(int) out[3] | other[0].wcond,
                                owner = q, carry = f32(p.carry) / 10000.0}, wire_rel(WK_PLAYER), true, false);
     a := q * EG_ENT;
-    tq := eg_ticket(v, k, q);
+    tq := eg_ticket(v, k, SeatId.{value = q});
     n := wire_put_n(rm[0].cn[a..<a + EG_ENT], 0, WireN.{ss = q, id = ifx tq.ok then cast(string) tq.pid[0..<tq.pid_n] else "-", look = ifx other[0].look_n > 0 then cast(string) other[0].look[0..<other[0].look_n] else "ranger.0.0.0",
                                     kind = ifx other[0].klass_n > 0 then cast(string) other[0].klass[0..<other[0].klass_n] else "druid",
                                     flags = other[0].flags, name = ifx other[0].name_n > 0 then cast(string) other[0].name[0..<other[0].name_n] else "-"});
@@ -1278,8 +1279,8 @@ eg_table :: (v: [] RmServer, k: int) {
 // WIRE_BUDGET), who each seat is and their WANTED levels (on change, again until acknowledged), the
 // world's event, and the events near it. Until its page has heard one, every D is a snapshot (F 1:
 // whole, the page forgetting all it held first, the budget off); the town's broken pieces go with the first.
-eg_send :: (v: [] RmServer, k: int, s: int) {
-  if v[0].eg[k].seat[s].old { eg_old_send(v, k, s); return; }   // a page from before wire 3 (room-oldwire.coax)
+eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
+  if v[0].eg[k].seat[s].old { eg_old_send(v, k, s_id); return; }   // a page from before wire 3 (room-oldwire.coax)
   st := v[0].eg[k].seat[s..<s + 1];
   now := v[0].eg[k].tick;
   // behind long enough that what the page holds is too old to build on: a snapshot once it catches up
@@ -1321,7 +1322,7 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
         if v[0].eg[k].placed_gone[p] { n = eg_put_placed(e[..], 5, p, false); } else if v[0].eg[k].placed_burn[p] { n = eg_put_placed(e[..], 4, p, true); }
       }
       if n > 0 && jb + n + 1 > EG_JOIN_BUDGET { break; }
-      if n > 0 { eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<n]); jb += n + 1; }
+      if n > 0 { eg_out_entry(o[..], v, k, s_id, f, cast(string) e[0..<n]); jb += n + 1; }
       st[0].pieces = q + 1;
     }
     v[0].st.join_b += jb;
@@ -1339,20 +1340,20 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
   if behind { v[0].eg[k].behind_n += 1; }
   // what this seat may hear (room-interest.coax, #12789): near it, room-wide, its own; never whom it blocks
   pick: [WIRE_SLOTS] f32;
-  eg_im_pick(v, k, s, me.x, me.z, pick[..]);
+  eg_im_pick(v, k, s_id, me.x, me.z, pick[..]);
   n := wire_seat_frame_in(st[0].rep[..], rm[0].hist[..], s, me.x, me.z, pick[..], ifx full then rows.count else ifx behind then 0 else WIRE_BUDGET, rows[..]);
   observed_seat:=k*EG_SEATS+s;v[0].st.rows_last[observed_seat]=0;v[0].st.left_last[observed_seat]=st[0].rep[0].left;v[0].st.rows_deferred+=st[0].rep[0].left;
   for q: 0..<wire_entries(cast(string) rows[0..<n], 0) {
     en := wire_entry(cast(string) rows[0..<n], 0, q);
     if en.count>1&&en[0]=='s'&&en[1]==' '{v[0].st.rows+=1;v[0].st.row_bytes+=en.count;v[0].st.rows_last[observed_seat]+=1;}
-    if en.count > 0 { eg_out_entry(o[..], v, k, s, f, en); }
+    if en.count > 0 { eg_out_entry(o[..], v, k, s_id, f, en); }
     if en.count > 1 && en[0] == 'x' && en[1] == ' ' { v[0].st.life_b += en.count + 1; }
   }
   for q: 0..<WIRE_SLOTS { if st[0].rep[0].gone[q] != 0 && st[0].rep[0].gone_t[q] == 0 { v[0].st.life_wait += 1; } }   // x's past WIRE_LIFE_BUDGET
   // who each seat is and its WANTED level: on change, and again WIRE_RESEND ticks on until a tick that
   // held it is acknowledged (a frame the relay's queue had no room for)
   keep := ((1 << WIRE_ACKS) - 1) ^ (1 << (now % WIRE_ACKS));
-  unseen := eg_im_unseen(v, k, s, pick[..]);
+  unseen := eg_im_unseen(v, k, s_id, pick[..]);
   meta := 0;
   for q: 0..<EG_SEATS {
     st[0].n_bits[q] = st[0].n_bits[q] & keep; st[0].w_bits[q] = st[0].w_bits[q] & keep;
@@ -1366,7 +1367,7 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
       if meta + rm[0].cn_n[q] + 1 > EG_META_BUDGET { v[0].st.meta_wait += 1; }
       else {
         if h != st[0].heard_n[q] { st[0].n_bits[q] = 0; st[0].n_ok[q] = false; }
-        eg_out_entry(o[..], v, k, s, f, cast(string) rm[0].cn[a..<a + rm[0].cn_n[q]]);
+        eg_out_entry(o[..], v, k, s_id, f, cast(string) rm[0].cn[a..<a + rm[0].cn_n[q]]);
         meta += rm[0].cn_n[q] + 1;
         st[0].heard_n[q] = h; st[0].n_t[q] = now; st[0].n_bits[q] = st[0].n_bits[q] | (1 << (now % WIRE_ACKS));
       }
@@ -1377,39 +1378,39 @@ eg_send :: (v: [] RmServer, k: int, s: int) {
       if meta + m + 1 > EG_META_BUDGET { v[0].st.meta_wait += 1; }
       else {
         if w1 != st[0].heard_w[q] { st[0].w_bits[q] = 0; st[0].w_ok[q] = false; }
-        eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<m]);
+        eg_out_entry(o[..], v, k, s_id, f, cast(string) e[0..<m]);
         meta += m + 1;
         st[0].heard_w[q] = w1; st[0].w_t[q] = now; st[0].w_bits[q] = st[0].w_bits[q] | (1 << (now % WIRE_ACKS));
       }
     }
   }
   v[0].st.meta_b += meta;
-  ev_send(v, k, s, full, unseen, o[..]);   // the world event and the level of everyone in view (room-events.coax)
+  ev_send(v, k, s_id, full, unseen, o[..]);   // the world event and the level of everyone in view (room-events.coax)
   // the events since the last state, near you: cues from EG_CUE_BUDGET, outcomes and what is aimed at you without
   cue := 0; ob := 0;
   for q: 0..<v[0].eg[k].ev_n {
     aimed := ((v[0].eg[k].ev_who[q] >> s) & 1) != 0;
     if !v[0].eg[k].ev_all[q] && !aimed && !eg_near(me, v[0].eg[k].ev_x[q], v[0].eg[k].ev_z[q]) { continue; }   // (aimed at s: wherever it is)
-    if eg_im_event_withheld(v, k, s, q, unseen) { continue; }   // of a player it blocks or can't see (room-blocks.coax, #12789)
+    if eg_im_event_withheld(v, k, s_id, SeatId.{value = q}, unseen) { continue; }   // of a player it blocks or can't see (room-blocks.coax, #12789)
     a := v[0].eg[k].ev_at[q]; m := v[0].eg[k].ev_len[q] + 1;
     if v[0].eg[k].ev_out[q] || aimed { ob += m; }
     else if behind || cue + m > EG_CUE_BUDGET { v[0].st.cue_drop += 1; continue; }
     else { cue += m; }
-    eg_out_entry(o[..], v, k, s, f, cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]]);
+    eg_out_entry(o[..], v, k, s_id, f, cast(string) v[0].eg[k].ev[a..<a + v[0].eg[k].ev_len[q]]);
   }
   v[0].st.cue_b += cue; v[0].st.out_b += ob;
   // how many outcomes it has been sent, after this tick's: whenever the count moved, and every
   // EG_OUT_SAY ticks, so a page that missed a frame learns of it within that and says O (#12902)
-  if town_now { eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<wire_put_town(e[..], 0)]); }
+  if town_now { eg_out_entry(o[..], v, k, s_id, f, cast(string) e[0..<wire_put_town(e[..], 0)]); }
   if st[0].out_n > 0 && (st[0].out_n != st[0].out_said || now - st[0].out_t >= EG_OUT_SAY) {
-    eg_out_entry(o[..], v, k, s, f, cast(string) e[0..<wire_put_outcomes(e[..], 0, st[0].out_n)]);
+    eg_out_entry(o[..], v, k, s_id, f, cast(string) e[0..<wire_put_outcomes(e[..], 0, st[0].out_n)]);
     st[0].out_said = st[0].out_n; st[0].out_t = now;
   }
-  eg_out_send(o[..], v, k, s, f);
+  eg_out_send(o[..], v, k, s_id, f);
 }
 // O N: seat seat's page heard fewer outcomes than an o said (a frame lost on the way): the town's pieces
 // go again from the first, from EG_JOIN_BUDGET, then e town, and the page's town is the room's (#12902).
-eg_heard_missed :: (v: [] RmServer, k: int, seat: int) {
+eg_heard_missed :: (v: [] RmServer, k: int, seat_id: SeatId) { seat := seat_id.value;
   st := v[0].eg[k].seat[seat..<seat + 1];
   if st[0].old { return; }
   st[0].pieces = 0; st[0].town_end = true;
@@ -1431,10 +1432,10 @@ eg_test_tick :: (v: [] RmServer, k: int) {
   if !rm_eg_begin(v, k) { return; }
   in: [EG_IN_FIELDS] int;
   for s: 0..<EG_SEATS {
-    if rm_eg_unplaced(v, k, s) { rm_eg_moved(v, k, s, 0, f32(s), 0, 0, 0, 0, 0, 0, 1, 0, 0); }
-    while rm_eg_input(v, k, s, in[..]) {
+    if rm_eg_unplaced(v, k, SeatId.{value = s}) { rm_eg_moved(v, k, SeatId.{value = s}, 0, f32(s), 0, 0, 0, 0, 0, 0, 1, 0, 0); }
+    while rm_eg_input(v, k, SeatId.{value = s}, in[..]) {
       p := v[0].eg[k].seat[s].pose;
-      rm_eg_moved(v, k, s, in[0], p.x + f32(in[3]) / 100.0, 0, p.z + f32(in[4]) / 100.0, 0, 0, 0, 0, 1, 1, 0);
+      rm_eg_moved(v, k, SeatId.{value = s}, in[0], p.x + f32(in[3]) / 100.0, 0, p.z + f32(in[4]) / 100.0, 0, 0, 0, 0, 1, 1, 0);
     }
   }
   xz: [2] f32;
@@ -1481,7 +1482,7 @@ eg_test_drain :: (v: [] RmServer, box: [] EgInbox) {
     if box[0].deaf[c] || box[0].m[c].heard == 0 { continue; }
     for k: 0..<EG_ROOMS {
       if !v[0].eg[k].live { continue; }
-      for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].conn == c && v[0].conns[c].relay == v[0].eg[k].relay { eg_seat_heard(v, k, s, box[0].m[c].heard); } }
+      for s: 0..<EG_SEATS { if v[0].eg[k].seat[s].live && v[0].eg[k].seat[s].conn == c && v[0].conns[c].relay == v[0].eg[k].relay { eg_seat_heard(v, k, SeatId.{value = s}, box[0].m[c].heard); } }
     }
   }
 }
@@ -1618,7 +1619,7 @@ dr_mac :: (key: string, text: string, out: [] u8) {
   #assert rm_st_refused(v[..], ST_RULES) == 1 && rm_st_refused(v[..], ST_ENGINE) == 1 && rm_st_refused(v[..], ST_CONTENT) == 1;
   #assert rm_st_refused(v[..], ST_SCHEMA) == 1 && rm_st_refused(v[..], ST_VERSION) == 0 && rm_st_reason(ST_SCHEMA) == "schema";
   // the wire alone: below the room's oldest or past its newest, counted as version
-  #assert eg_admit(v[..], k, 0, WIRE_MIN - 1) == CP_WIRE_OLD && eg_admit(v[..], k, 0, WIRE_VERSION + 1) == CP_WIRE_NEW && eg_admit(v[..], k, 0, WIRE_VERSION) == CP_OK;
+  #assert eg_admit(v[..], k, SeatId.{value = 0}, WIRE_MIN - 1) == CP_WIRE_OLD && eg_admit(v[..], k, SeatId.{value = 0}, WIRE_VERSION + 1) == CP_WIRE_NEW && eg_admit(v[..], k, SeatId.{value = 0}, WIRE_VERSION) == CP_OK;
   #assert st_compat(CP_WIRE_OLD) == ST_VERSION && st_compat(CP_WIRE_NEW) == ST_VERSION;
   // the build the room view shows
   #assert rm_st_pin(0) == WIRE_ENGINE && rm_st_pin(1) == WIRE_RULES && rm_st_pin(2) == WIRE_CONTENT && rm_st_pin(3) == WIRE_MIN && rm_st_pin(4) == WIRE_VERSION && rm_st_pin(5) == RV_SCHEMA;
@@ -1942,7 +1943,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   id := WIRE_ID_MADE + EG_FX_ID + 1 * WE_WATCH + WE_HOLD_PERSON;
   // the world holds seat 1 for 3 s: a row on both pages
-  rm_eg_cond_left(v[..], k, 1, WE_HOLD_PERSON, 3.0);
+  rm_eg_cond_left(v[..], k, SeatId.{value = 1}, WE_HOLD_PERSON, 3.0);
   t0 := v[0].eg[k].tick;
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   for c: 0..<2 {
@@ -1950,10 +1951,10 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
     #assert e.kind == WK_EFFECT && e.owner == WIRE_TGT_SEAT + 1 && e.p1 == WE_HOLD_PERSON && e.p2 == WC_PARALYZED && e.t0 == t0 && e.dur == 3 * WIRE_HZ;
   }
   // a tick on, less left: the same row (no bytes); then it ends: gone on both
-  rm_eg_cond_left(v[..], k, 1, WE_HOLD_PERSON, 2.96);
+  rm_eg_cond_left(v[..], k, SeatId.{value = 1}, WE_HOLD_PERSON, 2.96);
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   #assert eg_test_ent(box[..], 0, id).t0 == t0 && !eg_test_has(eg_test_of(box[..], 0), "s 1150003 ");
-  rm_eg_cond_left(v[..], k, 1, WE_HOLD_PERSON, 0);
+  rm_eg_cond_left(v[..], k, SeatId.{value = 1}, WE_HOLD_PERSON, 0);
   for t: 0..<2 { eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   #assert eg_test_ent(box[..], 0, id).id < 0 && eg_test_ent(box[..], 1, id).id < 0;
 }
@@ -1968,13 +1969,13 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   for c: 0..<3 { rm_heard(v[..], c, "H 4 ranger.0.0.0 druid 0 -"); }
   for t: 0..<3 { eg_test_tick(v[..], k); eg_test_tick(v[..], o); eg_test_drain(v[..], box[..]); }
   rm_control(v[..], "levels 0 2\nhold pair-hold 1 77\n");
-  #assert !rm_eg_hold_take(v[..], k, 0) && rm_eg_hold_take(v[..], k, 1) && !rm_eg_hold_take(v[..], k, 1) && !rm_eg_hold_take(v[..], o, 1);
+  #assert !rm_eg_hold_take(v[..], k, SeatId.{value = 0}) && rm_eg_hold_take(v[..], k, SeatId.{value = 1}) && !rm_eg_hold_take(v[..], k, SeatId.{value = 1}) && !rm_eg_hold_take(v[..], o, SeatId.{value = 1});
   // the control is asked again with the same line: laid once
   rm_control(v[..], "levels 0 2\nhold pair-hold 1 77\n");
-  #assert !rm_eg_hold_take(v[..], k, 1);
+  #assert !rm_eg_hold_take(v[..], k, SeatId.{value = 1});
   // a new stamp, a seat not there, a word short: only the first holds
   rm_control(v[..], "hold pair-hold 1 78\nhold pair-hold 9 79\nhold pair-hold 0\n");
-  #assert rm_eg_hold_take(v[..], k, 1) && !rm_eg_hold_take(v[..], k, 0);
+  #assert rm_eg_hold_take(v[..], k, SeatId.{value = 1}) && !rm_eg_hold_take(v[..], k, SeatId.{value = 0});
 }
 #test "everglade room: a player new to a seat is a new life of its row, and a jump the world says is a WARP (#12835)" #steps 2000000000 {
   v: [1] RmServer;
@@ -1989,7 +1990,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   a0 := eg_test_ent(box[..], 1, 0);
   #assert a0.kind == WK_PLAYER && a0.life >= 1;
   // the world moved seat 0 in one jump: B hears a WARP of the same life, once
-  rm_eg_cut(v[..], k, 0);
+  rm_eg_cut(v[..], k, SeatId.{value = 0});
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   a1 := eg_test_ent(box[..], 1, 0);
   #assert a1.life == a0.life && a1.warp == a0.warp + 1;
@@ -2014,13 +2015,13 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
     for c: 0..<2 { rm_heard(v[..], c, "H 4 ranger.0.0.0 druid 0 -"); }
     eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
     rm_control(v[..], "place pair-place 1 2 50\nplace pair-place 0 0 51\n");
-    if local == 0 { #assert rm_eg_place_take(v[..], k, 0) == -1 && rm_eg_place_take(v[..], k, 1) == -1; continue; }
-    #assert rm_eg_place_take(v[..], k, 1) == 2 && rm_eg_place_take(v[..], k, 0) == 0 && rm_eg_place_take(v[..], k, 1) == -1;
+    if local == 0 { #assert rm_eg_place_take(v[..], k, SeatId.{value = 0}) == -1 && rm_eg_place_take(v[..], k, SeatId.{value = 1}) == -1; continue; }
+    #assert rm_eg_place_take(v[..], k, SeatId.{value = 1}) == 2 && rm_eg_place_take(v[..], k, SeatId.{value = 0}) == 0 && rm_eg_place_take(v[..], k, SeatId.{value = 1}) == -1;
     // asked again: laid once; an older stamp, a boat past the three, a seat not there: none
     rm_control(v[..], "place pair-place 1 2 50\nplace pair-place 0 1 49\nplace pair-place 0 3 60\nplace pair-place 9 0 61\n");
-    #assert rm_eg_place_take(v[..], k, 0) == -1 && rm_eg_place_take(v[..], k, 1) == -1;
+    #assert rm_eg_place_take(v[..], k, SeatId.{value = 0}) == -1 && rm_eg_place_take(v[..], k, SeatId.{value = 1}) == -1;
     rm_control(v[..], "place pair-place 0 1 62\n");
-    #assert rm_eg_place_take(v[..], k, 0) == 1;
+    #assert rm_eg_place_take(v[..], k, SeatId.{value = 0}) == 1;
   }
 }
 #test "everglade room: \"dice fixed\" fixes a local room's dice and those made after it, never a production room's (#12887)" #steps 2000000000 {
@@ -2207,7 +2208,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   #assert rm_join(v[..], 0, ev) == 0 && rm_join(v[..], 1, ev) == 1;
   k := eg_room_at(v[..], v[0].conns[0].relay);
   eg_test_tick(v[..], k);
-  rm_eg_moved(v[..], k, 1, 0, 200, 0, 0, 0, 0, 0, 0, 1, 0, 0);   // seat 1 is 200 m off
+  rm_eg_moved(v[..], k, SeatId.{value = 1}, 0, 200, 0, 0, 0, 0, 0, 0, 1, 0, 0);   // seat 1 is 200 m off
   rm_heard(v[..], 0, "C 1 20 300 0 0 -1");                     // Moonbeam 3 m from seat 0
   eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
@@ -2215,11 +2216,11 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   mb := eg_test_ent(box[..], 0, WIRE_ID_MADE + 1);
   #assert mb.kind == WK_ZONE && mb.owner == 0 && mb.p1 == 16 && eg_test_ent(box[..], 1, WIRE_ID_MADE + 1).id == -1 && !eg_test_has(c, "e cast");
   #assert eg_test_ent(box[..], 1, 0).id == -1;   // nor is a player, past the exit radius (room-interest.coax, #12789)
-  rm_eg_moved(v[..], k, 1, 0, 10, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+  rm_eg_moved(v[..], k, SeatId.{value = 1}, 0, 10, 0, 0, 0, 0, 0, 0, 1, 0, 0);
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
   #assert eg_test_ent(box[..], 1, WIRE_ID_MADE + 1).kind == WK_ZONE && eg_test_ent(box[..], 1, 0).id == 0;
-  rm_eg_moved(v[..], k, 1, 0, 300, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+  rm_eg_moved(v[..], k, SeatId.{value = 1}, 0, 300, 0, 0, 0, 0, 0, 0, 1, 0, 0);
   eg_test_tick(v[..], k); eg_test_tick(v[..], k);
   eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 1), "x 200001") && eg_test_ent(box[..], 1, WIRE_ID_MADE + 1).id == -1;
@@ -2244,7 +2245,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   // seat 0 asks to board float 26: the world's to decide, no refusal
   rm_heard(v[..], 0, "E 1 3 26");
-  #assert rm_eg_use_asks(v[..], k) == 1 && rm_eg_use_ask(v[..], k, 0) == eg_use_code(WE_BOAT, 0, 26);
+  #assert rm_eg_use_asks(v[..], k) == 1 && rm_eg_use_ask(v[..], k, 0) == eg_use_code(WE_BOAT, SeatId.{value = 0}, 26);
   #assert !eg_test_has(eg_test_of(box[..], 0), "r 1 ");
   rm_eg_use_asks_heard(v[..], k);
   // the world seated it and rowed it on: both pages hear the boat, its rower seat 0, the oars mid-stroke
@@ -2280,7 +2281,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   #assert eg_test_ent(box[..], 0, doors).kind == WK_DOORS && eg_test_ent(box[..], 0, doors).p1 == 0;   // every door shut
   // seat 0's E on door 5, and seat 1's talk to spot 3 and letting go, wait for the world (the host: rm_eg_use_asks), no refusal
   rm_heard(v[..], 0, "E 1 2 5"); rm_heard(v[..], 1, "E 1 1 3"); rm_heard(v[..], 1, "E 2 1 -1");
-  #assert rm_eg_use_asks(v[..], k) == 3 && rm_eg_use_ask(v[..], k, 0) == eg_use_code(WE_DOOR, 0, 5);
+  #assert rm_eg_use_asks(v[..], k) == 3 && rm_eg_use_ask(v[..], k, 0) == eg_use_code(WE_DOOR, SeatId.{value = 0}, 5);
   #assert rm_eg_use_ask(v[..], k, 1) == 1001004 && rm_eg_use_ask(v[..], k, 2) == 1001000;
   rm_eg_use_asks_heard(v[..], k);
   rm_eg_doors(v[..], k, 0, 1 << 5);   // the world opened it
@@ -2341,18 +2342,18 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   r = eg_test_ent(box[..], 0, WIRE_ID_FOLK + 3);
   #assert r.g == 6 && r.t0 == fell && r.p2 == 0;
   // seat 0 walks 200 m off: the row goes; back: it comes again with the same T0
-  rm_eg_moved(v[..], k, 0, 0, 200, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+  rm_eg_moved(v[..], k, SeatId.{value = 0}, 0, 200, 0, 0, 0, 0, 0, 0, 1, 0, 0);
   for q: 0..<3 { rm_eg_folk(v[..], k, 3, f[..]); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   #assert eg_test_ent(box[..], 0, WIRE_ID_FOLK + 3).id == -1;
-  rm_eg_moved(v[..], k, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0);
+  rm_eg_moved(v[..], k, SeatId.{value = 0}, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0);
   for q: 0..<3 { rm_eg_folk(v[..], k, 3, f[..]); eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]); }
   r = eg_test_ent(box[..], 0, WIRE_ID_FOLK + 3);
   #assert r.id == WIRE_ID_FOLK + 3 && r.t0 == fell;
   // a guard 300 m off casts at seat 1: seat 1 hears it fly, though far from the caster; seat 0 not
-  rm_eg_moved(v[..], k, 1, 0, 0, 0, 5, 0, 0, 0, 0, 1, 0, 0);
+  rm_eg_moved(v[..], k, SeatId.{value = 1}, 0, 0, 0, 5, 0, 0, 0, 0, 1, 0, 0);
   m := [11] f32.[3, 7, 1, 300, 1.45, 0, 0, 1, 5, 0.3, 0.5];
   rm_eg_missile(v[..], k, m[..]);
-  rm_eg_moved(v[..], k, 0, 0, 0, 0, -300, 0, 0, 0, 0, 1, 0, 0);
+  rm_eg_moved(v[..], k, SeatId.{value = 0}, 0, 0, 0, -300, 0, 0, 0, 0, 1, 0, 0);
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   #assert eg_test_has(eg_test_of(box[..], 1), "e wm 3 7 1 30000 145 0 0 100 500 300 500") && !eg_test_has(eg_test_of(box[..], 0), "e wm");
 }

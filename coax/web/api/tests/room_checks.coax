@@ -1,3 +1,4 @@
+#load "../../../../aethyr/ids.coax";
 // The rooms' API checks, run by test.sh after test.py against the same API and database:
 //   admission  when the rooms are full (#12796; migrations/0126_room_admission.sql, player.c room_ticket)
 //   chat       Everglade room chat's moderation (migrations/0121_room_chat_moderation.sql)
@@ -725,7 +726,8 @@ ri_ticket_in :: (t: [] Ap, key: string, room: string, realm: string) -> int {
 // ---- items --------------------------------------------------------------------------------------------
 
 // One ledger mutation (POST /api/playtest/room-items, signed); its answer's status word in out.
-ri_item :: (t: [] Ap, id: string, op: string, pid: string, gen: int, ver: int, item: int, to: string, kind: int, sent: int, out: [] u8) -> string {
+ri_item :: (t: [] Ap, id: string, op: string, pid: string, gen_id: OwnerGeneration, ver: int, item_id: ItemId, to: string, kind: int, sent: int, out: [] u8) -> string {
+  gen := gen_id.value; item := item_id.value;
   b: [1] Sb;
   sb(b[..], "{\"id\":\""); sb(b[..], id); sb(b[..], "\",\"op\":\""); sb(b[..], op); sb(b[..], "\",\"pid\":\""); sb(b[..], pid); sb(b[..], "\"");
   if gen > 0 { sb(b[..], ",\"gen\":"); sb_int(b[..], gen); }
@@ -744,41 +746,41 @@ rc_items :: (t: [] Ap) {
   r := ap_player(t, a[..]); r = ap_player(t, b[..]); r = ap_player(t, c[..]);
   now := rc_wall_ms();
   // a grant, its retry after a lost answer, and another payload under its ID
-  s := ri_item(t, "it-g1", "grant", pl_id(a[..]), 0, 0, 0, "", 7, now, w[..]);
+  s := ri_item(t, "it-g1", "grant", pl_id(a[..]), OwnerGeneration.{value = 0}, 0, ItemId.{value = 0}, "", 7, now, w[..]);
   item := ap_member_int(ap_body(t), "item", 0);
   ap_check(t, "items: a grant applies and names its item", s == "ok" && item > 0 && rc_is(ap_body(t), "replay", "false"), ap_body(t));
-  s = ri_item(t, "it-g1", "grant", pl_id(a[..]), 0, 0, 0, "", 7, now, w[..]);
+  s = ri_item(t, "it-g1", "grant", pl_id(a[..]), OwnerGeneration.{value = 0}, 0, ItemId.{value = 0}, "", 7, now, w[..]);
   ap_check(t, "items: the same grant again (its answer lost) answers the same item and grants nothing more",
            s == "ok" && ap_member_int(ap_body(t), "item", 0) == item && rc_is(ap_body(t), "replay", "true"), ap_body(t));
-  s = ri_item(t, "it-g1", "grant", pl_id(a[..]), 0, 0, 0, "", 8, now, w[..]);
+  s = ri_item(t, "it-g1", "grant", pl_id(a[..]), OwnerGeneration.{value = 0}, 0, ItemId.{value = 0}, "", 8, now, w[..]);
   ap_check(t, "items: another payload under that ID is refused (conflict)", s == "conflict", ap_body(t));
   sb(q[..], "select count(*) from verse.items where owner = '"); sb(q[..], pl_id(a[..])); sb(q[..], "'");
   ap_check(t, "items: one item, not two", ap_sql(t, sb_text(q[..]), out[..]) == "1", "");
   // two transfers of the item from one read: one applies, the other is refused
-  s = ri_item(t, "it-t1", "transfer", pl_id(a[..]), 0, 1, item, pl_id(b[..]), 0, now, w[..]);
+  s = ri_item(t, "it-t1", "transfer", pl_id(a[..]), OwnerGeneration.{value = 0}, 1, ItemId.{value = item}, pl_id(b[..]), 0, now, w[..]);
   s2b: [64] u8;
-  s2 := ri_item(t, "it-t2", "transfer", pl_id(a[..]), 0, 1, item, pl_id(c[..]), 0, now, s2b[..]);
+  s2 := ri_item(t, "it-t2", "transfer", pl_id(a[..]), OwnerGeneration.{value = 0}, 1, ItemId.{value = item}, pl_id(c[..]), 0, now, s2b[..]);
   sb_clear(q[..]); sb(q[..], "select owner from verse.items where id = "); sb_int(q[..], item);
   ap_check(t, "items: two transfers from one read: the first applies, the second is refused (version), the item moved once",
            s == "ok" && s2 == "version" && ap_sql(t, sb_text(q[..]), out[..]) == pl_id(b[..]), s2);
-  s = ri_item(t, "it-t3", "transfer", pl_id(a[..]), 0, 2, item, pl_id(c[..]), 0, now, w[..]);
+  s = ri_item(t, "it-t3", "transfer", pl_id(a[..]), OwnerGeneration.{value = 0}, 2, ItemId.{value = item}, pl_id(c[..]), 0, now, w[..]);
   ap_check(t, "items: a transfer of an item that isn't yours is refused (held)", s == "held", ap_body(t));
   // escrow: held until it settles or cancels
-  s = ri_item(t, "it-e1", "escrow", pl_id(b[..]), 0, 1, item, pl_id(c[..]), 0, now, w[..]);
-  s2 = ri_item(t, "it-e2", "transfer", pl_id(b[..]), 0, 2, item, pl_id(a[..]), 0, now, s2b[..]);
+  s = ri_item(t, "it-e1", "escrow", pl_id(b[..]), OwnerGeneration.{value = 0}, 1, ItemId.{value = item}, pl_id(c[..]), 0, now, w[..]);
+  s2 = ri_item(t, "it-e2", "transfer", pl_id(b[..]), OwnerGeneration.{value = 0}, 2, ItemId.{value = item}, pl_id(a[..]), 0, now, s2b[..]);
   ap_check(t, "items: an escrowed item can't be transferred elsewhere", s == "ok" && s2 == "held", s2);
-  s = ri_item(t, "it-e3", "settle", pl_id(b[..]), 0, 2, item, "", 0, now, w[..]);
+  s = ri_item(t, "it-e3", "settle", pl_id(b[..]), OwnerGeneration.{value = 0}, 2, ItemId.{value = item}, "", 0, now, w[..]);
   ap_check(t, "items: the escrow settles to its party", s == "ok" && ap_sql(t, sb_text(q[..]), out[..]) == pl_id(c[..]), ap_body(t));
-  s = ri_item(t, "it-e4", "cancel", pl_id(c[..]), 0, 1, item, "", 0, now, w[..]);
+  s = ri_item(t, "it-e4", "cancel", pl_id(c[..]), OwnerGeneration.{value = 0}, 1, ItemId.{value = item}, "", 0, now, w[..]);
   ap_check(t, "items: no escrow to cancel (held)", s == "held", ap_body(t));
   // an old owner's write, and an expired ID
   sb_clear(q[..]); sb(q[..], "select verse.room_owner_next('"); sb(q[..], pl_id(c[..])); sb(q[..], "')");
   g1 := rc_num(ap_sql(t, sb_text(q[..]), out[..])); g2 := rc_num(ap_sql(t, sb_text(q[..]), out[..]));
-  s = ri_item(t, "it-o1", "grant", pl_id(c[..]), g1, 1, 0, "", 3, now, w[..]);
+  s = ri_item(t, "it-o1", "grant", pl_id(c[..]), OwnerGeneration.{value = g1}, 1, ItemId.{value = 0}, "", 3, now, w[..]);
   ap_check(t, "items: a write under an older owner generation is refused (stale)", g2 == g1 + 1 && s == "stale", ap_body(t));
-  s = ri_item(t, "it-o2", "grant", pl_id(c[..]), g2, 1, 0, "", 3, now, w[..]);
+  s = ri_item(t, "it-o2", "grant", pl_id(c[..]), OwnerGeneration.{value = g2}, 1, ItemId.{value = 0}, "", 3, now, w[..]);
   ap_check(t, "items: the newest owner's applies", s == "ok", ap_body(t));
-  s = ri_item(t, "it-x1", "grant", pl_id(c[..]), g2, 2, 0, "", 3, now - 90000000, w[..]);
+  s = ri_item(t, "it-x1", "grant", pl_id(c[..]), OwnerGeneration.{value = g2}, 2, ItemId.{value = 0}, "", 3, now - 90000000, w[..]);
   ap_check(t, "items: a retry first sent more than a day ago is refused (expired), not applied", s == "expired", ap_body(t));
   st := rc_room_post(t, "/api/playtest/room-items", "{\"id\":\"x\"}", "0000000000000000000000000000000000000000000000000000000000000000");
   ap_check(t, "items: an unsigned mutation is refused (401)", st == 401, ap_body(t));
@@ -1656,7 +1658,7 @@ rc_travel_crash :: (t: [] Ap, room_bin_in: string) {
 }
 
 // ---- versioned checkpoint receiver (#12838; producer/restore are separate) ----------------------------
-rc_checkpoint_body :: (out:[]u8,pid:string,owner:int,process:int,rev:int,at:int,sent:int,xp:int,x:int)->string {
+rc_checkpoint_body :: (out:[]u8,pid:string,owner_id:OwnerGeneration,process:int,rev:int,at:int,sent:int,xp:int,x:int)->string {owner:=owner_id.value;
   keys:=[17]string.["v","owner","process","rev","at","sent","engine","rules","content","hp","max","xp","wanted","x_mm","y_mm","z_mm","yaw_mrad"];
   values:=[17]int.[1,owner,process,rev,at,sent,1,2,3,0,20,xp,2,x,-20,-3450,100];
   o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);for i:0..<17{jo_key(o[..],keys[i]);jo_int(o[..],values[i]);}
@@ -1669,29 +1671,29 @@ rc_checkpoints :: (t:[]Ap) {
   st:=rc_room_post(t,route,"{}","0000000000000000000000000000000000000000000000000000000000000000");
   ap_check(t,"checkpoint: a bad signature is refused",st==401,ap_body(t));
   st=rc_room_post(t,route,"{}","");ap_check(t,"checkpoint: a partial snapshot is refused",st==400,ap_body(t));
-  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,1,1000,1,now,now,100,1200),"");
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid, OwnerGeneration.{value = 1},1000,1,now,now,100,1200),"");
   ap_check(t,"checkpoint: an unissued owner cannot create a snapshot",st==200&&rc_is(ap_body(t),"status","fenced"),ap_body(t));
   g:=ap_whole(ap_sql(t,sb_text(q[..]),out[..]));
-  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,1000,1,now,now,100,1200),"");
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid, OwnerGeneration.{value = g},1000,1,now,now,100,1200),"");
   accepted:=ap_member_int(ap_body(t),"accepted_at",0);
   ap_check(t,"checkpoint: a whole snapshot is committed before its versioned receipt",st==200&&rc_is(ap_body(t),"status","applied")&&rc_is(ap_body(t),"v","1")&&accepted>0,ap_body(t));
   // Simulate a lost first response: replay the same capture with a fresh send clock.
-  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,1000,1,now,now+1,100,1200),"");
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid, OwnerGeneration.{value = g},1000,1,now,now+1,100,1200),"");
   ap_check(t,"checkpoint: retry after a lost response keeps the original acceptance time",st==200&&rc_is(ap_body(t),"status","duplicate")&&ap_member_int(ap_body(t),"accepted_at",0)==accepted,ap_body(t));
-  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,1000,1,now,now,100,1201),"");
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid, OwnerGeneration.{value = g},1000,1,now,now,100,1201),"");
   ap_check(t,"checkpoint: a reused identity with changed coordinates conflicts",st==200&&rc_is(ap_body(t),"status","conflict"),ap_body(t));
-  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,1001,2,now,now,100,1200),"");
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid, OwnerGeneration.{value = g},1001,2,now,now,100,1200),"");
   ap_check(t,"checkpoint: a process cannot switch under the same owner",st==200&&rc_is(ap_body(t),"status","process"),ap_body(t));
-  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,1000,2,now,now,99,1200),"");
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid, OwnerGeneration.{value = g},1000,2,now,now,99,1200),"");
   ap_check(t,"checkpoint: later revisions cannot reduce accepted XP",st==200&&rc_is(ap_body(t),"status","regression"),ap_body(t));
-  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,1000,2,now,now,101,2400),"");
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid, OwnerGeneration.{value = g},1000,2,now,now,101,2400),"");
   ap_check(t,"checkpoint: the next revision advances the entire snapshot",st==200&&rc_is(ap_body(t),"status","applied"),ap_body(t));
-  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,1000,1,now,now,100,1200),"");
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid, OwnerGeneration.{value = g},1000,1,now,now,100,1200),"");
   ap_check(t,"checkpoint: an older revision is stale",st==200&&rc_is(ap_body(t),"status","stale"),ap_body(t));
   g=ap_whole(ap_sql(t,sb_text(q[..]),out[..]));
-  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g-1,1000,3,now,now,102,3600),"");
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid, OwnerGeneration.{value = g-1},1000,3,now,now,102,3600),"");
   ap_check(t,"checkpoint: taking a new owner fences the old process",st==200&&rc_is(ap_body(t),"status","fenced"),ap_body(t));
-  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid,g,2000,1,now,now,101,4800),"");
+  st=rc_room_post(t,route,rc_checkpoint_body(b[..],pid, OwnerGeneration.{value = g},2000,1,now,now,101,4800),"");
   ap_check(t,"checkpoint: a newly issued owner starts its own process revision",st==200&&rc_is(ap_body(t),"status","applied"),ap_body(t));
   sb_clear(q[..]);sb(q[..],"select owner || ':' || process || ':' || rev || ':' || (body->>'x_mm') || ':' || (body->>'dead') || ':' || (body->>'content') from verse.character_checkpoints_v1 where who='");sb(q[..],pid);sb(q[..],"'");
   ap_check(t,"checkpoint: a separate database connection sees the complete committed dead/place/build state",ap_sql(t,sb_text(q[..]),out[..])=="2:2000:1:4800:true:3","");

@@ -303,7 +303,7 @@ static void st_report(st_buf *o, coax_v_t_RmServer v, int64_t players, int64_t s
              (long long)st_c[i].q_bytes, (long long)st_c[i].q_ms, st_c[i].relevant, (long long)st_ack_at(&st_c[i], 500),
              (long long)st_ack_at(&st_c[i], 950), (long long)st_c[i].rtt_ms);
     st_line(o,"queued ack|%.*s|%lld|%lld|%lld",(int)code.count,code.data,(long long)ks[1],(long long)st_ack_q(st_c[i].queued_ack,NULL,st_c[i].queued_ack_n,500),(long long)st_ack_q(st_c[i].queued_ack,NULL,st_c[i].queued_ack_n,950));
-    int64_t saved[12];if(rm_st_saved(v,ks[0],ks[1],(coax_v_s64){saved,12}))
+    int64_t saved[12];if(rm_st_saved(v,ks[0],(coax_t_SeatId){ks[1]},(coax_v_s64){saved,12}))
       st_line(o,"saved|%.*s|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld",(int)code.count,code.data,(long long)ks[1],(long long)saved[0],(long long)saved[1],(long long)saved[2],(long long)saved[3],(long long)saved[4],(long long)saved[5],(long long)saved[6],(long long)saved[7],(long long)saved[8],(long long)saved[9]);
   }
   if (!reset) return;

@@ -9,7 +9,7 @@ ck_test_join :: (v:[]RmServer,conn:int,owner:int,capture:CharacterCapture)->int 
   if rm_join(v,conn,cast(string)request[0..<size])<0{return -1;}k:=eg_room_at(v,v[0].conns[conn].relay);
   rm_heard(v,conn,"H 4 ranger.0.0.0 druid 0 Ash");return k;
 }
-ck_test_place :: (v:[]RmServer,k:int){rm_eg_moved(v,k,0,0,1,0,2,0,0,0,0,0,0,0);}
+ck_test_place :: (v:[]RmServer,k:int){rm_eg_moved(v,k, SeatId.{value = 0},0,1,0,2,0,0,0,0,0,0,0);}
 ck_test_receipt :: (v:[]RmServer,status:string,out:[]u8)->string {
   c:=v[0].ck.fly_capture;o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"v");jo_int(o[..],2);jo_key(o[..],"status");jo_str(o[..],status);
   jo_key(o[..],"owner");jo_int(o[..],c.n[1]);jo_key(o[..],"process");jo_int(o[..],c.n[2]);jo_key(o[..],"rev");jo_int(o[..],c.n[3]);jo_key(o[..],"accepted_at");jo_int(o[..],1762190000001);jo_end(o[..]);return jo_text(o[..]);

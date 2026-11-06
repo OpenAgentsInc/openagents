@@ -30,6 +30,7 @@
 //   coax/bin/coax mutate aethyr/session/control.coax --library --root-only
 
 #module "aethyr.session.control";
+#load "../ids.coax";
 #authority;
 
 // book:begin control-profile
@@ -56,7 +57,7 @@ ControlFence :: struct { gen: [CONTROL_CHARACTERS] int #counter; counts: [CONTRO
 ControlGrant :: struct { status: int; gen: int; }
 // book:end control-profile
 
-control_known :: (c: int) -> bool { return c >= 0 && c < CONTROL_CHARACTERS; }
+control_known :: (c_id: CharacterId) -> bool { c := c_id.value; return c >= 0 && c < CONTROL_CHARACTERS; }
 control_count :: (counts: [] int, status: int) -> int { counts[status] += 1; return status; }
 // The generation after gen, or none past CONTROL_GEN_MAX: exhausted, never wrapped (#12927).
 control_next :: (gen: int) -> int? { if gen >= CONTROL_GEN_MAX { return null; } return add_checked(gen, 1); }
@@ -65,8 +66,8 @@ control_next :: (gen: int) -> int? { if gen >= CONTROL_GEN_MAX { return null; } 
 // Room `room` asks for character c. A room already holding it (a duplicate or a retry) gets its own
 // generation back with the lease renewed; another room's live lease refuses; otherwise the next
 // generation.
-control_acquire :: (d: [] ControlDirectory, c: int, room: int) -> ControlGrant {
-  if !control_known(c) { return ControlGrant.{status = control_count(d[0].counts[..], CONTROL_UNKNOWN)}; }
+control_acquire :: (d: [] ControlDirectory, c_id: CharacterId, room: int) -> ControlGrant { c := c_id.value;
+  if !control_known( CharacterId.{value = c}) { return ControlGrant.{status = control_count(d[0].counts[..], CONTROL_UNKNOWN)}; }
   e := d[0].entries[c];
   live := e.held && d[0].now < e.until;
   if live && e.room == room {
@@ -84,31 +85,31 @@ control_acquire :: (d: [] ControlDirectory, c: int, room: int) -> ControlGrant {
   }
 }
 // Whether (room, gen) is character c's live owner now.
-control_holds :: (d: [] ControlDirectory, c: int, room: int, gen: int) -> int {
-  if !control_known(c) { return CONTROL_UNKNOWN; }
+control_holds :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: int) -> int { c := c_id.value;
+  if !control_known( CharacterId.{value = c}) { return CONTROL_UNKNOWN; }
   e := d[0].entries[c];
   if gen < e.gen { return CONTROL_STALE; }
   if !e.held || e.room != room || gen != e.gen || d[0].now >= e.until { return CONTROL_NOT_HELD; }
   return CONTROL_OK;
 }
 // The owner renews its lease; a lapsed or superseded owner is refused.
-control_renew :: (d: [] ControlDirectory, c: int, room: int, gen: int) -> int {
-  v := control_holds(d, c, room, gen);
+control_renew :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: int) -> int { c := c_id.value;
+  v := control_holds(d, CharacterId.{value = c}, room, gen);
   if v == CONTROL_OK { d[0].entries[c].until = d[0].now + CONTROL_LEASE; }
   return control_count(d[0].counts[..], v);
 }
 // The owner lets go (the player left, or travels on). A second release is not held, and changes
 // nothing; the generation stays, so the next owner's is higher.
-control_release :: (d: [] ControlDirectory, c: int, room: int, gen: int) -> int {
-  v := control_holds(d, c, room, gen);
+control_release :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: int) -> int { c := c_id.value;
+  v := control_holds(d, CharacterId.{value = c}, room, gen);
   if v == CONTROL_OK { d[0].entries[c].held = false; }
   return control_count(d[0].counts[..], v);
 }
 // The owner hands character c to room `to` (travel, #12850) in one directory write: `to` holds it
 // at the next generation, so the source's writes are stale from here on. Refused unless (room, gen)
 // is the live owner, or when no generation is left.
-control_transfer :: (d: [] ControlDirectory, c: int, room: int, gen: int, to: int) -> ControlGrant {
-  v := control_holds(d, c, room, gen);
+control_transfer :: (d: [] ControlDirectory, c_id: CharacterId, room: int, gen: int, to: int) -> ControlGrant { c := c_id.value;
+  v := control_holds(d, CharacterId.{value = c}, room, gen);
   if v != CONTROL_OK { return ControlGrant.{status = control_count(d[0].counts[..], v), gen = gen}; }
   next := control_next(gen);
   switch next {
@@ -127,8 +128,8 @@ control_tick :: (d: [] ControlDirectory, ticks: int) { d[0].now += ticks; }
 // A recipient's check of a write or command for character c carrying generation gen: lower than
 // the newest it has accepted is stale; equal or higher is accepted and becomes the newest. The
 // store and the command gate use it; the directory has already issued gen to someone.
-control_fence :: (f: [] ControlFence, c: int, gen: int) -> int {
-  if !control_known(c) { return control_count(f[0].counts[..], CONTROL_UNKNOWN); }
+control_fence :: (f: [] ControlFence, c_id: CharacterId, gen: int) -> int { c := c_id.value;
+  if !control_known( CharacterId.{value = c}) { return control_count(f[0].counts[..], CONTROL_UNKNOWN); }
   if gen < f[0].gen[c] { return control_count(f[0].counts[..], CONTROL_STALE); }
   f[0].gen[c] = gen;
   return control_count(f[0].counts[..], CONTROL_OK);
@@ -140,65 +141,65 @@ control_fence :: (f: [] ControlFence, c: int, gen: int) -> int {
 
 #test "control: two rooms claim one character; one owns it, and the other is told it plays elsewhere" {
   d: [1] ControlDirectory;
-  a := control_acquire(d[..], 3, 10);
-  b := control_acquire(d[..], 3, 20);
+  a := control_acquire(d[..], CharacterId.{value = 3}, 10);
+  b := control_acquire(d[..], CharacterId.{value = 3}, 20);
   #assert a.status == CONTROL_OK && a.gen == 1 && b.status == CONTROL_ELSEWHERE && b.gen == 1;
-  #assert control_holds(d[..], 3, 10, 1) == CONTROL_OK && control_holds(d[..], 3, 20, 1) == CONTROL_NOT_HELD;
+  #assert control_holds(d[..], CharacterId.{value = 3}, 10, 1) == CONTROL_OK && control_holds(d[..], CharacterId.{value = 3}, 20, 1) == CONTROL_NOT_HELD;
   #assert d[0].counts[CONTROL_OK] == 1 && d[0].counts[CONTROL_ELSEWHERE] == 1;
   // the same room again (a retry): its own generation, lease renewed
   control_tick(d[..], CONTROL_LEASE - 1);
-  again := control_acquire(d[..], 3, 10);
+  again := control_acquire(d[..], CharacterId.{value = 3}, 10);
   #assert again.status == CONTROL_OK && again.gen == 1 && d[0].entries[3].until == d[0].now + CONTROL_LEASE;
-  #assert control_acquire(d[..], -1, 10).status == CONTROL_UNKNOWN && control_acquire(d[..], CONTROL_CHARACTERS, 10).status == CONTROL_UNKNOWN;
+  #assert control_acquire(d[..], CharacterId.{value = -1}, 10).status == CONTROL_UNKNOWN && control_acquire(d[..], CharacterId.{value = CONTROL_CHARACTERS}, 10).status == CONTROL_UNKNOWN;
   f: [1] ControlFence;
-  #assert control_holds(d[..], -1, 10, 1) == CONTROL_UNKNOWN && control_fence(f[..], -1, 0) == CONTROL_UNKNOWN && control_fence(f[..], CONTROL_CHARACTERS, 0) == CONTROL_UNKNOWN;
+  #assert control_holds(d[..], CharacterId.{value = -1}, 10, 1) == CONTROL_UNKNOWN && control_fence(f[..], CharacterId.{value = -1}, 0) == CONTROL_UNKNOWN && control_fence(f[..], CharacterId.{value = CONTROL_CHARACTERS}, 0) == CONTROL_UNKNOWN;
 }
 
 #test "control: a lapsed lease goes to the next room at the next generation; the old owner's writes are refused" {
   d: [1] ControlDirectory; store: [1] ControlFence; gate: [1] ControlFence;
-  a := control_acquire(d[..], 5, 10);
-  #assert control_fence(store[..], 5, a.gen) == CONTROL_OK;
+  a := control_acquire(d[..], CharacterId.{value = 5}, 10);
+  #assert control_fence(store[..], CharacterId.{value = 5}, a.gen) == CONTROL_OK;
   // room 10 pauses past its lease; the lease lapses on the directory's clock, at exactly the lease
   control_tick(d[..], CONTROL_LEASE - 1);
-  #assert control_acquire(d[..], 5, 20).status == CONTROL_ELSEWHERE;
+  #assert control_acquire(d[..], CharacterId.{value = 5}, 20).status == CONTROL_ELSEWHERE;
   control_tick(d[..], 1);
-  #assert control_holds(d[..], 5, 10, a.gen) == CONTROL_NOT_HELD;
-  b := control_acquire(d[..], 5, 20);
+  #assert control_holds(d[..], CharacterId.{value = 5}, 10, a.gen) == CONTROL_NOT_HELD;
+  b := control_acquire(d[..], CharacterId.{value = 5}, 20);
   #assert b.status == CONTROL_OK && b.gen == a.gen + 1;
   // the new owner writes before the old one learns anything
-  #assert control_fence(store[..], 5, b.gen) == CONTROL_OK && control_fence(gate[..], 5, b.gen) == CONTROL_OK;
+  #assert control_fence(store[..], CharacterId.{value = 5}, b.gen) == CONTROL_OK && control_fence(gate[..], CharacterId.{value = 5}, b.gen) == CONTROL_OK;
   // room 10 resumes: its renewal, release, save and commands are all refused
-  #assert control_renew(d[..], 5, 10, a.gen) == CONTROL_STALE && control_release(d[..], 5, 10, a.gen) == CONTROL_STALE;
-  #assert control_fence(store[..], 5, a.gen) == CONTROL_STALE && control_fence(gate[..], 5, a.gen) == CONTROL_STALE;
+  #assert control_renew(d[..], CharacterId.{value = 5}, 10, a.gen) == CONTROL_STALE && control_release(d[..], CharacterId.{value = 5}, 10, a.gen) == CONTROL_STALE;
+  #assert control_fence(store[..], CharacterId.{value = 5}, a.gen) == CONTROL_STALE && control_fence(gate[..], CharacterId.{value = 5}, a.gen) == CONTROL_STALE;
   #assert store[0].gen[5] == b.gen && store[0].counts[CONTROL_STALE] == 1 && store[0].counts[CONTROL_OK] == 2;
   // and the new owner renews and holds
   control_tick(d[..], CONTROL_LEASE - 1);
-  #assert control_renew(d[..], 5, 20, b.gen) == CONTROL_OK && d[0].entries[5].until == d[0].now + CONTROL_LEASE;
+  #assert control_renew(d[..], CharacterId.{value = 5}, 20, b.gen) == CONTROL_OK && d[0].entries[5].until == d[0].now + CONTROL_LEASE;
   control_tick(d[..], CONTROL_LEASE - 1);
-  #assert control_holds(d[..], 5, 20, b.gen) == CONTROL_OK && control_renew(d[..], 5, 20, b.gen + 1) == CONTROL_NOT_HELD;
+  #assert control_holds(d[..], CharacterId.{value = 5}, 20, b.gen) == CONTROL_OK && control_renew(d[..], CharacterId.{value = 5}, 20, b.gen + 1) == CONTROL_NOT_HELD;
 }
 
 #test "control: release and acquire, twice each, are safe" {
   d: [1] ControlDirectory;
-  a := control_acquire(d[..], 0, 10);
-  #assert control_release(d[..], 0, 10, a.gen) == CONTROL_OK && control_release(d[..], 0, 10, a.gen) == CONTROL_NOT_HELD;
-  #assert control_renew(d[..], 0, 10, a.gen) == CONTROL_NOT_HELD;
+  a := control_acquire(d[..], CharacterId.{value = 0}, 10);
+  #assert control_release(d[..], CharacterId.{value = 0}, 10, a.gen) == CONTROL_OK && control_release(d[..], CharacterId.{value = 0}, 10, a.gen) == CONTROL_NOT_HELD;
+  #assert control_renew(d[..], CharacterId.{value = 0}, 10, a.gen) == CONTROL_NOT_HELD;
   // the same room again, after letting go: a new generation
-  b := control_acquire(d[..], 0, 10);
-  #assert b.gen == a.gen + 1 && control_release(d[..], 0, 20, b.gen) == CONTROL_NOT_HELD && control_holds(d[..], 0, 10, b.gen) == CONTROL_OK;
+  b := control_acquire(d[..], CharacterId.{value = 0}, 10);
+  #assert b.gen == a.gen + 1 && control_release(d[..], CharacterId.{value = 0}, 20, b.gen) == CONTROL_NOT_HELD && control_holds(d[..], CharacterId.{value = 0}, 10, b.gen) == CONTROL_OK;
   // a released character goes to the next room at once
-  #assert control_release(d[..], 0, 10, b.gen) == CONTROL_OK;
-  c := control_acquire(d[..], 0, 20);
+  #assert control_release(d[..], CharacterId.{value = 0}, 10, b.gen) == CONTROL_OK;
+  c := control_acquire(d[..], CharacterId.{value = 0}, 20);
   #assert c.status == CONTROL_OK && c.gen == b.gen + 1 && d[0].counts[CONTROL_NOT_HELD] == 3;
 }
 
 #test "control: generations run out by refusal, never by wrapping" {
   d: [1] ControlDirectory;
   d[0].entries[2].gen = CONTROL_GEN_MAX - 1;
-  a := control_acquire(d[..], 2, 10);
+  a := control_acquire(d[..], CharacterId.{value = 2}, 10);
   #assert a.status == CONTROL_OK && a.gen == CONTROL_GEN_MAX;
-  #assert control_release(d[..], 2, 10, a.gen) == CONTROL_OK;
-  b := control_acquire(d[..], 2, 10);
+  #assert control_release(d[..], CharacterId.{value = 2}, 10, a.gen) == CONTROL_OK;
+  b := control_acquire(d[..], CharacterId.{value = 2}, 10);
   #assert b.status == CONTROL_EXHAUSTED && b.gen == CONTROL_GEN_MAX && d[0].counts[CONTROL_EXHAUSTED] == 1 && !d[0].entries[2].held;
 }
 
@@ -212,19 +213,19 @@ control_fence :: (f: [] ControlFence, c: int, gen: int) -> int {
 
 #test "control: a transfer moves the owner in one write, once" {
   d: [1] ControlDirectory;
-  a := control_acquire(d[..], 4, 10);
-  t := control_transfer(d[..], 4, 10, a.gen, 20);
-  #assert t.status == CONTROL_OK && t.gen == a.gen + 1 && control_holds(d[..], 4, 20, t.gen) == CONTROL_OK && d[0].entries[4].until == d[0].now + CONTROL_LEASE;
-  again := control_transfer(d[..], 4, 10, a.gen, 20);
-  #assert again.status == CONTROL_STALE && again.gen == a.gen && control_transfer(d[..], 4, 30, t.gen, 20).status == CONTROL_NOT_HELD;
+  a := control_acquire(d[..], CharacterId.{value = 4}, 10);
+  t := control_transfer(d[..], CharacterId.{value = 4}, 10, a.gen, 20);
+  #assert t.status == CONTROL_OK && t.gen == a.gen + 1 && control_holds(d[..], CharacterId.{value = 4}, 20, t.gen) == CONTROL_OK && d[0].entries[4].until == d[0].now + CONTROL_LEASE;
+  again := control_transfer(d[..], CharacterId.{value = 4}, 10, a.gen, 20);
+  #assert again.status == CONTROL_STALE && again.gen == a.gen && control_transfer(d[..], CharacterId.{value = 4}, 30, t.gen, 20).status == CONTROL_NOT_HELD;
   d[0].entries[4].gen = CONTROL_GEN_MAX;
-  #assert control_transfer(d[..], 4, 20, CONTROL_GEN_MAX, 30).status == CONTROL_EXHAUSTED && d[0].entries[4].room == 20;
+  #assert control_transfer(d[..], CharacterId.{value = 4}, 20, CONTROL_GEN_MAX, 30).status == CONTROL_EXHAUSTED && d[0].entries[4].room == 20;
 }
 
 #test "control: a second tab takes control; the first tab's commands are refused" {
   gate: [1] ControlFence;
   first := 1; second := 2;   // control generations the owner gives each attach
-  #assert control_fence(gate[..], 7, first) == CONTROL_OK;
-  #assert control_fence(gate[..], 7, second) == CONTROL_OK && control_fence(gate[..], 7, first) == CONTROL_STALE;
-  #assert control_fence(gate[..], 7, second) == CONTROL_OK && gate[0].gen[7] == second;
+  #assert control_fence(gate[..], CharacterId.{value = 7}, first) == CONTROL_OK;
+  #assert control_fence(gate[..], CharacterId.{value = 7}, second) == CONTROL_OK && control_fence(gate[..], CharacterId.{value = 7}, first) == CONTROL_STALE;
+  #assert control_fence(gate[..], CharacterId.{value = 7}, second) == CONTROL_OK && gate[0].gen[7] == second;
 }

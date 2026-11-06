@@ -48,12 +48,12 @@ send a stick of 500.
 ```jai
 // I SEQ KX KY PX PY THETA B HEARD: one step's input (THETA in WIRE_FINE units), queued for the tick; and the state tick its page
 // heard whole, which is now its page's (wire_seat_ack), and ends its snapshots once it is one of them.
-eg_heard_input :: (v: [] RmServer, k: int, seat: int, text: string) {
-  if v[0].eg[k].seat[seat].old { eg_old_input(v, k, seat, text); return; }   // (room-oldwire.coax)
+eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat := seat_id.value;
+  if v[0].eg[k].seat[seat].old { eg_old_input(v, k, seat_id, text); return; }   // (room-oldwire.coax)
   r: [1] WireRd; r[0] = wire_rd(text, 1);
   w := wire_read_in(text, r[..]);
   if !r[0].ok || eg_fields(text) != 9 { return; }
-  eg_seat_heard(v, k, seat, w.heard);
+  eg_seat_heard(v, k, seat_id, w.heard);
   if w.heard > 0 { v[0].eg[k].seat[seat].said_heard = w.heard; v[0].eg[k].seat[seat].said_ms = v[0].mono_ms; }
   st := v[0].eg[k].seat[seat..<seat + 1];
   seq := w.seq;

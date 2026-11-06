@@ -1,3 +1,4 @@
+#load "../../../aethyr/ids.coax";
 // The room server's part of the instance directory (#12717, spec sections 3.4 and 9). Everglade's
 // instances run on several oa-room services, the shards (oa-room is shard 1, oa-room-2 shard 2, ...),
 // each at most one Cloud Run container, so an instance's world lives in one process. The API keeps
@@ -101,7 +102,7 @@ dir_lines :: (v: [] RmServer, b: [] u8, rooms: [] int) -> int {
     }
     // and those whose seats are held for them (#12792): still in the room
     for s: 0..<EG_SEATS {
-      if !eg_held(v, k, s) || !v[0].eg[k].tk[s].ok { continue; }
+      if !eg_held(v, k, SeatId.{value = s}) || !v[0].eg[k].tk[s].ok { continue; }
       tk := v[0].eg[k].tk[s..<s + 1];
       n = dir_put(b, n, " "); n = dir_put(b, n, cast(string) tk[0].pid[0..<tk[0].pid_n]);
     }
@@ -182,7 +183,7 @@ rm_drain_tell :: (v: [] RmServer) -> int #export_c {
     for s: 0..<EG_SEATS {
       st := v[0].eg[k].seat[s..<s + 1];
       if !st[0].live || st[0].conn < 0 || st[0].conn >= CONNS || !v[0].conns[st[0].conn].live || v[0].conns[st[0].conn].kicked { continue; }
-      eg_refuse(v, k, s, 0, WIRE_REFUSE_RESTARTING);
+      eg_refuse(v, k, SeatId.{value = s}, 0, WIRE_REFUSE_RESTARTING);
       v[0].conns[st[0].conn].kicked = true;
       told += 1;
     }

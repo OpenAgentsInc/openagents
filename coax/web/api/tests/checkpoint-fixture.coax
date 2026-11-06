@@ -43,18 +43,18 @@ cp_example :: (out:[]u8,change:int,value:int,pid:string,room:string,dead:bool)->
   #assert cp_integer(d[0],1)==-9007199254740991&&cp_integer(d[0],2)==0&&cp_integer(d[0],3)==-9007199254740991&&cp_integer(d[0],4)==-9007199254740991&&cp_integer(d[0],-1)==-9007199254740991;
 }
 #test "checkpoint decisions order directory fencing before duplicate and stable identity before revision" {
-  #assert room_checkpoint_decide(true,true,2,2,100,8,20,2,100,7,20,false)==0;
-  #assert room_checkpoint_decide(true,true,2,2,100,7,20,2,100,7,20,true)==1;
-  #assert room_checkpoint_decide(true,true,2,2,100,6,20,2,100,7,20,true)==2;
-  #assert room_checkpoint_decide(true,true,2,3,100,7,20,2,100,7,20,true)==3;
-  #assert room_checkpoint_decide(true,true,4,3,100,7,20,2,100,7,20,true)==3;
-  #assert room_checkpoint_decide(true,true,2,2,100,7,20,2,100,7,20,false)==4;
-  #assert room_checkpoint_decide(true,true,2,2,101,8,20,2,100,7,20,false)==5;
-  #assert room_checkpoint_decide(true,false,2,2,100,8,20,2,100,7,20,false)==6;
-  #assert room_checkpoint_decide(false,true,2,2,100,8,20,2,100,7,20,false)==7;
-  #assert room_checkpoint_decide(true,true,2,2,100,8,19,2,100,7,20,false)==8;
-  #assert room_checkpoint_decide(true,true,3,3,101,1,20,2,100,7,20,false)==0;
-  #assert room_checkpoint_decide(true,true,2,2,100,1,20,0,0,0,0,false)==0;
+  #assert room_checkpoint_decide(true,true,OwnerGeneration.{value=2},OwnerGeneration.{value=2},100,8,20,OwnerGeneration.{value=2},100,7,20,false)==0;
+  #assert room_checkpoint_decide(true,true,OwnerGeneration.{value=2},OwnerGeneration.{value=2},100,7,20,OwnerGeneration.{value=2},100,7,20,true)==1;
+  #assert room_checkpoint_decide(true,true,OwnerGeneration.{value=2},OwnerGeneration.{value=2},100,6,20,OwnerGeneration.{value=2},100,7,20,true)==2;
+  #assert room_checkpoint_decide(true,true,OwnerGeneration.{value=2},OwnerGeneration.{value=3},100,7,20,OwnerGeneration.{value=2},100,7,20,true)==3;
+  #assert room_checkpoint_decide(true,true,OwnerGeneration.{value=4},OwnerGeneration.{value=3},100,7,20,OwnerGeneration.{value=2},100,7,20,true)==3;
+  #assert room_checkpoint_decide(true,true,OwnerGeneration.{value=2},OwnerGeneration.{value=2},100,7,20,OwnerGeneration.{value=2},100,7,20,false)==4;
+  #assert room_checkpoint_decide(true,true,OwnerGeneration.{value=2},OwnerGeneration.{value=2},101,8,20,OwnerGeneration.{value=2},100,7,20,false)==5;
+  #assert room_checkpoint_decide(true,false,OwnerGeneration.{value=2},OwnerGeneration.{value=2},100,8,20,OwnerGeneration.{value=2},100,7,20,false)==6;
+  #assert room_checkpoint_decide(false,true,OwnerGeneration.{value=2},OwnerGeneration.{value=2},100,8,20,OwnerGeneration.{value=2},100,7,20,false)==7;
+  #assert room_checkpoint_decide(true,true,OwnerGeneration.{value=2},OwnerGeneration.{value=2},100,8,19,OwnerGeneration.{value=2},100,7,20,false)==8;
+  #assert room_checkpoint_decide(true,true,OwnerGeneration.{value=3},OwnerGeneration.{value=3},101,1,20,OwnerGeneration.{value=2},100,7,20,false)==0;
+  #assert room_checkpoint_decide(true,true,OwnerGeneration.{value=2},OwnerGeneration.{value=2},100,1,20,OwnerGeneration.{value=0},0,0,0,false)==0;
   expected:=[9]string.["applied","duplicate","stale","fenced","conflict","process","unknown","unavailable","regression"];
   for i:0..<9{#assert room_checkpoint_status(i)==expected[i];}#assert room_checkpoint_status(-1)=="unavailable"&&room_checkpoint_status(9)=="unavailable";
 }

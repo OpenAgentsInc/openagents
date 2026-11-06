@@ -1,3 +1,4 @@
+#load "../../../aethyr/ids.coax";
 // Read production state; never substitute HTTP success, expiry or an ACK for
 // durable acceptance. These exports have no admission or persistence effects.
 #test "capacity input observations use actual pending inputs and preserve unknown clock ages (#12843)" #steps 2000000000 {
@@ -32,17 +33,17 @@ rm_st_inputs::(v:[]RmServer,out:[]int) #export_c {
 }
 #test "vitals: failed and late checkpoint posts cannot advance accepted revision or age (#12840)" #steps 4000000000 {
   v:[1]RmServer;ck_test_init(v[..]);k:=ck_test_join(v[..],0,7,CharacterCapture.{});ck_test_place(v[..],k);out:[12]int;
-  #assert rm_st_saved(v[..],k,0,out[..])&&out[0]==2&&out[1]==7&&out[3]==0&&out[4]== -1&&out[11]==0;
+  #assert rm_st_saved(v[..],k, SeatId.{value = 0},out[..])&&out[0]==2&&out[1]==7&&out[3]==0&&out[4]== -1&&out[11]==0;
   #assert rm_checkpoint_due(v[..])>0;rev:=v[0].ck.fly_capture.n[3];rm_checkpoint_answer(v[..],1,500,"");
-  #assert rm_st_saved(v[..],k,0,out[..])&&out[3]==0&&out[4]== -1&&out[8]==1;
+  #assert rm_st_saved(v[..],k, SeatId.{value = 0},out[..])&&out[3]==0&&out[4]== -1&&out[8]==1;
   rm_clock(v[..],v[0].ck.retry_at,1762190001000);#assert rm_checkpoint_due(v[..])>0;
   b:[256]u8;rm_checkpoint_answer(v[..],2,200,ck_test_receipt(v[..],"duplicate",b[..]));
-  #assert rm_st_saved(v[..],k,0,out[..])&&out[2]==101&&out[3]==rev&&out[4]>=0&&out[5]==0&&out[6]==1762190000001&&out[11]==1;
+  #assert rm_st_saved(v[..],k, SeatId.{value = 0},out[..])&&out[2]==101&&out[3]==rev&&out[4]>=0&&out[5]==0&&out[6]==1762190000001&&out[11]==1;
   capture_age:=out[4];rm_clock(v[..],v[0].mono_ms+500,1762190001500);rm_checkpoint_answer(v[..],1,500,"");
-  #assert rm_st_saved(v[..],k,0,out[..])&&out[3]==rev&&out[4]==capture_age+500&&out[5]==500;
+  #assert rm_st_saved(v[..],k, SeatId.{value = 0},out[..])&&out[3]==rev&&out[4]==capture_age+500&&out[5]==500;
   totals:[28]int;rm_st_saves(v[..],totals[..]);#assert totals[2]==2&&totals[3]==1&&totals[4]==1&&totals[6]==1&&totals[7]==1&&totals[11]==1;
-  out[0]=99;#assert !rm_st_saved(v[..],k,0,out[0..<11])&&out[0]==99;
-  #assert !rm_st_saved(v[..],-1,0,out[..])&&!rm_st_saved(v[..],k,EG_SEATS,out[..]);
+  out[0]=99;#assert !rm_st_saved(v[..],k, SeatId.{value = 0},out[0..<11])&&out[0]==99;
+  #assert !rm_st_saved(v[..],-1, SeatId.{value = 0},out[..])&&!rm_st_saved(v[..],k, SeatId.{value = EG_SEATS},out[..]);
 }
 #test "vitals: legacy abandonment and refusal are not durable acceptance (#12840)" #steps 2000000000 {
   v:[1]RmServer;k:=rc_test_room(v[..],"pair-legacy-observe",1,false);
@@ -50,10 +51,10 @@ rm_st_inputs::(v:[]RmServer,out:[]int) #export_c {
   // marker is separate and starts unknown, including a bare historical 2xx.
   v[0].conns[0].ticket=Ticket.{ok=true,pid_n=3,owner=9};v[0].conns[0].ticket.pid[0]='p';v[0].conns[0].ticket.pid[1]='-';v[0].conns[0].ticket.pid[2]='z';
   rv_note(v[..],"p-z",7,10,20,0);i:=rv_find(v[..],"p-z");v[0].vit.v[i].owner=9;v[0].vit.v[i].acked=v[0].vit.v[i].rev;
-  out:[12]int;#assert rm_st_saved(v[..],k,0,out[..])&&out[0]==1&&out[3]==0&&out[4]== -1&&out[11]==0;
+  out:[12]int;#assert rm_st_saved(v[..],k, SeatId.{value = 0},out[..])&&out[0]==1&&out[3]==0&&out[4]== -1&&out[11]==0;
   v[0].vit.v[i].durable_rev=3;v[0].vit.v[i].durable_owner=9;v[0].vit.v[i].durable_capture_at=v[0].wall_ms-2000;v[0].vit.v[i].durable_at=v[0].wall_ms-1000;
-  #assert rm_st_saved(v[..],k,0,out[..])&&out[3]==3&&out[4]==2000&&out[5]==1000&&out[6]==0&&out[11]==1;
-  v[0].conns[0].ticket.owner=10;#assert rm_st_saved(v[..],k,0,out[..])&&out[1]==10&&out[3]==0&&out[4]== -1&&out[11]==0;
+  #assert rm_st_saved(v[..],k, SeatId.{value = 0},out[..])&&out[3]==3&&out[4]==2000&&out[5]==1000&&out[6]==0&&out[11]==1;
+  v[0].conns[0].ticket.owner=10;#assert rm_st_saved(v[..],k, SeatId.{value = 0},out[..])&&out[1]==10&&out[3]==0&&out[4]== -1&&out[11]==0;
 }
 #test "vitals: the actual legacy receipt preserves the accepted capture through coalescing refusal and expiry (#12840)" #steps 2000000000 {
   v:[1]RmServer;ck_test_init(v[..]);rv_note(v[..],"p-observe",7,10,20,0);i:=rv_find(v[..],"p-observe");
@@ -89,13 +90,13 @@ rm_st_sent_ack::(v:[]RmServer,conn:int,text:string)->int #export_c{
   if d.ack!=st[0].ack||d.ack<=st[0].ack_sent_told||st[0].ack_at<=0{return -1;}
   st[0].ack_sent_told=d.ack;return st[0].ack_at;
 }
-rm_st_saved::(v:[]RmServer,k:int,s:int,out:[]int)->bool #export_c{
+rm_st_saved::(v:[]RmServer,k:int, s_id: SeatId,out:[]int)->bool #export_c{ s := s_id.value;
   if out.count<12||!rm_eg_live(v,k)||s<0||s>=EG_SEATS||!v[0].eg[k].seat[s].live{return false;}
-  for q:0..<12{out[q]=0;}out[4]= -1;out[5]= -1;tk:=eg_ticket(v,k,s);out[1]=tk.owner;
+  for q:0..<12{out[q]=0;}out[4]= -1;out[5]= -1;tk:=eg_ticket(v,k, s_id);out[1]=tk.owner;
   if tk.schema==2{
-    out[0]=2;i:=ck_slot_seat(v,k,s);if i<0{return true;}e:=v[0].ck.slot[i..<i+1];
+    out[0]=2;i:=ck_slot_seat(v,k, s_id);if i<0{return true;}e:=v[0].ck.slot[i..<i+1];
     out[2]=e[0].accepted_process;out[3]=e[0].acked;out[6]=e[0].accepted_at;out[7]=e[0].latest.n[3];out[8]=ifx e[0].latest.ok&&e[0].latest.n[3]>e[0].acked then 1 else 0;
-    out[9]=ifx !ck_can_play(v,k,s)||v[0].ck.finalizing then 1 else 0;out[10]=e[0].accepted_capture_wall;out[11]=ifx e[0].accepted then 1 else 0;
+    out[9]=ifx !ck_can_play(v,k, s_id)||v[0].ck.finalizing then 1 else 0;out[10]=e[0].accepted_capture_wall;out[11]=ifx e[0].accepted then 1 else 0;
     if e[0].accepted{out[4]=rs_max(0,v[0].mono_ms-e[0].accepted_mono);out[5]=rs_max(0,v[0].mono_ms-e[0].receipt_mono);}return true;
   }
   out[0]=1;pid:=tk.pid;i:=rv_find(v,cast(string)pid[0..<tk.pid_n]);if i<0{return true;}e:=v[0].vit.v[i..<i+1];
@@ -107,7 +108,7 @@ rm_st_saves::(v:[]RmServer,out:[]int) #export_c{
   out[0]=rm_checkpoint_pending(v);out[1]=ifx v[0].ck.fly then 1 else 0;
   out[2]=v[0].ck.posts;out[3]=v[0].ck.retries;out[4]=v[0].ck.failures;out[5]=v[0].ck.applied;out[6]=v[0].ck.duplicates;out[7]=v[0].ck.late;out[8]=v[0].ck.refused;out[9]=v[0].ck.fenced;
   for i:0..<CF_CAP{e:=v[0].ck.slot[i..<i+1];if !e[0].live{continue;}out[10]+=1;if e[0].accepted{out[11]+=1;out[12]=rs_max(out[12],v[0].mono_ms-e[0].accepted_mono);out[13]=rs_max(out[13],v[0].mono_ms-e[0].receipt_mono);}}
-  for k:0..<EG_ROOMS{if rm_checkpoint_paused(v,k){out[14]+=1;}if !v[0].eg[k].live{continue;}for s:0..<EG_SEATS{if v[0].eg[k].seat[s].live{out[26]=rs_max(out[26],eg_ticket(v,k,s).owner);}}}
+  for k:0..<EG_ROOMS{if rm_checkpoint_paused(v,k){out[14]+=1;}if !v[0].eg[k].live{continue;}for s:0..<EG_SEATS{if v[0].eg[k].seat[s].live{out[26]=rs_max(out[26],eg_ticket(v,k, SeatId.{value = s}).owner);}}}
   out[15]=ifx v[0].ck.finalizing then 1 else 0;out[16]=rm_vitals_pending(v);out[17]=ifx v[0].vit.fly then 1 else 0;
   out[18]=v[0].vit.posts;out[19]=v[0].vit.retried;out[20]=v[0].vit.failed;out[21]=v[0].vit.applied;out[22]=v[0].vit.dup;out[23]=v[0].vit.fenced;out[24]=v[0].vit.gave_up;out[25]=v[0].vit.evicted;out[27]=v[0].st.refused[ST_ELSEWHERE];
 }
@@ -122,7 +123,7 @@ rm_st_capacity::(v:[]RmServer,out:[]int) #export_c{
   if out.count<6{return;}for q:0..<6{out[q]=0;}out[0]=EG_ROOMS;
   for k:0..<EG_ROOMS{if !v[0].eg[k].live{out[2]+=1;continue;}out[1]+=1;
     for s:0..<EG_SEATS{st:=v[0].eg[k].seat[s];if !st.live{continue;}
-      if st.conn>=0{out[3]+=1;}if eg_held(v,k,s){out[4]+=1;}if !st.placed{out[5]+=1;}
+      if st.conn>=0{out[3]+=1;}if eg_held(v,k, SeatId.{value = s}){out[4]+=1;}if !st.placed{out[5]+=1;}
     }
   }
 }
