@@ -12,6 +12,10 @@ libraries=("$@")
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
 # Optional absolute path to an explicitly qualified compiler.
 coax_driver="${COAX:-$repo/coax/bin/coax}"
+if [[ -n "${COAX_FAST_EDIT:-}" ]]; then
+  cmp -s "$coax_driver" "$repo/coax/bin/coax" || { echo 'fast-edit: compiler differs from the sealed default' >&2; exit 2; }
+  [[ "${COAXIAL_MODE:-release}" == dev || "${COAX_FAST_EDIT_ORACLE:-0}" == 1 ]] || { echo 'COAX_FAST_EDIT requires COAXIAL_MODE=dev' >&2; exit 2; }
+fi
 # Coax sources by their path in the repository (apps/openagents-web/x.coax),
 # never the checkout's absolute path: the C embeds source paths for its
 # runtime messages, so a module built in any checkout or temporary release
@@ -28,6 +32,9 @@ face="$(cd "$(dirname "$face")" && pwd)/$(basename "$face")"
 mkdir -p "$(dirname "$out")"; out="$(cd "$(dirname "$out")" && pwd)/$(basename "$out")"
 source "$repo/coax/web/toolchain.sh"
 clang="$COAXIAL_CLANG"; sysroot="$COAXIAL_SYSROOT"; resources="$COAXIAL_RESOURCES"
+if [[ -n "${COAX_FAST_EDIT:-}" ]]; then
+  [[ "$clang" == "$(sed -n '1p' "$COAX_FAST_EDIT/toolchain")" && "$sysroot" == "$(sed -n '2p' "$COAX_FAST_EDIT/toolchain")" && "$resources" == "$(sed -n '3p' "$COAX_FAST_EDIT/toolchain")" ]] || { echo 'fast-edit: Wasm toolchain differs from the sealed baseline' >&2; exit 2; }
+fi
 name="$(basename "$coax_file" .coax)"
 # Catalog applications include the shared renderer in ordinary builds (host.js
 # needs each world's renderer facade: with 0 every world page fails "engine has
@@ -177,6 +184,9 @@ split_unit=(); [[ -z "${COAXIAL_SPLIT_UNIT:-}" ]] || split_unit=(--split-unit "$
 unit_split() { [[ "$1" == "${units[0]%%:*}" && "$split" != 0 ]] && echo "$split" || echo 0; }   # unit: its --split count
 unit_key() {   # unit header-base: the cache key, or nothing (not cacheable)
   local list
+  # Development checks and compilation use an immutable private source tree.
+  # Its C embeds that tree's physical paths, so never reuse ordinary C here.
+  [[ -z "${COAX_FAST_EDIT:-}" ]] || return 0
   list="$(cd "$repo" && "$repo/coax/web/tool.sh" wasm-size sources "$1")" && [[ -n "$list" ]] || return 0
   { printf '%s\n' coax-wasm-c-1 "$compiler_sum" "$1" "$2" ${run_steps[@]+"${run_steps[@]}"}
     [[ "$(unit_split "$1")" == 0 ]] || printf 'split %s %s\n' "$(unit_split "$1")" "${COAXIAL_SPLIT_UNIT:-}"
@@ -202,7 +212,9 @@ emit() {   # unit header-base: its C and header into $work, from the cache or th
     step "$2" coax_to_c hit "$began"; return 0
   fi
   local parts=(); [[ "$(unit_split "$1")" == 0 ]] || parts=(--split "$(unit_split "$1")" ${split_unit[@]+"${split_unit[@]}"})
-  (cd "$repo" && "$coax_driver" c "$1" --library --header "$work/$2.h" ${parts[@]+"${parts[@]}"} ${run_steps[@]+"${run_steps[@]}"} --timings "$work/$2.coax.json") > "$work/$2.c"
+  local source="$1"
+  [[ -z "${COAX_FAST_EDIT:-}" ]] || source="$COAX_FAST_EDIT/source/$1"
+  (cd "$repo" && "$coax_driver" c "$source" --library --header "$work/$2.h" ${parts[@]+"${parts[@]}"} ${run_steps[@]+"${run_steps[@]}"} --timings "$work/$2.coax.json") > "$work/$2.c"
   [[ -z "$key" ]] || { keep "$work/$2.h" "$cache/$key.h"; keep "$work/$2.c" "$cache/$key.c"; }
   step "$2" coax_to_c "$([[ -n "$key" ]] && echo miss || echo off)" "$began"
 }
@@ -224,10 +236,17 @@ compile() {   # name source [flags...]: $work/name.o from the cache or clang, an
 }
 : > "$work/steps"
 started=$SECONDS; started_us="$(now)"
+if [[ -n "${COAX_FAST_EDIT:-}" && "${COAX_FAST_EDIT_ORACLE:-0}" != 1 ]]; then units+=("coax/web/fast-edit-offer.coax:fast-edit-policy"); fi
 for unit in "${units[@]}"; do
   emit "${unit%%:*}" "${unit##*:}" & gen+=($!)
 done
 for pid in "${gen[@]}"; do wait "$pid"; done
+if [[ -n "${COAX_FAST_EDIT:-}" && "${COAX_FAST_EDIT_ORACLE:-0}" != 1 ]]; then
+  [[ "$mode" == dev ]] || { echo 'COAX_FAST_EDIT requires COAXIAL_MODE=dev' >&2; exit 2; }
+  # Cache entries remain ordinary checked C; object keys hash the private
+  # instrumented copies, including their sealed development identity.
+  for unit in "${units[@]}"; do "$repo/coax/web/tool.sh" fast-edit instrument "$COAX_FAST_EDIT" "$work/${unit##*:}.c"; done
+fi
 if [[ "$render" == 1 ]]; then cp "$work/$name.h" "$work/Render.h"; fi
 # A folded library's header is the carrier's (a header may be included twice).
 for library in ${folded[@]+"${folded[@]}"}; do
@@ -277,6 +296,7 @@ stack_bytes=1048576
 [[ "$render" == 1 ]] && stack_bytes=4194304
 link=(--target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -mexec-model=reactor
       -Wl,--import-memory,--max-memory=67108864,-z,stack-size="$stack_bytes",--export=__heap_base,--gc-sections,--strip-debug)
+[[ -z "${COAX_FAST_EDIT:-}" || "${COAX_FAST_EDIT_ORACLE:-0}" == 1 ]] || link+=(-Wl,--export=fe_publish_offer)
 # A release's link still optimizes every unit together (full LTO), then
 # generates code in 8 parallel parts (#12938). Everglade 5e with its carrier
 # split, on coderos-4080 at load 9: 10.2 s linked in one part, 7.3 s in 8,

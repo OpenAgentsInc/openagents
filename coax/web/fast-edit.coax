@@ -1,0 +1,338 @@
+// Development-only scalar body replacement for Everglade. Product/release
+// builds do not set COAX_FAST_EDIT and never include the dispatch boundary.
+//   fast-edit prepare SESSION
+//   fast-edit instrument SESSION FILE.c
+//   fast-edit candidate SESSION
+#import "Basic";
+#load "fast-edit-policy.coax";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+#load "../lib/crypto/sha256_workspace.coax";
+cxproc_self_path :: (out: []u8) -> int #foreign;
+cxproc_self_pid :: () -> int #foreign;
+cxproc_pid_signal :: (pid: int, signal: int) -> int #foreign;
+cxproc_pid_alive :: (pid: int) -> int #foreign;
+cxproc_cmdline :: (pid: int, out: []u8) -> int #foreign;
+
+FE_SOURCE :: "apps/openagents-web/everglade-doors.coax";
+FE_NAME :: "door_ease";
+FE_CONSTANTS :: [3]string.["lo", "hi", "clamp"];
+FE_FILE :: 33554432;
+FeText :: struct { b: [16384]u8; n: int; bad: bool; }
+ft_add :: (t: []FeText, s: string) {
+  if s.count > t[0].b.count - t[0].n { t[0].bad = true; return; }
+  for c: s { t[0].b[t[0].n] = c; t[0].n += 1; }
+}
+ft_int :: (t: []FeText, v: int) { b: [32]u8; n:=0; x:=v; if x==0 {ft_add(t,"0");return;} while x>0 {b[n]=cast(u8)('0'+x%10);n+=1;x/=10;} for i:0..<n {c:=[1]u8.[b[n-1-i]];ft_add(t,cast(string)c[..]);} }
+ft_text :: (t: []FeText) -> string { return cast(string)t[0].b[0..<t[0].n]; }
+ft_path :: (dir: string, name: string, t: []FeText) -> string { t[0].n=0;ft_add(t,dir);ft_add(t,"/");ft_add(t,name);return ft_text(t); }
+ft_find :: (s: string, part: string, from: int) -> int {
+  if from<0 || part.count==0 {return -1;}
+  for i:from..<s.count-part.count+1 {if s[i..<i+part.count]==part {return i;}} return -1;
+}
+ft_sha :: (data: string, out: []u8) -> string {
+  w:[1]ShaOwned;d:[32]u8;
+  if out.count<64 || !so_init(w[..]) {return "";}
+  chunk:[16384]u8;at:=0;
+  while at<data.count {n:=ifx data.count-at<chunk.count then data.count-at else chunk.count;for i:0..<n {chunk[i]=data[at+i];}if !so_update(w[..],chunk[0..<n],false) {return "";}at+=n;}
+  if !so_finish(w[..],d[..],false) {return "";}
+  hex:="0123456789abcdef";for i:0..<32 {out[i*2]=hex[cast(int)(d[i]>>4)];out[i*2+1]=hex[cast(int)(d[i]&15)];}return cast(string)out[0..<64];
+}
+ft_read :: (dir: string, name: string, out: []u8) -> int { p:[1]FeText;return fs_read(ft_path(dir,name,p[..]),out); }
+ft_write :: (dir: string, name: string, value: string) -> bool { p:[1]FeText;return fs_write(ft_path(dir,name,p[..]),value); }
+ft_atomic :: (dir: string, name: string, value: string) -> bool {
+  temp:[1]FeText;ft_add(temp[..],name);ft_add(temp[..],".next");from:[1]FeText;to:[1]FeText;
+  return ft_write(dir,ft_text(temp[..]),value) && fs_rename(ft_path(dir,ft_text(temp[..]),from[..]),ft_path(dir,name,to[..]));
+}
+ft_number :: (dir: string, name: string) -> int {
+  bytes:[64]u8;n:=ft_read(dir,name,bytes[..]);if n<0 {return -1;}r:=args_number(cast(string)bytes[0..<n]);return ifx r.ok && r.value>=0 && r.value<1000000001 then cast(int)r.value else -1;
+}
+ft_verification_state :: (dir: string, revision: int, state: string, elapsed: int, reused: bool) -> bool {
+  text:[1]FeText;ft_add(text[..],"{\"revision\":");ft_int(text[..],revision);ft_add(text[..],",\"state\":\"");ft_add(text[..],state);ft_add(text[..],"\",\"verification_ms\":");ft_int(text[..],elapsed);ft_add(text[..],",\"proof_reused\":");ft_add(text[..],ifx reused then "true" else "false");ft_add(text[..],"}");return ft_atomic(dir,"verification.json",ft_text(text[..]));
+}
+ft_snapshot :: (dir: string, name: string, value: string) -> bool {
+  p:[1]FeText;ft_add(p[..],dir);ft_add(p[..],"/source/");ft_add(p[..],name);
+  if !fs_mkdir(fs_dir(ft_text(p[..]))) && fs_kind(fs_dir(ft_text(p[..])))<=0 {return false;}
+  return fs_write(ft_text(p[..]),value);
+}
+ft_run :: (argv: []string, out: []u8) -> bool {
+  err:[65536]u8;r:=proc_run(argv,780000,out,err[..]);
+  if r.status!=0 || r.started!=0 || r.timed_out || r.cut {tool_errln(cast(string)err[0..<r.err_n]);return false;}return true;
+}
+#test "toolchain output keeps all five fields with or without a final newline" {
+  p:[5]string;
+  #assert ft_toolchain_parts("a\nb\nc\nd\ne",p[..]) && p[4]=="e";
+  #assert ft_toolchain_parts("a\nb\nc\nd\ne\n",p[..]) && p[0]=="a";
+  #assert !ft_toolchain_parts("a\nb\nc\nd",p[..]);
+  #assert !ft_toolchain_parts("a\nb\n\nd\ne",p[..]);
+}
+ft_toolchain_parts :: (text:string,parts:[]string)->bool {
+  at:=0;for i:0..<5 {end:=at;while end<text.count && text[end]!='\n' {end+=1;}if end==at {return false;}parts[i]=text[at..<end];at=end+1;}return true;
+}
+ft_toolchain_versions :: (parts:[]string,out:[]u8)->int {
+  env:[1]FeText;ft_add(env[..],"PATH=");ft_add(env[..],parts[3]);
+  argv:=[8]string.["env",ft_text(env[..]),"bash","-c","\"$1\" --version && \"$2\" --version","fast-edit",parts[0],parts[4]];
+  err:[4096]u8;r:=proc_run(argv[..],10000,out,err[..]);return ifx r.status==0 && !r.cut then r.out_n else -1;
+}
+ft_prepare :: (dir: string) -> int {
+  if fs_kind(dir)<=0 && !fs_mkdir(dir) {tool_errln("fast-edit: cannot create session");return 1;}
+  if ft_number(dir,"revision")>0 {tool_errln("fast-edit: an active session cannot be resealed; prepare a new directory");return 2;}
+  source:[1048576]u8;n:=fs_read(FE_SOURCE,source[..]);if n<0 {return 1;}
+  text:=cast(string)source[0..<n];p:=fe_scalar_span(text,FE_NAME,"t","f32");
+  if !p.ok || !fe_door_body(text[p.body..<p.end]) {tool_errln("fast-edit: unsupported baseline procedure");return 2;}
+  if !ft_snapshot(dir,FE_SOURCE,text) {return 1;}
+  prefix:[1]FeText;
+  helpers:[1048576]u8;hn:=fs_read("verse/grid.coax",helpers[..]);if hn<0 {return 1;}helper_source:=cast(string)helpers[0..<hn];
+  for c:FE_CONSTANTS {s:=fe_named(helper_source,c);if !s.ok {tool_errln("fast-edit: helper is not a complete declaration");return 2;}ft_add(prefix[..],helper_source[s.begin..<s.end]);ft_add(prefix[..],"\n");}
+  // Both product load graphs, plus their compiler, seal the session's inputs.
+  list:[1048576]u8;inputs:[4194304]u8;used:=0;file:[FE_FILE]u8;path:[1]FeText;hash:[64]u8;
+  for root:[8]string.["coax/web/room/room.coax","apps/openagents-web/everglade.coax","apps/openagents-web/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","aethyr/render/carriers/everglade5e.coax","coax/web/fast-edit.coax"] {
+    argv:=[4]string.["coax/web/tool.sh","wasm-size","sources",root];
+    list[0]=0;out:[1048576]u8;err:[4096]u8;r:=proc_run(argv[..],780000,out[..],err[..]);
+    if r.status!=0 || r.cut {tool_errln("fast-edit: cannot enumerate complete source graph");return 1;}
+    at:=0;while at<r.out_n {end:=at;while end<r.out_n && out[end]!='\n' {end+=1;}name:=cast(string)out[at..<end];at=end+1;if name.count==0 {continue;}
+      if name==FE_SOURCE {continue;} // its complete outside-body bytes are checked separately
+      k:=fs_read(name,file[..]);if k<0 || k>=file.count {return 1;}
+      if !ft_snapshot(dir,name,cast(string)file[0..<k]) {return 1;}
+      sum:=ft_sha(cast(string)file[0..<k],hash[..]);
+      row:[1]FeText;ft_add(row[..],sum);ft_add(row[..]," ");ft_add(row[..],name);ft_add(row[..],"\n");
+      if used+row[0].n>inputs.count {return 1;}for c:ft_text(row[..]) {inputs[used]=c;used+=1;}
+    }
+  }
+  for name:[16]string.["coax/web/fast-edit-policy.coax","coax/web/fast-edit-offer.coax","coax/web/fast-edit.coax","coax/web/fast-edit-native.c","coax/web/fast-edit-native.h","coax/web/fast-edit.js","coax/web/host.js","coax/web/room/room-host.c","coax/web/room/build.sh","coax/web/wasm.sh","coax/web/toolchain.sh","coax/platform/process-native.c","coax/platform/store-file-native.c","coax/platform/tool-native.c","coax/web/room/room-catalog.coax","apps/openagents-web/realms/everglade/assets/everglade.pack"] {
+    k:=fs_read(name,file[..]);if k<0 || k>=file.count {return 1;}
+    row:[1]FeText;ft_add(row[..],ft_sha(cast(string)file[0..<k],hash[..]));ft_add(row[..]," ");ft_add(row[..],name);ft_add(row[..],"\n");
+    if used+row[0].n>inputs.count {return 1;}for c:ft_text(row[..]) {inputs[used]=c;used+=1;}
+    if !ft_snapshot(dir,name,cast(string)file[0..<k]) {return 1;}
+  }
+  // The resident SDK and C faces are part of the sealed program too. A
+  // changed include or browser adapter requires an ordinary full rebuild.
+  for directory:[4]string.["coax/web","coax/web/room","verse/voice-host","apps/openagents-web"] {
+    entries:[1]FsList;total:=fs_list(directory,entries[..]);if total<0 {return 1;}
+    for i:0..<total {
+      entry:=fs_entry(entries[..],i);
+      selected:=(entry.count>=2 && (entry[entry.count-2..<entry.count]==".c" || entry[entry.count-2..<entry.count]==".h")) || (entry.count>=3 && entry[entry.count-3..<entry.count]==".js");
+      if !selected {continue;}name:=ft_path(directory,entry,path[..]);
+      k:=fs_read(name,file[..]);if k<0 || k>=file.count {return 1;}
+      row:[1]FeText;ft_add(row[..],ft_sha(cast(string)file[0..<k],hash[..]));ft_add(row[..]," ");ft_add(row[..],name);ft_add(row[..],"\n");
+      if used+row[0].n>inputs.count {return 1;}for c:ft_text(row[..]) {inputs[used]=c;used+=1;}
+      if !ft_snapshot(dir,name,cast(string)file[0..<k]) {return 1;}
+    }
+  }
+  compiler_n:=fs_read("coax/bin/coax",file[..]);if compiler_n<0 || compiler_n>=file.count {return 1;}
+  compiler_sum:[64]u8;_:=ft_sha(cast(string)file[0..<compiler_n],compiler_sum[..]);
+  sealed:[1]FeText;ft_add(sealed[..],"coax.fast-edit.scalar.v1\nf32->f32\n");ft_add(sealed[..],cast(string)compiler_sum[..]);ft_add(sealed[..],"\n");
+  context_sum:[64]u8;context:[1048576]u8;cn:=0;
+  for c:text[0..<p.body] {context[cn]=c;cn+=1;}for c:text[p.end..<text.count] {context[cn]=c;cn+=1;}
+  ft_add(sealed[..],ft_sha(cast(string)context[0..<cn],context_sum[..]));
+  graph_sum:[64]u8;ft_add(sealed[..],ft_sha(cast(string)inputs[0..<used],graph_sum[..]));
+  tc := [3]string.["bash","-c","source coax/web/toolchain.sh && printf '%s\\n%s\\n%s\\n%s\\n' \"$COAXIAL_CLANG\" \"$COAXIAL_SYSROOT\" \"$COAXIAL_RESOURCES\" \"$PATH\" && command -v cc"];
+  tc_out:[16384]u8;tc_err:[4096]u8;tr:=proc_run(tc[..],780000,tc_out[..],tc_err[..]);
+  parts:[5]string;versions:[16384]u8;
+  if tr.status!=0 || tr.cut || !ft_toolchain_parts(cast(string)tc_out[0..<tr.out_n],parts[..]) {tool_errln("fast-edit: cannot resolve toolchains");return 1;}
+  vn:=ft_toolchain_versions(parts[..],versions[..]);if vn<0 {return 1;}
+  tc_sum:[64]u8;v_sum:[64]u8;ft_add(sealed[..],ft_sha(cast(string)tc_out[0..<tr.out_n],tc_sum[..]));ft_add(sealed[..],ft_sha(cast(string)versions[0..<vn],v_sum[..]));
+  ft_add(sealed[..],"\nnative:c11,O2,ffp-contract=off,fno-fast-math\nwasm:c11,O1,ffp-contract=off,fno-fast-math,reactor\n");
+  identity:[64]u8;_ = ft_sha(ft_text(sealed[..]),identity[..]);
+  if !ft_write(dir,"baseline.coax",text) || !ft_write(dir,"prefix.coax",ft_text(prefix[..])) || !ft_write(dir,"inputs",cast(string)inputs[0..<used]) || !ft_write(dir,"compiler",cast(string)compiler_sum[..]) || !ft_write(dir,"identity",cast(string)identity[..]) || !ft_write(dir,"revision","0") || !ft_write(dir,"toolchain",cast(string)tc_out[0..<tr.out_n]) || !ft_write(dir,"toolchain-versions",cast(string)versions[0..<vn]) {return 1;}
+  print("fast-edit: sealed % (% source bytes)\n",FE_NAME,used);return 0;
+}
+ft_context :: (dir: string, source: string) -> bool {
+  baseline:[1048576]u8;n:=ft_read(dir,"baseline.coax",baseline[..]);if n<0 || !fe_door_context(cast(string)baseline[0..<n],source) {return false;}
+  inputs:[4194304]u8;k:=ft_read(dir,"inputs",inputs[..]);if k<0 {return false;}
+  file:[FE_FILE]u8;hash:[64]u8;at:=0;
+  while at<k {end:=at;while end<k && inputs[end]!='\n' {end+=1;}if end-at<66 {return false;}
+    expected:=cast(string)inputs[at..<at+64];name:=cast(string)inputs[at+65..<end];at=end+1;
+    count:=fs_read(name,file[..]);if count<0 || count>=file.count || ft_sha(cast(string)file[0..<count],hash[..])!=expected {return false;}
+  }
+  expected:[64]u8;if ft_read(dir,"compiler",expected[..])!=64 {return false;}
+  count:=fs_read("coax/bin/coax",file[..]);if count<0 || count>=file.count || ft_sha(cast(string)file[0..<count],hash[..])!=cast(string)expected[..] {return false;}
+  tc:[16384]u8;versions:[16384]u8;observed:[16384]u8;parts:[5]string;tn:=ft_read(dir,"toolchain",tc[..]);vn:=ft_read(dir,"toolchain-versions",versions[..]);
+  if tn<0 || vn<0 || !ft_toolchain_parts(cast(string)tc[0..<tn],parts[..]) {return false;}
+  got:=ft_toolchain_versions(parts[..],observed[..]);return got>=0 && cast(string)observed[0..<got]==cast(string)versions[0..<vn];
+}
+ft_instrument :: (dir: string, path: string) -> int {
+  source:[1048576]u8;sn:=fs_read(FE_SOURCE,source[..]);if sn<0 || !ft_context(dir,cast(string)source[0..<sn]) {tool_errln("fast-edit: stale baseline inputs");return 2;}
+  identity:[64]u8;if ft_read(dir,"identity",identity[..])!=64 {return 1;}
+  data:[FE_FILE]u8;n:=fs_read(path,data[..]);if n<0 || n>=data.count {return 1;}s:=cast(string)data[0..<n];
+  // A split stream gives procedures external linkage. Preserve the existing
+  // prototype's linkage so the same boundary works before either C layout.
+  signature:="float coax_p_door_ease(float l_t) {";start:=ft_find(s,signature,0);if start<0 {return 0;}
+  end:=ft_find(s,"\n}\n",start);if end<0 || ft_find(s,signature,end+3)>=0 {return 1;}end+=3;
+  // No stored function pointers may escape this host-owned scalar slot.
+  at:=0;while true {p:=ft_find(s,"coax_p_door_ease",at);if p<0 {break;}at=p+"coax_p_door_ease".count;if at>=s.count || s[at]!='(' {tool_errln("fast-edit: escaped procedure address");return 2;}}
+  head:[1]FeText;ft_add(head[..],"float coax_fast_original(float l_t) {");
+  body_start:=start+signature.count;out:[FE_FILE]u8;used:=0;
+  for c:s[0..<start] {out[used]=c;used+=1;}for c:ft_text(head[..]) {out[used]=c;used+=1;}for c:s[body_start..<end] {out[used]=c;used+=1;}
+  extra:[1]FeText;
+  ft_add(extra[..],"\n#ifdef __wasm__\n__attribute__((import_module(\"env\"), import_name(\"coax_dev_dispatch\")))\n#endif\nextern float coax_dev_dispatch(float);\nfloat coax_p_door_ease(float l_t) { return coax_dev_dispatch(l_t); }\n");
+  ft_add(extra[..],"#ifdef __wasm__\n__attribute__((export_name(\"coax_dev_baseline\")))\n#endif\n__attribute__((weak)) float coax_dev_baseline(float t) { return coax_fast_original(t); }\n");
+  ft_add(extra[..],"#ifdef __wasm__\n__attribute__((export_name(\"coax_dev_observe\")))\n#endif\n__attribute__((weak)) float coax_dev_observe(float t) { return coax_p_door_ease(t); }\n");
+  ft_add(extra[..],"#ifdef __wasm__\n__attribute__((export_name(\"coax_dev_identity_byte\")))\n#endif\n__attribute__((weak)) int coax_dev_identity_byte(int i) { const char *s=\"");ft_add(extra[..],cast(string)identity[..]);ft_add(extra[..],"\"; return i>=0 && i<64 ? (unsigned char)s[i] : -1; }\n");
+  if used+extra[0].n+n-end>out.count {return 1;}for c:ft_text(extra[..]) {out[used]=c;used+=1;}for c:s[end..<s.count] {out[used]=c;used+=1;}
+  return ifx fs_write(path,cast(string)out[0..<used]) then 0 else 1;
+}
+ft_candidate :: (dir: string) -> int {
+  source:[1048576]u8;n:=fs_read(FE_SOURCE,source[..]);if n<0 {return 1;}text:=cast(string)source[0..<n];p:=fe_scalar_span(text,FE_NAME,"t","f32");
+  if !p.ok || !ft_context(dir,text) || !fe_door_body(text[p.body..<p.end]) {tool_errln("fast-edit: full rebuild required (context, interface or unsupported body changed)");return 2;}
+  prefix:[16384]u8;pn:=ft_read(dir,"prefix.coax",prefix[..]);if pn<0 {return 1;}
+  generated:[1]FeText;ft_add(generated[..],cast(string)prefix[0..<pn]);ft_add(generated[..],"\nfast_edit_candidate :: (t: f32) -> f32 #export_c ");ft_add(generated[..],text[p.body..<p.end]);ft_add(generated[..],"\n");
+  if generated[0].bad || !ft_write(dir,"candidate.coax",ft_text(generated[..])) {return 1;}
+  hash:[64]u8;_:=ft_sha(text,hash[..]);if !ft_write(dir,"candidate-source-sha256",cast(string)hash[..]) {return 1;}print("%\n",cast(string)hash[..]);return 0;
+}
+ft_apply :: (dir: string) -> int {
+  stopped:[1]FeText;if fs_kind(ft_path(dir,"stopped",stopped[..]))>0 {tool_errln("fast-edit: session is stopped");return 2;}
+  began:=proc_now_ms();status:=ft_candidate(dir);if status!=0 {return status;}validated:=proc_now_ms();
+  rev_bytes:[64]u8;rn:=ft_read(dir,"revision",rev_bytes[..]);if rn<0 {return 1;}
+  parsed:=args_number(cast(string)rev_bytes[0..<rn]);if !parsed.ok || parsed.value<0 || parsed.value>=1000000000 {return 1;}
+  revision:=cast(int)parsed.value+1;
+  id:[64]u8;if ft_read(dir,"identity",id[..])!=64 {return 1;}
+  metadata:[1]FeText;
+  ft_add(metadata[..],"#include <stdint.h>\nconst char *coax_dev_patch_identity(void) { return \"");ft_add(metadata[..],cast(string)id[..]);ft_add(metadata[..],"\"; }\nint64_t coax_dev_patch_revision(void) { return ");ft_int(metadata[..],revision);ft_add(metadata[..],"; }\nint coax_dev_patch_identity_byte(int i) { const char*s=coax_dev_patch_identity();return i>=0&&i<64?(unsigned char)s[i]:-1;}\n");
+  if !ft_write(dir,"metadata.c",ft_text(metadata[..])) {return 1;}
+  generated:[1]FeText;meta:[1]FeText;cfile:[1]FeText;lib:[1]FeText;wasm:[1]FeText;cp:[1]FeText;note:[1]FeText;
+  source:=ft_path(dir,"candidate.coax",generated[..]);metadata_path:=ft_path(dir,"metadata.c",meta[..]);c_path:=ft_path(dir,"candidate.c",cfile[..]);
+  ft_add(note[..],"candidate-");ft_int(note[..],revision);ft_add(note[..],".so");library:=ft_path(dir,ft_text(note[..]),lib[..]);note[0].n=0;
+  ft_add(note[..],"candidate-");ft_int(note[..],revision);ft_add(note[..],".wasm");module:=ft_path(dir,ft_text(note[..]),wasm[..]);
+  // This small closed module is checked before either native compiler sees it.
+  output:[65536]u8;compile:=[6]string.["coax/bin/coax","c",source,"--library","-o",c_path];
+  if !ft_run(compile[..],output[..]) {return 1;}coax_done:=proc_now_ms();
+  tc:[16384]u8;tn:=ft_read(dir,"toolchain",tc[..]);parts:[5]string;if tn<0 || !ft_toolchain_parts(cast(string)tc[0..<tn],parts[..]) {return 1;}
+  native:=[12]string.[parts[4],"-std=c11","-O2","-ffp-contract=off","-fno-fast-math","-fPIC","-shared",c_path,metadata_path,"-lm","-o",library];
+  env:[1]FeText;ft_add(env[..],"PATH=");ft_add(env[..],parts[3]);sr:[1]FeText;ft_add(sr[..],"--sysroot=");ft_add(sr[..],parts[1]);rd:[1]FeText;ft_add(rd[..],"-resource-dir=");ft_add(rd[..],parts[2]);
+  wc:=[17]string.["env",ft_text(env[..]),parts[0],"--target=wasm32-wasip1",ft_text(sr[..]),ft_text(rd[..]),"-std=c11","-O1","-ffp-contract=off","-fno-fast-math","-mexec-model=reactor","-Wl,--export-memory,--export=fast_edit_candidate,--export=coax_dev_patch_revision,--export=coax_dev_patch_identity_byte",c_path,metadata_path,"-lm","-o",module];
+  handles:[2]int;statuses:=[2]int.[PROC_RUNNING,PROC_RUNNING];completed:[2]int;
+  for i:0..<2 {
+    h:=proc_new();if h<0 {return 1;}handles[i]=h;
+    argv:=ifx i==0 then native[..] else wc[..];for v:argv {if !proc_arg(h,v) {r:=proc_release(h);return 1;}}
+    if !proc_gentle(h) || proc_start(h)!=0 {r:=proc_release(h);return 1;}
+  }
+  while (statuses[0]==PROC_RUNNING || statuses[1]==PROC_RUNNING) && proc_now_ms()-coax_done<10000 {
+    for i:0..<2 {if statuses[i]==PROC_RUNNING {statuses[i]=proc_wait(handles[i],0);if statuses[i]!=PROC_RUNNING {completed[i]=proc_now_ms();}}}
+    proc_sleep(1);
+  }
+  built:=true;for i:0..<2 {if statuses[i]==PROC_RUNNING {killed:=proc_kill(handles[i],PROC_SIGKILL);waited:=proc_wait(handles[i],2000);}if statuses[i]!=0 {err:[16384]u8;tool_errln(proc_stderr(handles[i],err[..]));built=false;}released:=proc_release(handles[i]);}
+  if !built {return 1;}native_done:=proc_now_ms();
+  // A save during compilation supersedes this candidate before publication.
+  original:[1048576]u8;on:=fs_read(FE_SOURCE,original[..]);expected:[64]u8;actual:[64]u8;
+  if on<0 || ft_read(dir,"candidate-source-sha256",expected[..])!=64 || ft_sha(cast(string)original[0..<on],actual[..])!=cast(string)expected[..] || !ft_context(dir,cast(string)original[0..<on]) {tool_errln("fast-edit: inputs changed while compiling; retry or rebuild");return 2;}
+  snapshot:[1]FeText;ft_add(snapshot[..],"source-");ft_int(snapshot[..],revision);ft_add(snapshot[..],".coax");if !ft_write(dir,ft_text(snapshot[..]),cast(string)original[0..<on]) {return 1;}
+  current:[1]FeText;ft_int(current[..],revision);ft_add(current[..],"\n");ft_add(current[..],library);ft_add(current[..],"\n");
+  if !ft_write(dir,"native.next",ft_text(current[..])) {return 1;}
+  // Reserve the revision before a host can load it. A partial publication
+  // must never let a retry overwrite an already mapped library pathname.
+  counter:[1]FeText;ft_int(counter[..],revision);if !ft_atomic(dir,"revision",ft_text(counter[..])) {return 1;}
+  from:[1]FeText;to:[1]FeText;if !fs_rename(ft_path(dir,"native.next",from[..]),ft_path(dir,"native.current",to[..])) {return 1;}
+  report:[1]FeText;ft_add(report[..],"{\"schema\":\"coax.fast-edit.v1\",\"revision\":");ft_int(report[..],revision);
+  ft_add(report[..],",\"identity\":\"");ft_add(report[..],cast(string)id[..]);ft_add(report[..],"\",\"source_sha256\":\"");ft_add(report[..],cast(string)actual[..]);ft_add(report[..],"\",\"module\":\"");ft_add(report[..],module);ft_add(report[..],"\",\"validation_ms\":");ft_int(report[..],validated-began);
+  ft_add(report[..],",\"coax_ms\":");ft_int(report[..],coax_done-validated);ft_add(report[..],",\"parallel_native_wasm_ms\":");ft_int(report[..],native_done-coax_done);ft_add(report[..],",\"native_ms\":");ft_int(report[..],completed[0]-coax_done);ft_add(report[..],",\"wasm_ms\":");ft_int(report[..],completed[1]-coax_done);ft_add(report[..],",\"publish_ms\":");ft_int(report[..],proc_now_ms()-native_done);ft_add(report[..],",\"build_ms\":");ft_int(report[..],proc_now_ms()-began);ft_add(report[..],"}");
+  if !ft_verification_state(dir,revision,"pending",0,false) || !ft_atomic(dir,"latest.json",ft_text(report[..])) {return 1;}
+  if !ft_launch_verification(dir) {tool_errln("fast-edit: verification did not start; commit remains blocked");return 1;}
+  print("%\n",ft_text(report[..]));return 0;
+}
+ft_launch_verification :: (dir: string) -> bool {
+  stopped:[1]FeText;if fs_kind(ft_path(dir,"stopped",stopped[..]))>0 {return false;}
+  exe:[4096]u8;en:=cxproc_self_path(exe[..]);if en<=0 {return false;}
+  h:=proc_new();if h<0 {return false;}
+  ok:=proc_arg(h,cast(string)exe[0..<en]) && proc_arg(h,"verify-job") && proc_arg(h,dir) && proc_quiet(h) && proc_detach(h) && proc_start(h)==0;
+  if ok {jobs:[1]FeText;ft_add(jobs[..],dir);ft_add(jobs[..],"/jobs");ok=fs_mkdir(ft_text(jobs[..]));name:[1]FeText;ft_int(name[..],proc_pid(h));ok=ok && ft_write(ft_text(jobs[..]),ft_text(name[..]),"owned verification worker\n");}
+  released:=proc_release(h);return ok;
+}
+ft_gate :: (dir: string) -> bool {
+  source:[1048576]u8;n:=fs_read(FE_SOURCE,source[..]);if n<0 || !ft_context(dir,cast(string)source[0..<n]) {return false;}
+  hash:[64]u8;checked:[64]u8;key:[64]u8;id:[64]u8;sealed:[1]FeText;
+  if ft_read(dir,"identity",id[..])!=64 {return false;}ft_add(sealed[..],cast(string)id[..]);ft_add(sealed[..],ft_sha(cast(string)source[0..<n],hash[..]));
+  return ft_read(dir,"verified.sha256",checked[..])==64 && fe_commit_ok(ft_sha(ft_text(sealed[..]),key[..]),cast(string)checked[..],ft_number(dir,"verified.room")==0,ft_number(dir,"verified.page")==0);
+}
+ft_commit_gate :: (dir:string)->bool {
+  if !ft_gate(dir) {return false;}
+  // A receipt for the working tree must never authorize different staged
+  // bytes. Require the index and working tree to agree before git sees them.
+  argv:=[4]string.["git","diff","--quiet","--exit-code"];out:[1024]u8;err:[4096]u8;
+  r:=proc_run(argv[..],10000,out[..],err[..]);return r.status==0 && r.started==0 && !r.timed_out;
+}
+ft_verify :: (dir: string) -> int {
+  revision:=ft_number(dir,"revision");if revision<=0 {return 1;}
+  name:[1]FeText;ft_add(name[..],"source-");ft_int(name[..],revision);ft_add(name[..],".coax");source:[1048576]u8;n:=ft_read(dir,ft_text(name[..]),source[..]);
+  if n<0 || !ft_snapshot(dir,FE_SOURCE,cast(string)source[0..<n]) {return 1;}
+  state_set:=ft_verification_state(dir,revision,"running",0,false);
+  hashes:[64]u8;_:=ft_sha(cast(string)source[0..<n],hashes[..]);
+  handles:[2]int;done:[2]bool;statuses:[2]int;started:=proc_now_ms();
+  for i:0..<2 {
+    root:=ifx i==0 then "coax/web/room/room.coax" else "aethyr/render/carriers/everglade5e.coax";
+    path:[1]FeText;ft_add(path[..],dir);ft_add(path[..],"/source/");ft_add(path[..],root);
+    timings:[1]FeText;ft_add(timings[..],dir);ft_add(timings[..],ifx i==0 then "/room-check.json" else "/page-check.json");
+    argv:=[8]string.["coax/bin/coax","check",ft_text(path[..]),"--library","--timings",ft_text(timings[..]),"--run-steps","128000"];
+    h:=proc_new();if h<0 {return 1;}handles[i]=h;
+    count:=ifx i==0 then 6 else 8;
+    for v:argv[0..<count] {if !proc_arg(h,v) {released:=proc_release(h);return 1;}}
+    if !proc_gentle(h) || proc_start(h)!=0 {released:=proc_release(h);return 1;}
+  }
+  line:[65536]u8;remaining:=2;
+  while remaining>0 && proc_now_ms()-started<780000 {
+    for i:0..<2 {
+      if done[i] {continue;}
+      count:=proc_line(handles[i],10,line[..]);
+      if count==PROC_EOF || count==PROC_ERROR {
+        st:=proc_wait(handles[i],0);if st==PROC_RUNNING {continue;}
+        statuses[i]=st;done[i]=true;remaining-=1;
+      }
+    }
+  }
+  for i:0..<2 {
+    if !done[i] {killed:=proc_kill(handles[i],PROC_SIGTERM);waited:=proc_wait(handles[i],2000);statuses[i]=124;}
+    err:[65536]u8;text:=proc_stderr(handles[i],err[..]);log_path:[1]FeText;ft_add(log_path[..],ifx i==0 then "room-check-" else "page-check-");ft_int(log_path[..],revision);ft_add(log_path[..],".log");written:=ft_write(dir,ft_text(log_path[..]),text);
+    released:=proc_release(handles[i]);
+    report_bytes:[4194304]u8;report_name:=ifx i==0 then "room-check.json" else "page-check.json";report_n:=ft_read(dir,report_name,report_bytes[..]);
+    if report_n>=0 && report_n<report_bytes.count {saved_name:[1]FeText;ft_add(saved_name[..],ifx i==0 then "room-check-" else "page-check-");ft_int(saved_name[..],revision);ft_add(saved_name[..],".json");saved:=ft_write(dir,ft_text(saved_name[..]),cast(string)report_bytes[0..<report_n]);}
+  }
+  if ft_number(dir,"revision")!=revision {return 2;}
+  room:[1]FeText;page:[1]FeText;ft_int(room[..],statuses[0]);ft_int(page[..],statuses[1]);
+  // Any timeout, setup failure or absent proof remains fail-closed.
+  if statuses[0]<0 || statuses[1]<0 {return 1;}
+  id:[64]u8;sealed:[1]FeText;key:[64]u8;if ft_read(dir,"identity",id[..])!=64 {return 1;}ft_add(sealed[..],cast(string)id[..]);ft_add(sealed[..],cast(string)hashes[..]);_ = ft_sha(ft_text(sealed[..]),key[..]);
+  if !ft_write(dir,"verified.room",ft_text(room[..])) || !ft_write(dir,"verified.page",ft_text(page[..])) || !ft_write(dir,"verified.source-sha256",cast(string)hashes[..]) || !ft_atomic(dir,"verified.sha256",cast(string)key[..]) {return 1;}
+  ok:=statuses[0]==0 && statuses[1]==0;
+  return ifx ok then 0 else 1;
+}
+ft_verify_job :: (dir: string) -> int {
+  path:[1]FeText;rc:=0;
+  if fs_try_lock(ft_path(dir,"verify.lock",path[..])) {
+    before:=ft_number(dir,"revision");started:=proc_now_ms();reused:=ft_gate(dir);rc=ifx reused then 0 else ft_verify(dir);
+    if ft_number(dir,"revision")==before {written:=ft_verification_state(dir,before,ifx rc==0 then "passed" else "failed",proc_now_ms()-started,reused);}
+    unlocked:=fs_unlock();
+    if ft_number(dir,"revision")!=before {launched:=ft_launch_verification(dir);}
+  }
+  jobs:[1]FeText;ft_add(jobs[..],dir);ft_add(jobs[..],"/jobs/");ft_int(jobs[..],cxproc_self_pid());removed:=fs_remove(ft_text(jobs[..]));return rc;
+}
+ft_stop :: (dir: string) -> int {
+  stopped:=ft_atomic(dir,"stopped","stopping\n");
+  jobs:[1]FeText;ft_add(jobs[..],dir);ft_add(jobs[..],"/jobs");list:[1]FsList;n:=fs_list(ft_text(jobs[..]),list[..]);if n<0 {return 0;}
+  exe:[4096]u8;en:=cxproc_self_path(exe[..]);if en<=0 {return 1;}
+  for i:0..<n {
+    name:=fs_entry(list[..],i);number:=args_number(name);if !number.ok {continue;}pid:=cast(int)number.value;
+    command:[16384]u8;cn:=cxproc_cmdline(pid,command[..]);
+    if cn<0 && tool_os()==TOOL_MAC {pid_text:[1]FeText;ft_int(pid_text[..],pid);argv:=[5]string.["ps","-p",ft_text(pid_text[..]),"-o","command="];err:[256]u8;r:=proc_run(argv[..],5000,command[..],err[..]);cn=r.out_n;}
+    if cn>0 {text:=cast(string)command[0..<cn];if ft_find(text,cast(string)exe[0..<en],0)>=0 && ft_find(text,"verify-job",0)>=0 && ft_find(text,dir,0)>=0 {signalled:=cxproc_pid_signal(pid,PROC_SIGTERM);}}
+  }
+  return 0;
+}
+tool_main :: () -> int #export_c {
+  a:[1]Args;if !args_load(a[..]) {return 2;}cmd:=args_at(a[..],0);dir:=args_at(a[..],1);
+  if dir.count==0 || dir[0]!='/' {tool_errln("usage: fast-edit prepare|candidate|apply|verify|gate ABSOLUTE_SESSION | instrument ABSOLUTE_SESSION FILE.c");return 2;}
+  if cmd=="prepare" {return ft_prepare(dir);}
+  if cmd=="candidate" {return ft_candidate(dir);}
+  if cmd=="apply" {lock:[1]FeText;if !fs_try_lock(ft_path(dir,"apply.lock",lock[..])) {tool_errln("fast-edit: another edit is publishing; retry");return 2;}rc:=ft_apply(dir);unlocked:=fs_unlock();return rc;}
+  if cmd=="verify-job" {return ft_verify_job(dir);}
+  if cmd=="gate" {if ft_gate(dir) {print("fast-edit: current source is verified\n");return 0;}tool_errln("fast-edit: commit blocked (checks pending, failed or stale)");return 1;}
+  if cmd=="verify" {rc:=ft_verify_job(dir);return ifx ft_gate(dir) then 0 else 1;}
+  if cmd=="stop" {return ft_stop(dir);}
+  if cmd=="commit" {
+    if !ft_commit_gate(dir) {tool_errln("fast-edit: commit blocked (checks pending, failed, stale, or staged bytes differ)");return 1;}
+    argv:[ARGS_MAX]string;argv[0]="git";argv[1]="commit";n:=2;for i:2..<args_count(a[..]) {argv[n]=args_at(a[..],i);n+=1;}
+    out:[65536]u8;err:[65536]u8;r:=proc_run(argv[0..<n],60000,out[..],err[..]);print("%\n",cast(string)out[0..<r.out_n]);if r.status!=0 {tool_errln(cast(string)err[0..<r.err_n]);}return r.status;
+  }
+  if cmd=="instrument" {return ft_instrument(dir,args_at(a[..],2));}
+  return 2;
+}

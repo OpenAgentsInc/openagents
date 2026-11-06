@@ -25,6 +25,9 @@
    page to catch up instead of queueing state already out of date (#12783). */
 #define _POSIX_C_SOURCE 200809L
 #include "room.h"
+#ifdef COAX_FAST_EDIT_ENABLED
+#include "fast-edit-native.h"
+#endif
 #include "room-world.h"
 #include "ws.h"
 #include <arpa/inet.h>
@@ -435,6 +438,11 @@ static void opening(int i) {
     drain_begin(strtoll(wait, NULL, 10) * 1000);
     http(i, "200 OK", "text/plain", drain_word()); return;
   }
+#ifdef COAX_FAST_EDIT_ENABLED
+  if (dev_dir && !strncmp((char *)c->in,"GET /api/playtest/dev/fast-edit ",sizeof("GET /api/playtest/dev/fast-edit ")-1)) {
+    char status[1024];coax_fast_status(status,sizeof status);http(i,"200 OK","application/json",status);return;
+  }
+#endif
   /* readiness (#12797): 200 once the start check held, the realm's world is laid, and a room's world
      builds (room-world.c world_ready); the deploy's startup probe, so a revision takes no traffic before */
   if (!strncmp((char *)c->in, "GET /ready ", 11) || is_shard_path((char *)c->in, "GET ", "/ready ")) {
@@ -866,6 +874,13 @@ int main(int argc, char **argv) {
   }
   const char *env = getenv("PORT");
   if (env && *env) { port = atoi(env); address = "0.0.0.0"; }
+#ifdef COAX_FAST_EDIT_ENABLED
+  const char *fast_directory=getenv("COAX_FAST_EDIT");
+  if(!dev_dir||strcmp(address,"127.0.0.1")||!coax_fast_start(fast_directory)) {
+    fprintf(stderr,"room: fast-edit requires a sealed session, --dev and --listen 127.0.0.1\n");return 1;
+  }
+  atexit(coax_fast_close);
+#endif
   signal(SIGPIPE, SIG_IGN);
   signal(SIGCHLD, SIG_IGN);   /* vitals_post's curls reap themselves */
   setvbuf(stdout, NULL, _IOLBF, 0);
@@ -910,6 +925,9 @@ int main(int argc, char **argv) {
   double next = (double)now_ms();
   int64_t ticks = 0, last_report = now_ms(), last_vitals = now_ms(), last_stats = now_ms(), drain_at = 0;
   for (;;) {
+#ifdef COAX_FAST_EDIT_ENABLED
+    coax_fast_poll();
+#endif
     if (drain_phase > DRAIN_NONE && drain_phase < DRAIN_DONE && !term_asked) drain_step();
     /* SIGTERM: bounded final work only (Cloud Run kills at 10 s). A drained room has nothing left; one
        that wasn't drained tells its pages "restarting" (they sit elsewhere at once, not after a silent

@@ -211,6 +211,7 @@
 //                             At most 8. Message 607 says how each one came in, a line each: "URL W H" (0 0: it failed).
 
 import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
+import { fastEditBoundary } from "./fast-edit.js";
 import { startDrops } from "./drop.js";
 import { startUploads } from "./uploads.js";
 import { startDocs } from "./docs.js";
@@ -396,15 +397,20 @@ async function loadEngine(bytes, generation) {
   const pages = importedMemoryPages(bytes), have = memory.buffer.byteLength / 65536;
   if (pages > have) memory.grow(pages - have); // instantiate refuses an imported memory smaller than declared
   const random = prepareRandomImport(memory, module, randomScratch);
+  const fast = fastEditBoundary(message => say(message, true));
   const imports = Object.create(null);
   imports.env = Object.assign(Object.create(null), { memory, coaxial_measure_ms: () => performance.now(), coaxial_now_seconds: () => BigInt(Math.floor(Date.now() / 1000)),
-    coaxial_now_ms: () => BigInt(Math.floor(performance.now())), ...socketImports, ...httpImports, ...random.imports, ...storageImports, ...nip07Imports });
+    coaxial_now_ms: () => BigInt(Math.floor(performance.now())), coax_dev_dispatch: value => fast.dispatch(value), ...socketImports, ...httpImports, ...random.imports, ...storageImports, ...nip07Imports });
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= Object.create(null))[imp.name] ||= wasiStub(imp.module, imp.name);
   }
   if (dev) globalThis.coaxial.renderLifecyclePhase="engine-instantiate";
   const instance = await WebAssembly.instantiate(module, imports);
+  globalThis.coaxial.fastEdit?.stop();
+  fast.bind(instance.exports);
+  if (instance.exports.coax_dev_baseline) globalThis.coaxial.fastEdit = fast;
+  else delete globalThis.coaxial.fastEdit;
   if (generation !== wanted) { stopEngine();return false; } // memory was already initialized
   const kept = await keptRead;   // before the first frame, so a kept world opens with it
   const rescue = await rescueRead, rescueId = rescue ? await rescueIdentity(bytes) : "";
@@ -3233,6 +3239,7 @@ async function fetchEngine(generation) {
   renderReload = install.catch(() => {});return install;
 }
 function stopEngine() {
+  globalThis.coaxial.fastEdit?.stop();delete globalThis.coaxial.fastEdit;
   retireTransport();
   engine = null;
   if (gpu) { gpu.bg = null;gpu.renderer?.destroy();gpu.renderer = null; }
