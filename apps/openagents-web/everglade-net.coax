@@ -1138,7 +1138,7 @@ net_ahead :: (en: [] NetEnt) -> int { return ifx en[0].kind == WK_FOLK then NET_
 // State p gone on by its velocity to server time rt, `ahead` ms at most, then held.
 net_on_from :: (p: NetState, rt: int, ahead_ms: int) -> NetState {
   ahead := f32(lo_int(hi_int(rt - p.t, 0), ahead_ms)) / 1000;
-  return NetState.{t = rt, x = p.x + p.vx * ahead, y = p.y + p.vy * ahead, z = p.z + p.vz * ahead, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, f = p.f, a = p.a, ax = p.ax, az = p.az, age = p.age};
+  return NetState.{t = rt, x = p.x + p.vx * ahead, y = p.y + p.vy * ahead, z = p.z + p.vz * ahead, yaw = p.yaw, vx = p.vx, vy = p.vy, vz = p.vz, f = p.f, a = p.a};
 }
 // Where entity en is at server time rt.
 net_state_at :: (en: [] NetEnt, rt: int) -> NetState {
@@ -1151,8 +1151,7 @@ net_state_at :: (en: [] NetEnt, rt: int) -> NetState {
     f := f32(rt - a.t) / f32(hi_int(b.t - a.t, 1));
     o := ifx f < 0.5 then a else b;
     return NetState.{t = rt, x = lerp(a.x, b.x, f), y = lerp(a.y, b.y, f), z = lerp(a.z, b.z, f), yaw = a.yaw + net_turn(a.yaw, b.yaw) * f,
-                     vx = lerp(a.vx, b.vx, f), vy = lerp(a.vy, b.vy, f), vz = lerp(a.vz, b.vz, f), f = o.f, a = o.a,
-                     ax = lerp(a.ax, b.ax, f), az = lerp(a.az, b.az, f), age = lerp(a.age, b.age, f)};
+                     vx = lerp(a.vx, b.vx, f), vy = lerp(a.vy, b.vy, f), vz = lerp(a.vz, b.vz, f), f = o.f, a = o.a};
   }
   // past the newest: on by its velocity for net_ahead ms (a frame late or lost), then held
   return net_on_from(en[0].ring[c - 1], rt, net_ahead(en));
@@ -1177,6 +1176,39 @@ net_ease :: (en: [] NetEnt, p: NetState, rt: int, dt: f32) {
   if abs(en[0].ease_x) + abs(en[0].ease_y) + abs(en[0].ease_z) < 0.001 { en[0].ease_x = 0; en[0].ease_y = 0; en[0].ease_z = 0; }
 }
 // book:end interp-buffer
+
+#test "net: tree tilt and fire age sample the pose clock at boundaries and between rows" {
+  en: [1] NetEnt; en[0].kind = WK_TREE; en[0].ring_n = 2;
+  en[0].ring[0] = NetState.{t = 100, x = 10, f = 1, a = 7, ax = -1, az = 0.2, age = 3};
+  en[0].ring[1] = NetState.{t = 200, x = 20, f = 2, a = 7, ax = 1, az = -0.2, age = 5};
+  times := [7] int.[25, 100, 125, 150, 175, 200, 250];
+  tilt := [7] f32.[-1, -1, -0.5, 0, 0.5, 1, 1];
+  for i: 0..<7 {
+    pose := net_state_at(en[..], times[i]); p := net_forest_sample(en[..], pose);
+    #assert abs(p.ax - tilt[i]) < 0.001 && abs(p.az + tilt[i] * 0.2) < 0.001 && abs(p.age - 4 - tilt[i]) < 0.001;
+    #assert p.x == pose.x && p.y == pose.y && p.f == pose.f && p.a == pose.a;
+  }
+  en[0].kind = WK_PLAYER; p := NetState.{x = 10, ax = 9, age = 8};
+  #assert net_forest_sample(en[..], p).ax == 9 && net_forest_sample(en[..], p).age == 8;
+  en[0].kind = WK_TREE; en[0].ring_n = 0;
+  #assert net_forest_sample(en[..], p).ax == 9;
+}
+// Tree-specific fields share the pose's sampled time. The common pose buffer stays realm-neutral.
+net_forest_sample :: (en: [] NetEnt, pose: NetState) -> NetState {
+  if en[0].kind != WK_TREE || en[0].ring_n == 0 { return pose; }
+  sample := en[0].ring[0];
+  for q: 1..<en[0].ring_n {
+    next := en[0].ring[q];
+    if pose.t <= next.t {
+      f := clamp01(f32(pose.t - sample.t) / f32(hi_int(next.t - sample.t, 1)));
+      sample.ax = lerp(sample.ax, next.ax, f); sample.az = lerp(sample.az, next.az, f); sample.age = lerp(sample.age, next.age, f);
+      break;
+    }
+    sample = next;
+  }
+  out := pose; out.ax = sample.ax; out.az = sample.az; out.age = sample.age;
+  return out;
+}
 
 // ---- your movement: the inputs out, the server's word back (the face runs the step)
 
@@ -1327,7 +1359,7 @@ net_step :: (s: [] Everglade, mono: int, x: f32, fy: f32, z: f32, yaw: f32, vx: 
   for e: 0..<NET_ENTS {
     en := n[0].ents[e..<e + 1];
     if !en[0].live || en[0].ring_n == 0 { continue; }
-    p := net_state_at(en, rt);
+    p := net_forest_sample(en, net_state_at(en, rt));
     net_ease(en, p, rt, dt);
     p.x += en[0].ease_x; p.y += en[0].ease_y; p.z += en[0].ease_z;
     dx := p.x - en[0].shown.x; dz := p.z - en[0].shown.z;
