@@ -120,7 +120,7 @@ Compiler:
 - The order of work is recorded in
   `coax/audits/2026-11-05-mmorpg-language-and-compiler.md`.
 
-Books: #12610 stays open. The owner said "no more books work". Don't work it.
+Books: #12610 stays open and paused. The only books work approved is #12947.
 
 ## Open issues and who owns them
 
@@ -131,6 +131,8 @@ Books: #12610 stays open. The owner said "no more books work". Don't work it.
 | #12946 | Closed by `e00925f958`. The smoke counted doors and boats as gravity cylinders, rejected a valid landing on the 4.5 m palisade, and counted the invited visitor as the blocked player. It now observes each spell's kind and caster, grounded landings, and the blocked seat. Verification is below. |
 | #12941 | No agent. The drift check held at 250 ms during the release, so this may have been load. Close it if three runs in a row hold. The drift check's 250 ms profile failed twice after the fire fixes, on Hold Person timing, conditions and townspeople walking in place. It may be real or caused by load, and it gates release.sh. Check it first if #12936's release is stuck. |
 | #12940 | No agent. Tree fires never burn or spread on the room server; only pages step them. |
+| #12947 | No agent. Fix the stale Aethyr chapters 49, 50, 58, 84 and 85 (they still describe the old world) and update Coax chapters 6, 19 and 41 to today's compiler. An owner-approved exception to the books pause. |
+| #12948 | No agent. Nominal integer ID types (audit §6.2, P0), adopted for the room's seat, entity, character and item IDs. Do it after #12947. |
 | #12838, #12840–#12843, #12868, #12869 | The owner's Codex agent. Don't take them. Its room changes share files with ours, so use small commits and rebase often. |
 | #12845 | Open, with no agent. It still needs commands, accepted results and replication behind shared interfaces, profiles for collision and per-recipient fields, Orbit League sharing more than the timing profile, and the book's adoption inventory. |
 | #12910 | Nostr chapter 104 on signet. Blocked on the signet faucet's captcha, which is in NEEDS_OWNER.md. |
