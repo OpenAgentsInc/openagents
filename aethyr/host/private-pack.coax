@@ -1,0 +1,69 @@
+// Broker metadata and plaintext identity, before private pack publication.
+#load "pack-stream.coax";
+#load "routes.coax";
+#load "../../coax/lib/json/json.coax";
+#authority;
+HOST_PACK_METADATA :: 4096;
+HostPrivatePack :: struct {valid:bool;source_bytes:int;plain_bytes:int;url_bytes:int;url:[4096]u8;key:[32]u8;iv:[16]u8;digest:AssetId;}
+HPK_PRIVATE_JSON :: "{\"url\":\"/api/verse/packs/fetch/fixture\",\"size\":64,\"bytes\":56,\"key\":\"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\",\"iv\":\"000102030405060708090a0b0c0d0e0f\",\"sha256\":\"248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1\"}";
+#test "private metadata preserves exact admitted sizes URL key counter and plaintext identity" {
+ p:=hpk_private(HPK_PRIVATE_JSON);#assert p.valid&&p.source_bytes==64&&p.plain_bytes==56&&p.url_bytes==30&&cast(string)p.url[0..<p.url_bytes]=="/api/verse/packs/fetch/fixture";
+ for i:0..<32{#assert p.key[i]==u8(i);}for i:0..<16{#assert p.iv[i]==u8(i);}
+ plain:="abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";#assert hpk_private_digest(p,plain)&&!hpk_private_digest(p,plain[0..<55]);b:[56]u8;for c,i:plain{b[i]=c;}b[55]='x';#assert !hpk_private_digest(p,cast(string)b[..])&&!hpk_private_digest(HostPrivatePack.{},plain);
+ p.valid=false;#assert !hpk_private_digest(p,plain);p.valid=true;p.plain_bytes=55;#assert !hpk_private_digest(p,plain);
+}
+#test "private metadata refuses complete malformed sizes identities and foreign URLs" {
+ for raw:[7]string.["","[]","{}","{\"url\":false}","{\"bytes\":32,\"size\":0}","{\"bytes\":31,\"size\":1}","{\"bytes\":67108865,\"size\":1}"]{#assert !hpk_private(raw).valid;}
+ b:[4097]u8;for i:0..<b.count{b[i]=' ';}#assert !hpk_private(cast(string)b[..]).valid;
+ for name:[6]string.["url","size","bytes","key","iv","sha256"]{d:[1]Jv;n:[32]JvNode;#assert jv_parse(d[..],HPK_PRIVATE_JSON,n[..]);node:=jv_get(d[0],0,name);for c,i:HPK_PRIVATE_JSON{b[i]=c;}b[d[0].nodes[node].from]='!';#assert !hpk_private(cast(string)b[0..<HPK_PRIVATE_JSON.count]).valid;}
+ for c,i:HPK_PRIVATE_JSON{b[i]=c;}for i:HPK_PRIVATE_JSON.count..<b.count{b[i]=' ';}#assert hpk_private(cast(string)b[0..<4096]).valid&&!hpk_private(cast(string)b[..]).valid;
+ for name:[2]string.["size","bytes"]{for raw:[7]string.["null","false","\"1\"","-1","0","67108865","9223372036854775807"]{#assert !hpk_private(hpk_test_replace(name,raw,b[..])).valid;}}
+ for raw:[2]string.["1","67108864"]{#assert hpk_private(hpk_test_replace("size",raw,b[..])).valid;}
+ for raw:[2]string.["32","67108864"]{#assert hpk_private(hpk_test_replace("bytes",raw,b[..])).valid;}
+ #assert !hpk_private(hpk_test_replace("bytes","31",b[..])).valid&&hpk_private(hpk_test_replace("url","\"/\"",b[..])).valid;
+ for name:[4]string.["url","key","iv","sha256"]{for raw:[4]string.["null","false","0","\"\""]{#assert !hpk_private(hpk_test_replace(name,raw,b[..])).valid;}}
+}
+hpk_test_replace :: (name:string,value:string,out:[]u8)->string {
+ d:[1]Jv;n:[32]JvNode;ok:=jv_parse(d[..],HPK_PRIVATE_JSON,n[..]);o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);
+ for i:0..<jv_len(d[0],0){at:=jv_at(d[0],0,i);key:=jv_key(d[0],at);jo_key(o[..],key);if key==name{jo_value(o[..]);jo_put(o[..],value);}else{jv_write(d[0],at,o[..]);}}jo_end(o[..]);return jo_text(o[..]);
+}
+#test "private hexadecimal fields decode atomically at the exact extent" {
+ out:=[2]u8.[77,88];#assert hpk_hex("00ff",out[..])&&out[0]==0&&out[1]==255;
+ for text:[5]string.["00f","00FF","00fg","00ff0","!0ff"]{out[0]=77;out[1]=88;#assert !hpk_hex(text,out[..])&&out[0]==77&&out[1]==88;}
+ wide:[33]u8;hex:[66]u8;for i:0..<66{hex[i]='0';}#assert !hpk_hex(cast(string)hex[..],wide[..]);empty:[1]u8;#assert hpk_hex("",empty[0..<0]);
+}
+#test "private identity and complete Coax pack layout must both hold before publication" {
+ b:[512]u8;p:=pack_test(600,b[..]);out:[1]PackRead;plan:=HostPrivatePack.{valid=true,plain_bytes=512,digest=asset_id(p)};
+ #assert hpk_pack_admit(p,plan,true,out[..])&&out[0].ok&&out[0].count==5;
+ plan.digest.words[0]+=1;#assert !hpk_pack_admit(p,plan,true,out[..])&&!out[0].ok&&out[0].count==0;
+ #assert hpk_pack_admit(p,plan,false,out[..])&&out[0].ok;
+ bad:=b;bad[0]=0;#assert !hpk_pack_admit(cast(string)bad[..],plan,false,out[..])&&!out[0].ok;
+}
+#test "stream publication requires exact finished plaintext ownership" {
+ b:[512]u8;p:=pack_test(600,b[..]);out:[1]PackRead;s:=[1]HostPackStream.[hpk_stream_open(0,false)];plan:=HostPrivatePack.{};
+ #assert hpk_stream_offer(s[..],p[0..<12],512).accepted&&!hpk_stream_pack(p,s[0],plan,false,out[..])&&!out[0].ok;
+ #assert hpk_stream_finish(s[..])&&hpk_stream_pack(p,s[0],plan,false,out[..]);
+ old:=s[0];s[0].loaded=511;#assert !hpk_stream_pack(p,s[0],plan,false,out[..])&&!out[0].ok;s[0]=old;s[0].failed=true;#assert !hpk_stream_pack(p,s[0],plan,false,out[..]);s[0]=old;s[0].encoded=true;#assert !hpk_stream_pack(p,s[0],plan,false,out[..]);
+}
+#test "broker response retention admits the exact metadata limit before a copy" {
+ #assert hpk_metadata_offer(0,0)&&hpk_metadata_offer(0,4096)&&hpk_metadata_offer(4095,1)&&hpk_metadata_offer(4096,0);
+ for row:[6][2]int.[[2]int.[-1,0],[2]int.[0,-1],[2]int.[4097,0],[2]int.[0,4097],[2]int.[4096,1],[2]int.[1,9223372036854775807]]{#assert !hpk_metadata_offer(row[0],row[1]);}
+}
+hpk_hex :: (text:string,out:[]u8)->bool {
+ if out.count>32||text.count!=out.count*2{return false;}next:[32]u8;
+ for i:0..<out.count{high:=asset_digit(text[2*i]);low:=asset_digit(text[2*i+1]);if high<0||low<0{return false;}next[i]=u8(high*16+low);}
+ for i:0..<out.count{out[i]=next[i];}return true;
+}
+hpk_private :: (raw:string)->HostPrivatePack #export_c {
+ r:=HostPrivatePack.{};if raw.count>HOST_PACK_METADATA{return r;}d:[1]Jv;nodes:[128]JvNode;if !jv_parse(d[..],raw,nodes[..]){return r;}
+ source:=jv_int(d[0],jv_get(d[0],0,"size"),0);plain:=jv_int(d[0],jv_get(d[0],0,"bytes"),31);
+ if source<1||source>HOST_PACK_BYTES||plain<PACK_HEADER||plain>HOST_PACK_BYTES{return r;}
+ next:=HostPrivatePack.{source_bytes=source,plain_bytes=plain};url_n:=jv_str(d[0],jv_get(d[0],0,"url"),next.url[..]);if url_n== -1||!htr_http_path(cast(string)next.url[0..<url_n]){return r;}next.url_bytes=url_n;
+ text:[64]u8;n:=jv_str(d[0],jv_get(d[0],0,"key"),text[..]);if n== -1||!hpk_hex(cast(string)text[0..<n],next.key[..]){return r;}
+ n=jv_str(d[0],jv_get(d[0],0,"iv"),text[..]);if n== -1||!hpk_hex(cast(string)text[0..<n],next.iv[..]){return r;}
+ n=jv_str(d[0],jv_get(d[0],0,"sha256"),text[..]);ids:[1]AssetId;if n== -1||!asset_parse(cast(string)text[0..<n],ids[..]){return r;}next.digest=ids[0];next.valid=true;return next;
+}
+hpk_private_digest :: (plan:HostPrivatePack,plain:string)->bool #export_c {return plan.valid&&plain.count==plan.plain_bytes&&asset_same(asset_id(plain),plan.digest);}
+hpk_pack_admit :: (plain:string,plan:HostPrivatePack,required:bool,out:[]PackRead)->bool #export_c {if required&&!hpk_private_digest(plan,plain){out[0]=PackRead.{};return false;}return pack_read(plain,out);}
+hpk_stream_pack :: (plain:string,stream:HostPackStream,plan:HostPrivatePack,required:bool,out:[]PackRead)->bool #export_c {if !stream.done||stream.failed||stream.encoded||plain.count!=stream.loaded{out[0]=PackRead.{};return false;}return hpk_pack_admit(plain,plan,required,out);}
+hpk_metadata_offer :: (loaded:int,bytes:int)->bool #export_c {return loaded>=0&&bytes>=0&&bytes<=HOST_PACK_METADATA-loaded;}

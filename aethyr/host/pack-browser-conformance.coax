@@ -1,0 +1,16 @@
+// Actual browser SDK stream/crypto/ownership observations, independently reduced.
+#load "socket-retention-conformance.coax";
+#authority;
+HPBC_GOOD :: "{\"public\":[512,5,206,6,12,5,3,0,1,8388608],\"progress\":[3,0,11,0,12,512,512,512],\"private\":[512,5,1,0,1,8388608],\"refusals\":[1,1,1,1,1,1,1,0,1,8388608],\"cancel\":[1,2,16777216,1,1,0,1,8388608],\"crypto\":[1,4,16908288,1,0,1,8388608],\"borrow\":[1,206,0,0,1,8388608,1],\"full\":[31,32,268435456,1,0,31,0,1,8388608]}";
+#test "pack SDK receipt requires every complete stream and concrete retained owner" {
+ b:[4096]u8;for c,i:HPBC_GOOD{b[i]=c;}d:[1]Jv;nodes:[1024]JvNode;#assert jv_parse(d[..],HPBC_GOOD,nodes[..])&&hpbc_accept(d[0]);
+ for name:[8]string.["public","progress","private","refusals","cancel","crypto","borrow","full"]{
+  #assert jv_parse(d[..],cast(string)b[0..<HPBC_GOOD.count],nodes[..]);row:=jv_get(d[0],0,name);
+  for i:0..<jv_len(d[0],row){at:=d[0].nodes[jv_at(d[0],row,i)].from;keep:=b[at];b[at]='9';#assert jv_parse(d[..],cast(string)b[0..<HPBC_GOOD.count],nodes[..])&&!hpbc_accept(d[0]);b[at]=keep;}
+ }
+ #assert !hpbc_accept(Jv.{});
+}
+hpbc_accept :: (d:Jv)->bool #export_c {
+ pub:=[10]int.[512,5,206,6,12,5,3,0,1,8388608];progress:=[8]int.[3,0,11,0,12,512,512,512];priv:=[6]int.[512,5,1,0,1,8388608];refused:=[10]int.[1,1,1,1,1,1,1,0,1,8388608];cancel:=[8]int.[1,2,16777216,1,1,0,1,8388608];crypto:=[7]int.[1,4,16908288,1,0,1,8388608];borrow:=[7]int.[1,206,0,0,1,8388608,1];full:=[9]int.[31,32,268435456,1,0,31,0,1,8388608];
+ return hsrb_row(d,"public",pub[..])&&hsrb_row(d,"progress",progress[..])&&hsrb_row(d,"private",priv[..])&&hsrb_row(d,"refusals",refused[..])&&hsrb_row(d,"cancel",cancel[..])&&hsrb_row(d,"crypto",crypto[..])&&hsrb_row(d,"borrow",borrow[..])&&hsrb_row(d,"full",full[..]);
+}
