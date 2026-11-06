@@ -300,6 +300,22 @@ Each ends on a check run on our own machines.
 | A7 | Directing | Ten typed directions (speed, look-at, hold, cut-on-event and others) change the Draconia scene through the director, each as one version with confidence |
 | A8 | Published version | The scene uses only our own motion, faces and voice, and is ready to show |
 
+## Issues
+
+| Milestone | Issue | Relation to work in flight |
+| --- | --- | --- |
+| A0 | #12965 | Converts the Echo port (599558ee03) and the Slay face data (e7e0b0e71c) into the documents |
+| A1 | #12966 | New realm; Valley Lab's J and F views stay as they are |
+| A2 | #12967 | Extends `aethyr/mannequin.coax` |
+| A3 | #12968 | Moves #12962's face layering and ambient segments onto shared layers, same frames |
+| A4 | #12969 | Generalizes the Echo and Slay exporters and the `EchoSourceSDK` plugin |
+| A5 | #12970 | Uses `aethyr/cinematic.coax` and the speaking pipeline (#12798) |
+| A6 | #12971 | Uses Anime Lab's render profile and cast |
+| A7 | #12972 | Extends Anime Lab's director |
+| A8 | #12973 | Replaces Epic sample content with our own capture |
+
+#12962 (Slay on Valley Lab's Echo) stays open for its exact-render work: orb deformation, flare, lighting, skin, hair. It isn't blocked by this lab.
+
 ## Open questions
 
 1. Which mocap source do we use for our own motion: a phone video-to-motion
