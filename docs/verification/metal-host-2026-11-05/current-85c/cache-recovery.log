@@ -1,0 +1,15 @@
+scope=exact wasm.sh cache-key observation and frozen bytes; not original emission profile or graphics/default admission
+unit=aethyr/render/carriers/everglade5e.coax header=everglade5e sources=231 key=e2ce6543ce3742c373fdff771a95b2df0c3814e39427af9798ad9c33d238a59f
+frozen=/Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/current-85c-cpu/everglade5e.c bytes=8853476 sha256=dd29b7396cd7928776639a6af6e348e42f2880f3471719129816195a7a2280f9
+frozen=/Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/current-85c-cpu/everglade5e.h bytes=1217729 sha256=f94b3237fe2b22d809ab45d59c797b88a55b80b26ffe1da2daa4454fb4687caa
+unit=apps/openagents-web/everglade-step.coax header=Everglade-step folded_into=everglade5e; no independent C emission or cache entry
+unit=verse/grid.coax header=Grid sources=7 key=bd85a9da0b0063fffd6fb2c9753ab4c913798bc0ba9b7db2a2f7a581629f0b05
+frozen=/Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/current-85c-cpu/Grid.c bytes=131923 sha256=de2438c7c20819487d28977223a9e821e28d55ec21f83dbeb4e4ffd611b8137f
+frozen=/Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/current-85c-cpu/Grid.h bytes=9887 sha256=67456a463b1c9d4aa7d7802241aa91b84fc3e96c220811dddaced69febf21c8c
+unit=verse/everglade/river.coax header=River sources=6 key=7a6e57906c19c88643c7651b54bc813addf8377d04ea4e99cdb8eec0c2020898
+frozen=/Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/current-85c-cpu/River.c bytes=415945 sha256=c6ec5979670bb63be72f78d732cfd4f494258d471cb14b34e960befabad62fde
+frozen=/Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/current-85c-cpu/River.h bytes=70803 sha256=7e11a0a437fdfd1463c105e425fa12abc81fee15d97de39c4d6023019b23ce7c
+unit=verse/everglade/guard-guide-policy.coax header=Guard-guide-policy folded_into=everglade5e; no independent C emission or cache entry
+unit=apps/openagents-web/everglade5e-rules.coax header=Everglade5e-rules sources=10 key=15d3bcd68fb05744e136d59a8a97eec833df4870e4c02fd065032f61433f7470
+frozen=/Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/current-85c-cpu/Everglade5e-rules.c bytes=654878 sha256=baec183ce63de6f054d956cee4fc5a72855cb733289c35fc867f367cdc02ce46
+frozen=/Users/christopherdavid/.openagents/aethyrforge/metal-host-12868/current-85c-cpu/Everglade5e-rules.h bytes=68856 sha256=629ada76d6673659f887a1fcc099d27bfce3ed888f13ac04a3a55f2d6527f52a

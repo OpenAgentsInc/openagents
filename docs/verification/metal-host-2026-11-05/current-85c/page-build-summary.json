@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "module": "everglade5e",
+  "source": "apps/openagents-web/everglade5e.coax",
+  "mode": "release",
+  "render": 1,
+  "output_bytes": 2012780,
+  "seconds": 518.653816,
+  "compiler_sha256": "b5872254e02de4b2fb84f039e81f602090f5526301c036c077004294a7e580eb",
+  "steps": [
+    {
+      "unit": "Grid",
+      "step": "coax_to_c",
+      "cache": "hit",
+      "seconds": 0.079868,
+      "coax": null
+    },
+    {
+      "unit": "River",
+      "step": "coax_to_c",
+      "cache": "hit",
+      "seconds": 0.080430,
+      "coax": null
+    },
+    {
+      "unit": "Everglade5e-rules",
+      "step": "coax_to_c",
+      "cache": "hit",
+      "seconds": 0.081908,
+      "coax": null
+    },
+    {
+      "unit": "everglade5e",
+      "step": "coax_to_c",
+      "cache": "miss",
+      "seconds": 507.463356,
+      "coax": {
+        "compiler": "coax0 0.50.0",
+        "success": true,
+        "generated_bytes": 8853476,
+        "check_reuse": {
+          "reused": 0,
+          "run": 1320
+        },
+        "library_checks": {
+          "cached": 130,
+          "checked": 0
+        }
+      }
+    },
+    {
+      "unit": "Grid",
+      "step": "clang",
+      "cache": "hit",
+      "seconds": 0.047893,
+      "coax": null
+    },
+    {
+      "unit": "River",
+      "step": "clang",
+      "cache": "hit",
+      "seconds": 0.047537,
+      "coax": null
+    },
+    {
+      "unit": "Everglade5e-rules",
+      "step": "clang",
+      "cache": "hit",
+      "seconds": 0.048953,
+      "coax": null
+    },
+    {
+      "unit": "Render.face",
+      "step": "clang",
+      "cache": "miss",
+      "seconds": 0.127699,
+      "coax": null
+    },
+    {
+      "unit": "everglade5e.face",
+      "step": "clang",
+      "cache": "miss",
+      "seconds": 0.154722,
+      "coax": null
+    },
+    {
+      "unit": "everglade5e",
+      "step": "clang",
+      "cache": "miss",
+      "seconds": 5.383635,
+      "coax": null
+    },
+    {
+      "unit": "module",
+      "step": "link",
+      "cache": "miss",
+      "seconds": 3.529206,
+      "coax": null
+    },
+    {
+      "unit": "module",
+      "step": "wasm_opt",
+      "cache": "off",
+      "seconds": 2.176362,
+      "coax": null
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "closedLedgerLive" : 0,
+  "closedLedgerWords" : 0,
+  "closedMediaBytes" : 0,
+  "completed" : 3,
+  "draws" : 136,
+  "frames" : 3,
+  "images" : [
+
+  ],
+  "ledgerEpoch" : 4,
+  "ledgerLive" : 36,
+  "ledgerWords" : 23471463,
+  "mediaOwnership" : [
+    [
+      7,
+      64512
+    ],
+    [
+      7,
+      64512
+    ]
+  ],
+  "pending" : 0,
+  "recoveries" : 1,
+  "recoveryReleasedLive" : 0,
+  "schema" : "aethyr.metal.effects-result.v1",
+  "seconds" : 0.50320570834446698,
+  "snapshots" : [
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-bank\/meteor-swarm-48.jpg.rgba",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-bank\/thunderbolt-48.jpg.rgba",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-bank\/mega-thunderbolt-48.jpg.rgba",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-bank\/water-orb-48.jpg.rgba",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-bank\/reverse-gravity-48.jpg.rgba",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-bank\/wind-wall-48.jpg.rgba",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-bank\/next-row-48.jpg.rgba",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-bank\/meteor-swarm-48.jpg.recovered.rgba",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-bank\/thunderbolt-48.jpg.recovered.rgba",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-bank\/mega-thunderbolt-48.jpg.recovered.rgba",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-bank\/water-orb-48.jpg.recovered.rgba",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-bank\/reverse-gravity-48.jpg.recovered.rgba",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-bank\/wind-wall-48.jpg.recovered.rgba",
+    "\/Users\/christopherdavid\/.openagents\/aethyrforge\/metal-host-12868\/current-85c-bank\/next-row-48.jpg.recovered.rgba"
+  ],
+  "stateAddress" : 51942260736
+}

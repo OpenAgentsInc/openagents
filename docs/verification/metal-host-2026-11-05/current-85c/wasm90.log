@@ -1,0 +1,2 @@
+realm-run: 41 entries in the pack (38 layers), 16 floats a vertex, 2432 uniforms
+frame 90: 1476 vertices 217 draws (1 water) 13824 blades 16 sparks v fef2ebab9da4b470 u 6c4d563512f02b71 d 6c38fa404fbc3515 s0 250632 92f6c36b56bd3090 s1 888000 cd380a06bc9c6532 s2 89792 b876feffd64bf442 s3 146848 764b54b80a209c74 p bd090040513133c6Native/Wasm CPU: 1483704 bytes across8 complete producer buffers, 0 words differ, none beyond the existing1e-6 libm bound

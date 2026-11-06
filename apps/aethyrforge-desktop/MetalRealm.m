@@ -357,8 +357,10 @@ static void blend(MTLRenderPipelineColorAttachmentDescriptor *a,coax_t_RenderBle
   if(!replay&&!m&&request.kind==COAX_RenderMediaKind_image){
    NSString *relative=[url hasPrefix:@"/worlds/"]?[@"/realms/" stringByAppendingString:[url substringFromIndex:8]]:url;NSString *base=[[directory stringByAppendingPathComponent:@"web"]stringByStandardizingPath];NSString *path=[[base stringByAppendingPathComponent:[relative substringFromIndex:1]]stringByStandardizingPath];
    if(face.host_contract_version&&face.host_contract_version()==1){
-     NSString *resolvedBase=base.stringByResolvingSymlinksInPath,*resolvedPath=path.stringByResolvingSymlinksInPath;
-     BOOL contained=[resolvedPath hasPrefix:[resolvedBase stringByAppendingString:@"/"]];
+     uint8_t bundled[12288];int64_t bytes=hmb_path(request.url,(coax_v_u8){bundled,sizeof bundled});
+     NSString *mapped=bytes>0?[[NSString alloc]initWithBytes:bundled length:(NSUInteger)bytes encoding:NSUTF8StringEncoding]:nil;
+     NSString *resolvedBase=base.stringByResolvingSymlinksInPath,*resolvedPath=mapped?[[base stringByAppendingPathComponent:[mapped substringFromIndex:1]]stringByResolvingSymlinksInPath]:@"";
+     BOOL contained=hmb_inside(cs(resolvedBase),cs(resolvedPath));
      RhgiSource source=contained?(RhgiSource){mediaSourceSize,mediaSourceRead,(__bridge void*)resolvedPath}:(RhgiSource){0};
      RhgiImage row=rhgi_get(mediaCPU,request.kind,request.url,source);m=[MFMedia new];m->failed=YES;if(row.slot>=0)mediaCache[url]=m;
      if(row.decoded){m->width=row.width;m->height=row.height;m->rgba=[NSData dataWithBytesNoCopy:(void*)row.pixels length:row.bytes freeWhenDone:NO];

@@ -1,4 +1,4 @@
-// Observe wasm.sh's exact six-unit Everglade5e C-cache selection and freeze
+// Observe wasm.sh's Everglade5e C-cache selection and freeze
 // its C/headers. This neither creates compiler provenance nor infers the
 // missing original emission profile of a cache hit. Run in the pinned root.
 #import "Basic";
@@ -13,6 +13,13 @@
   #assert opc_paths("a.coax\nb.coax",paths[..])==2&&paths[1]=="b.coax";
   #assert opc_paths("a.coax\nb.coax",paths[0..<1])== -1&&opc_paths("",paths[..])==0;
 }
+#test "folded libraries are complete carrier source rows, not path substrings" {
+  #assert opc_contains("a.coax\nfolder/b.coax\n","a.coax")&&opc_contains("a.coax\nfolder/b.coax","folder/b.coax");
+  #assert !opc_contains("aa.coax\nfolder/b.coax\n","a.coax")&&!opc_contains("a.coax\nfolder/b.coax\n","b.coax");
+}
+opc_contains::(text:string,path:string)->bool {
+  start:=0;for i:0..<text.count+1{if i==text.count||text[i]=='\n'{if text[start..<i]==path{return true;}start=i+1;}}return false;
+}
 opc_paths::(text:string,out:[]string)->int {
   n:=0;start:=0;for i:0..<text.count+1{if i==text.count||text[i]=='\n'{if i>start{if n==out.count{return -1;}out[n]=text[start..<i];n+=1;}start=i+1;}}return n;
 }
@@ -26,10 +33,17 @@ tool_main::()->int #export_c {
   if compiler.count!=64||!fs_mkdir(dir)||fs_list(dir,files[..])!=0{return 2;}
   units:=[6]string.["aethyr/render/carriers/everglade5e.coax","apps/openagents-web/everglade-step.coax","verse/grid.coax","verse/everglade/river.coax","verse/everglade/guard-guide-policy.coax","apps/openagents-web/everglade5e-rules.coax"];
   bases:=[6]string.["everglade5e","Everglade-step","Grid","River","Guard-guide-policy","Everglade5e-rules"];
+  carrier:[65536]u8;carrier_n:=0;
   print("scope=exact wasm.sh cache-key observation and frozen bytes; not original emission profile or graphics/default admission\n");
   for unit,k:units {
     source:[65536]u8;err:[65536]u8;cmd:=[4]string.["coax/web/tool.sh","wasm-size","sources",unit];r:=opc_run(cmd[..],deadline,source[..],err[..]);
     if r.status!=0||r.cut||r.timed_out||r.out_n<1{return 1;}
+    if k==0{carrier_n=r.out_n;for b,i:source[0..<carrier_n]{carrier[i]=b;}}
+    if k>0&&opc_contains(cast(string)carrier[0..<carrier_n],unit){
+      names:[2][256]u8;paths:[2][4096]u8;for side:0..<2{j:[1]Jo;jo_start(j[..],names[side][..]);jo_put(j[..],ifx side==0 then bases[0] else bases[k]);jo_put(j[..],".h");}
+      copy:=[3]string.["cp",fs_join(dir,cast(string)names[0][0..<bases[0].count+2],paths[0][..]),fs_join(dir,cast(string)names[1][0..<bases[k].count+2],paths[1][..])];out:[4096]u8;r=opc_run(copy[..],deadline,out[..],err[..]);if r.status!=0||r.timed_out||r.cut{return 1;}
+      print("unit=% header=% folded_into=%; no independent C emission or cache entry\n",unit,bases[k],bases[0]);continue;
+    }
     args:[515]string;args[0]="/usr/bin/shasum";args[1]="-a";args[2]="256";
     paths:=opc_paths(cast(string)source[0..<r.out_n],args[3..<args.count]);if paths<=0{return 1;}count:=paths+3;
     hashes:[131072]u8;r=opc_run(args[0..<count],deadline,hashes[..],err[..]);if r.status!=0||r.cut||r.timed_out{return 1;}hash_n:=r.out_n;
