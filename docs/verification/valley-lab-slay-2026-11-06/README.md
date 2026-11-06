@@ -479,8 +479,10 @@ dark red.
 
 ### Spell orbit (M)
 
-M starts a seven-second camera move from the snarl close-up (frame 1152).
-Echo plays on at 0.28 speed through the end of TF0290. The camera pulls back
+M starts a seven-second camera move from the film's cut of TF0290. TF_Edit
+shows source frames 1126 to 1152 (a 125-frame offset); later frames are
+unfinished handles where her jaw hangs open. Echo plays those 27 frames in
+slow motion, ending on the snarl. The camera pulls back
 2.6 times, then turns once around her head. Her back and the orb face the
 camera mid-clip, and the move ends on her chest and orb hand. P pauses, T
 restarts, and , and . step one frame. `spell_camera` is a pure function with

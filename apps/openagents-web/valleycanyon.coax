@@ -225,11 +225,12 @@ canyon_uniform_point :: (u:[]f32,at:int,p:Point) {u[at]=p.x;u[at+1]=p.y;u[at+2]=
 }
 // The frame's uniform floats: 0..127 the scene and lights, 128..130 the shot's lens.
 CANYON_UNIFORMS :: 136;
-// The spell orbit (M): from the snarl close-up (frame 1152), Echo plays on in slow motion while the
-// camera turns once around her head and pulls back, settling on her chest and the orb in her hand.
-SPELL_FROM :: 151.0f32;
+// The spell orbit (M): the film's cut of TF0290 (source frames 1126 to 1152, TF_Edit's 125-frame
+// offset) in slow motion, from the cut's own close-up, while the camera pulls back and turns once
+// around her head. Frames past the cut are unfinished handles (the jaw hangs open), so it stays inside.
+SPELL_FROM :: 125.0f32;
+SPELL_TO :: 151.0f32;
 SPELL_SECONDS :: 7.0f32;
-SPELL_RATE :: 0.28f32;
 SPELL_PULL :: 2.6f32;
 SPELL_DROP :: 0.22f32;
 SPELL_RISE :: 0.12f32;
@@ -250,7 +251,7 @@ spell_camera :: (eye0:Point,look0:Point,head0:Point,head:Point,p:f32)->SpellCame
  h:=spell_camera(eye0,look0,head0,head0,0.5);#assert h.eye.z<0;
  e:=spell_camera(eye0,look0,head0,head0,1);d:=sub(e.eye,e.at);o:=sub(eye0,head0);#assert abs(sqrt(dot(d,d))-SPELL_PULL*sqrt(dot(o,o)))<0.001 && e.eye.z>0 && abs(e.at.y-(1.55-SPELL_DROP))<0.0001;
 }
-canyon_spell_frame :: (s:[]ValleyCanyon)->f32 {return pc.lo(199,SPELL_FROM+s[0].spell_t*24*SPELL_RATE);}
+canyon_spell_frame :: (s:[]ValleyCanyon)->f32 {return SPELL_FROM+(SPELL_TO-SPELL_FROM)*clamp(s[0].spell_t/SPELL_SECONDS,0,1);}
 canyon_spell_start :: (s:[]ValleyCanyon) {
  q:=s[0].shot[..];canyon_blur(s);s[0].portrait=true;s[0].performance=false;s[0].source_shot=true;q[0].frame=SPELL_FROM;q[0].playing=true;
  s[0].spell_eye=v3(slay_shot_meta(q,0),slay_shot_meta(q,1),slay_shot_meta(q,2));s[0].spell_head=v3(slay_shot_meta(q,36),slay_shot_meta(q,37),slay_shot_meta(q,38));
