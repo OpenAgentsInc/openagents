@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.51.0 — Nominal integer identities — 2026-11-05
 
-Commit: pending
+Commit: [`0265cd16df9f86dc8ca9bcbc670f51d782e3eec6`](https://github.com/OpenAgentsInc/openagents/commit/0265cd16df9f86dc8ca9bcbc670f51d782e3eec6)
 
 - Add `struct @id { value: INTEGER; }` for nominal integer domains and
   `@id(ordered)` for explicit ordering. Construction and extraction stay
