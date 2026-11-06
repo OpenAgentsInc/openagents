@@ -4,7 +4,9 @@ Status: active implementation roadmap, updated 2026-11-05. The initial
 walkable world, procedural asset/indexed baseline, bounded leaves, ownership
 hierarchy, parent simplification, screen-error cuts and HTTP page stations now
 run locally, including adjacent nonplanar grid parents and a deterministic
-six-rock field with shared HTTP pages.
+six-rock field with shared HTTP pages. The isolated `0 SCANS` station now also
+loads two exact Quixel-ID matches from a private local cache, through Coax
+download/import, SHA-256 admission and the same bounded GPU path.
 
 Build **Valley Lab**, an unlisted world at `/worlds/valley-lab`, where a
 visitor can inspect each engine system alone and then watch those same
@@ -567,6 +569,51 @@ relevant Coax suites, authority mutations, shader emission check and
 chapter, example inventory and registry only as each teaching profile becomes
 real; run the Aethyr book checker when those files change. Do not upgrade a
 draft's status on the strength of a roadmap.
+
+## Landed: exact Unreal asset inventory and private scan baseline
+
+The local `ValleyoftheAncient2` project yielded 317 Megascans mesh packages,
+299 embedded import records and 124 unique original ID candidates. 281 mesh
+packages have positive Ancient World actor-package references in the bounded
+prefix scan. These are reference lower bounds, not placement counts or a
+complete Unreal package parser. Eleven IDs match current Fab source archive
+filenames exactly, including CanyonSandstone, several heavily used western
+sandstone/ground sets and Quarry Cliff.
+
+Two free Standard source listings were downloaded programmatically and added
+as isolated content at `#scans` (`0`): Desert Western Rock Medium 08
+(`uk4cdch`, 6,780 vertices / 2,994 triangles) and Quarry Cliff (`ubhvccfda`,
+1,949 vertices / 3,099 triangles). Their current low-tier glTF source may
+differ from the scene artist's high-detail FBX. `L` selects the other source,
+`V` selects diagnostic views, and `R` retries. No paid asset was bought.
+
+Inventory, public catalogue matching, anonymous range downloading, glTF
+transforms, JPEG decoding and base-color sampling are Coax. Raw and derived
+licensed files remain under the shared private Aethyrforge cache, exposed to
+the local preview through an ignored asset directory. Only metadata, hashes,
+code and verification records are committed. The sampler bakes color at
+vertices; full PBR texture sampling remains a separate task. These scans use
+their whole low-tier source mesh, not fabricated grid parents or imported
+Nanite data. The arbitrary-mesh reducer remains unsupported.
+
+The live/candidate/transport storage raises the declared frame byte budget
+to 9.5 MB together; actual arena is 8,604,520 bytes. Existing physical GPU
+buffers and submitted-vertex limits remain adequate. Hash, shape, finite
+value, color and index checks precede replacement; missing/corrupt downloads
+retain the last valid scan, and replies after leaving do not replace it.
+The parser's 171 mutation sites have zero survivors. Independent matrix and
+Pillow checks cover every source vertex, color sample and original index.
+Desktop/phone browser checks cover both sources, five distinct views, failures,
+retry, stale delivery and exact state/pixels after GPU loss.
+
+Full asset inventory, eleven catalogue matches, two download manifests,
+commands and receipts:
+[exact source assets](../verification/valley-lab-source-assets-2026-11-05/README.md).
+Recheck the remaining source IDs during the announced staged free rollout;
+a free UEFN reference licence alone does not provide raw source. Add texture
+sampling/PBR and a separately qualified arbitrary-mesh baseline before claiming
+source-material or scan-LOD parity. First scene placement still needs explicit
+transformed collision proxies; the scan inspector has not added them to walking.
 
 ## Next implementation task
 

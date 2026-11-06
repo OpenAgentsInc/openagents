@@ -1,0 +1,10 @@
+Mode: release
+Wasm bytes: 127945
+Wasm SHA256: 9e496ae58cf9ddc3e05da27bd11470bde99102e2384f0eb4ee14736b7d1d64b6
+Declared byte budget: 9500000
+Actual arena bytes: 8604520
+Submitted vertex cap: 80000
+Physical HUD vertex cap: 81920
+Physical mesh vertices: 16384
+Physical index entries: 65536
+Licensed source/payload bytes: private cache only, excluded from git

@@ -1,0 +1,3 @@
+ok   #test source metadata is bounded JSON rather than guessed binary strings (1 case, 16269 steps, 0 ms)
+1 of 81 checks (--only 'source metadata'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

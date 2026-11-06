@@ -1,0 +1,9 @@
+ok   #test scan station queues local source and switches away without replacing original rock (1 case, 176618958 steps, 1480 ms)
+ok   #test scan admission rejects edited source identity before replacing the live scan (1 case, 100526642 steps, 748 ms)
+ok   #test scan LE codec preserves float bits and byte order (1 case, 241 steps, 0 ms)
+ok   #test scan parser rejects malformed layout colors indices and preserves an empty candidate (1 case, 83051 steps, 5 ms)
+ok   #test scan helpers pin exact header counts float lanes and color endpoints (1 case, 11346 steps, 0 ms)
+ok   #test scan decode retains all vertex colors and the first nonzero index (1 case, 86900 steps, 4 ms)
+ok   #test LRU ties evict the first slot and pressure rescans the first free slot (1 case, 457018 steps, 8 ms)
+7 of 493 checks (--only 'scan'), 7 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

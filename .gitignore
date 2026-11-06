@@ -70,3 +70,6 @@ apps/openagents-web/nip01.wgsl
 apps/openagents-web/nip-guide.wgsl
 apps/openagents-web/pylon.wgsl
 apps/openagents-web/projects/baked.coax
+
+# Licensed scan source/derived bytes stay in the private Aethyrforge cache.
+/apps/openagents-web/assets/valley/scans/

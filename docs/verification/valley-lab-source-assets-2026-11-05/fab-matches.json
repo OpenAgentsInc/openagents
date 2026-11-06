@@ -1,0 +1,511 @@
+{
+  "schema": "valley.fab-source-matches.v1",
+  "scope": "Public metadata only; exact ID in source archive filenames; no purchases or authenticated downloads",
+  "assets": [
+    {
+      "quixel_id": "uk4sehs",
+      "matches": [
+        {
+          "listing_uid": "d4e9e445-b628-4b09-bd27-4869bb5a87df",
+          "url": "https://www.fab.com/listings/d4e9e445-b628-4b09-bd27-4869bb5a87df",
+          "matched_gltf_files": [
+            {
+              "name": "desert_western_rock_small_11_uk4sehs_ue_raw.zip",
+              "file_uid": "b6d1d814-ac24-49bc-920a-b817ee50bbcd",
+              "bytes": 230103575
+            },
+            {
+              "name": "desert_western_rock_small_11_uk4sehs_ue_high.zip",
+              "file_uid": "97d59e81-d3a3-4836-871c-c107cfcb815d",
+              "bytes": 63476798
+            },
+            {
+              "name": "desert_western_rock_small_11_uk4sehs_ue_mid.zip",
+              "file_uid": "999fd3eb-1d64-4b17-8c0f-c4fda763020b",
+              "bytes": 16467113
+            },
+            {
+              "name": "desert_western_rock_small_11_uk4sehs_ue_low.zip",
+              "file_uid": "26e680ef-5683-47c2-b361-5e809854e307",
+              "bytes": 1297187
+            }
+          ],
+          "title": "Desert Western Rock Small 11",
+          "licenses": [
+            {
+              "name": "Personal",
+              "price": 1.99,
+              "currency": "USD"
+            },
+            {
+              "name": "Professional",
+              "price": 19.99,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "search_candidate_limit": 3
+    },
+    {
+      "quixel_id": "umcjabuva",
+      "matches": [
+        {
+          "listing_uid": "9914d15c-8a33-40e8-9f29-ec02f9705b1e",
+          "url": "https://www.fab.com/listings/9914d15c-8a33-40e8-9f29-ec02f9705b1e",
+          "matched_gltf_files": [
+            {
+              "name": "desert_western_patch_ground_gravel_coarse_01_umcjabuva_ue_raw.zip",
+              "file_uid": "0e8e60b9-107e-4243-bf3e-220e92326a97",
+              "bytes": 322161920
+            },
+            {
+              "name": "desert_western_patch_ground_gravel_coarse_01_umcjabuva_ue_high.zip",
+              "file_uid": "dc1bb506-43be-41c9-b751-5aca24a24dcc",
+              "bytes": 83385851
+            },
+            {
+              "name": "desert_western_patch_ground_gravel_coarse_01_umcjabuva_ue_mid.zip",
+              "file_uid": "2c7d559c-cf13-47ba-b7c1-e79ed99b14e4",
+              "bytes": 21512402
+            },
+            {
+              "name": "desert_western_patch_ground_gravel_coarse_01_umcjabuva_ue_low.zip",
+              "file_uid": "3cc39894-53df-4a5b-be46-da5297b16975",
+              "bytes": 2351317
+            }
+          ],
+          "title": "Desert Western Patch Ground Gravel Coarse 01",
+          "licenses": [
+            {
+              "name": "Personal",
+              "price": 2.99,
+              "currency": "USD"
+            },
+            {
+              "name": "Professional",
+              "price": 29.99,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "search_candidate_limit": 3
+    },
+    {
+      "quixel_id": "uk5ocf2",
+      "matches": [
+        {
+          "listing_uid": "48fe8bc5-934c-4376-9a27-b012e130746f",
+          "url": "https://www.fab.com/listings/48fe8bc5-934c-4376-9a27-b012e130746f",
+          "matched_gltf_files": [
+            {
+              "name": "canyon_sandstone_rocky_ground_uk5ocf2_ue_raw.zip",
+              "file_uid": "0523e409-b760-424f-9073-dc43efcb8ec9",
+              "bytes": 276177376
+            },
+            {
+              "name": "canyon_sandstone_rocky_ground_uk5ocf2_ue_high.zip",
+              "file_uid": "56c512b5-0459-4840-9713-9c9e4902dafe",
+              "bytes": 80221277
+            },
+            {
+              "name": "canyon_sandstone_rocky_ground_uk5ocf2_ue_mid.zip",
+              "file_uid": "0800be07-435d-4b73-b2f8-a7089ee2a253",
+              "bytes": 20365144
+            },
+            {
+              "name": "canyon_sandstone_rocky_ground_uk5ocf2_ue_low.zip",
+              "file_uid": "55809bc5-0563-4f8f-8c3a-d860442316b5",
+              "bytes": 2077918
+            }
+          ],
+          "title": "Canyon Sandstone Rocky Ground",
+          "licenses": [
+            {
+              "name": "UEFN - Reference only",
+              "price": 0.0,
+              "currency": "USD"
+            },
+            {
+              "name": "Personal",
+              "price": 2.99,
+              "currency": "USD"
+            },
+            {
+              "name": "Professional",
+              "price": 29.99,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "search_candidate_limit": 3
+    },
+    {
+      "quixel_id": "ulbwebv",
+      "matches": [
+        {
+          "listing_uid": "28051161-fac7-47c2-b789-33fed7a9d432",
+          "url": "https://www.fab.com/listings/28051161-fac7-47c2-b789-33fed7a9d432",
+          "matched_gltf_files": [
+            {
+              "name": "desert_western_spire_large_05_ulbwebv_ue_raw.zip",
+              "file_uid": "c1be0161-3aa0-45b6-95c6-db339fabb635",
+              "bytes": 303773691
+            },
+            {
+              "name": "desert_western_spire_large_05_ulbwebv_ue_high.zip",
+              "file_uid": "744f0537-7c62-4766-aea4-413aca0e328e",
+              "bytes": 76627648
+            },
+            {
+              "name": "desert_western_spire_large_05_ulbwebv_ue_mid.zip",
+              "file_uid": "9de696f8-b5ba-48e7-ae48-ad7ae5e60e5c",
+              "bytes": 20041493
+            },
+            {
+              "name": "desert_western_spire_large_05_ulbwebv_ue_low.zip",
+              "file_uid": "573b0f01-6103-494f-8125-34d4a9b0ce8a",
+              "bytes": 1719643
+            }
+          ],
+          "title": "Desert Western Spire Large 05",
+          "licenses": [
+            {
+              "name": "Personal",
+              "price": 2.99,
+              "currency": "USD"
+            },
+            {
+              "name": "Professional",
+              "price": 29.99,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "search_candidate_limit": 3
+    },
+    {
+      "quixel_id": "uk4rabe",
+      "matches": [
+        {
+          "listing_uid": "d9b235df-30ec-41e8-a572-14f89d2bbdcd",
+          "url": "https://www.fab.com/listings/d9b235df-30ec-41e8-a572-14f89d2bbdcd",
+          "matched_gltf_files": [
+            {
+              "name": "canyon_sandstone_rocky_ground_uk4rabe_ue_raw.zip",
+              "file_uid": "bbb47961-8db3-4e9e-96b4-272894b55fd2",
+              "bytes": 305049163
+            },
+            {
+              "name": "canyon_sandstone_rocky_ground_uk4rabe_ue_high.zip",
+              "file_uid": "0fe32e33-816c-4179-829a-9ec0818fe7ee",
+              "bytes": 78032234
+            },
+            {
+              "name": "canyon_sandstone_rocky_ground_uk4rabe_ue_mid.zip",
+              "file_uid": "7dc8248b-968f-4448-a7e1-7dec57a23db7",
+              "bytes": 20167267
+            },
+            {
+              "name": "canyon_sandstone_rocky_ground_uk4rabe_ue_low.zip",
+              "file_uid": "88366ff0-e47e-4513-96a0-2f848468fcbb",
+              "bytes": 1893760
+            }
+          ],
+          "title": "Canyon Sandstone Rocky Ground",
+          "licenses": [
+            {
+              "name": "UEFN - Reference only",
+              "price": 0.0,
+              "currency": "USD"
+            },
+            {
+              "name": "Personal",
+              "price": 2.99,
+              "currency": "USD"
+            },
+            {
+              "name": "Professional",
+              "price": 29.99,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "search_candidate_limit": 3
+    },
+    {
+      "quixel_id": "uldxbim",
+      "matches": [
+        {
+          "listing_uid": "23ffb7ef-ad3e-43ce-8c63-779b39575e89",
+          "url": "https://www.fab.com/listings/23ffb7ef-ad3e-43ce-8c63-779b39575e89",
+          "matched_gltf_files": [
+            {
+              "name": "desert_western_scatter_rock_29_uldxbim_ue_raw.zip",
+              "file_uid": "82b70f78-3b9a-4453-b5d8-812b1ba28e8c",
+              "bytes": 179281236
+            },
+            {
+              "name": "desert_western_scatter_rock_29_uldxbim_ue_high.zip",
+              "file_uid": "51d85f46-6a0e-48b9-9d9f-fc42630e0d70",
+              "bytes": 51677534
+            },
+            {
+              "name": "desert_western_scatter_rock_29_uldxbim_ue_mid.zip",
+              "file_uid": "306fd7eb-9655-431b-81a3-4fe9cdaa93c2",
+              "bytes": 13967709
+            },
+            {
+              "name": "desert_western_scatter_rock_29_uldxbim_ue_low.zip",
+              "file_uid": "e398ad08-b43a-42e1-b264-ec19ec4dc3c8",
+              "bytes": 1401639
+            }
+          ],
+          "title": "Desert Western Scatter Rock 29",
+          "licenses": [
+            {
+              "name": "Personal",
+              "price": 1.99,
+              "currency": "USD"
+            },
+            {
+              "name": "Professional",
+              "price": 19.99,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "search_candidate_limit": 3
+    },
+    {
+      "quixel_id": "uk4cdch",
+      "matches": [
+        {
+          "listing_uid": "11700737-077c-416b-a005-53d0b5e1e285",
+          "url": "https://www.fab.com/listings/11700737-077c-416b-a005-53d0b5e1e285",
+          "matched_gltf_files": [
+            {
+              "name": "desert_western_rock_medium_08_uk4cdch_ue_raw.zip",
+              "file_uid": "8e08ec93-9576-4232-8d03-a28f2f9d7703",
+              "bytes": 313169479
+            },
+            {
+              "name": "desert_western_rock_medium_08_uk4cdch_ue_high.zip",
+              "file_uid": "8d87758f-d13a-469b-8f27-2ace56c5126d",
+              "bytes": 77708383
+            },
+            {
+              "name": "desert_western_rock_medium_08_uk4cdch_ue_mid.zip",
+              "file_uid": "334cf9bd-e16e-40d0-acd0-faa6bf5eec36",
+              "bytes": 20100818
+            },
+            {
+              "name": "desert_western_rock_medium_08_uk4cdch_ue_low.zip",
+              "file_uid": "849bcfb2-0f4a-4ec4-b277-2df435c0338e",
+              "bytes": 2053796
+            }
+          ],
+          "title": "Desert Western Rock Medium 08",
+          "licenses": [
+            {
+              "name": "Personal",
+              "price": 0.0,
+              "currency": "USD"
+            },
+            {
+              "name": "Professional",
+              "price": 0.0,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "search_candidate_limit": 3
+    },
+    {
+      "quixel_id": "uk5qbct",
+      "matches": [
+        {
+          "listing_uid": "d1e92d24-b2a3-47cb-813e-d29e21e91551",
+          "url": "https://www.fab.com/listings/d1e92d24-b2a3-47cb-813e-d29e21e91551",
+          "matched_gltf_files": [
+            {
+              "name": "desert_western_rock_medium_10_uk5qbct_ue_raw.zip",
+              "file_uid": "0c946f16-91a3-4cbb-a70f-edc7096101f8",
+              "bytes": 286932618
+            },
+            {
+              "name": "desert_western_rock_medium_10_uk5qbct_ue_high.zip",
+              "file_uid": "db4f1d54-9c6d-4e66-901f-31823dbfc5ea",
+              "bytes": 72493668
+            },
+            {
+              "name": "desert_western_rock_medium_10_uk5qbct_ue_mid.zip",
+              "file_uid": "1e59138a-ac91-47ac-ab8e-1b9be30757a3",
+              "bytes": 18543673
+            },
+            {
+              "name": "desert_western_rock_medium_10_uk5qbct_ue_low.zip",
+              "file_uid": "a8b135c2-310a-4b26-8065-2dd36e462244",
+              "bytes": 1886178
+            }
+          ],
+          "title": "Desert Western Rock Medium 10",
+          "licenses": [
+            {
+              "name": "Personal",
+              "price": 2.99,
+              "currency": "USD"
+            },
+            {
+              "name": "Professional",
+              "price": 29.99,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "search_candidate_limit": 3
+    },
+    {
+      "quixel_id": "ulsjcazga",
+      "matches": [
+        {
+          "listing_uid": "d96b49ff-dbe3-4f93-a205-4c2ffa7df31c",
+          "url": "https://www.fab.com/listings/d96b49ff-dbe3-4f93-a205-4c2ffa7df31c",
+          "matched_gltf_files": [
+            {
+              "name": "desert_western_rock_small_13_ulsjcazga_ue_raw.zip",
+              "file_uid": "fc536daf-150c-4d7c-804b-7249d1dc8c67",
+              "bytes": 247763150
+            },
+            {
+              "name": "desert_western_rock_small_13_ulsjcazga_ue_high.zip",
+              "file_uid": "016cc8df-3e12-48cf-b1a3-eb2473e87778",
+              "bytes": 71001974
+            },
+            {
+              "name": "desert_western_rock_small_13_ulsjcazga_ue_mid.zip",
+              "file_uid": "b6421b00-b8a1-45da-9141-110e516c18d3",
+              "bytes": 17811540
+            },
+            {
+              "name": "desert_western_rock_small_13_ulsjcazga_ue_low.zip",
+              "file_uid": "df928e26-3da3-4bd3-8d44-7abe9991c5d6",
+              "bytes": 1602084
+            }
+          ],
+          "title": "Desert Western Rock Small 13",
+          "licenses": [
+            {
+              "name": "Personal",
+              "price": 2.99,
+              "currency": "USD"
+            },
+            {
+              "name": "Professional",
+              "price": 29.99,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "search_candidate_limit": 3
+    },
+    {
+      "quixel_id": "uk5pebv",
+      "matches": [
+        {
+          "listing_uid": "8630df97-49f6-47fa-94c8-4db142326222",
+          "url": "https://www.fab.com/listings/8630df97-49f6-47fa-94c8-4db142326222",
+          "matched_gltf_files": [
+            {
+              "name": "desert_western_ledge_rock_small_06_uk5pebv_ue_raw.zip",
+              "file_uid": "7b09be53-6bcb-4637-930d-a1b5bc5352eb",
+              "bytes": 303181681
+            },
+            {
+              "name": "desert_western_ledge_rock_small_06_uk5pebv_ue_high.zip",
+              "file_uid": "2282b9f1-652b-4d57-9355-3da52e71cebe",
+              "bytes": 75512858
+            },
+            {
+              "name": "desert_western_ledge_rock_small_06_uk5pebv_ue_mid.zip",
+              "file_uid": "bb744e21-cd60-40c8-aa75-3e7fe8adf345",
+              "bytes": 20185499
+            },
+            {
+              "name": "desert_western_ledge_rock_small_06_uk5pebv_ue_low.zip",
+              "file_uid": "56355b4d-8038-48de-be72-e4d034e9eec4",
+              "bytes": 1829735
+            }
+          ],
+          "title": "Desert Western Ledge Rock Small 06",
+          "licenses": [
+            {
+              "name": "Personal",
+              "price": 2.99,
+              "currency": "USD"
+            },
+            {
+              "name": "Professional",
+              "price": 29.99,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "search_candidate_limit": 3
+    },
+    {
+      "quixel_id": "ubhvccfda",
+      "matches": [
+        {
+          "listing_uid": "c47f6376-20c4-4631-a6d6-82f626652691",
+          "url": "https://www.fab.com/listings/c47f6376-20c4-4631-a6d6-82f626652691",
+          "matched_gltf_files": [
+            {
+              "name": "quarry_cliff_ubhvccfda_ue_raw.zip",
+              "file_uid": "f2953977-0ec0-442e-9af9-dc5f43a399bc",
+              "bytes": 372111450
+            },
+            {
+              "name": "quarry_cliff_ubhvccfda_ue_high.zip",
+              "file_uid": "df67aaef-ddd4-4f99-a1c3-f9f227c17b04",
+              "bytes": 79362580
+            },
+            {
+              "name": "quarry_cliff_ubhvccfda_ue_mid.zip",
+              "file_uid": "999638b0-f259-4d11-b9f9-502d3386db55",
+              "bytes": 20889804
+            },
+            {
+              "name": "quarry_cliff_ubhvccfda_ue_low.zip",
+              "file_uid": "61789c49-84d4-45a8-bd98-fbeebd988256",
+              "bytes": 1639935
+            }
+          ],
+          "title": "Quarry Cliff",
+          "licenses": [
+            {
+              "name": "Personal",
+              "price": 0.0,
+              "currency": "USD"
+            },
+            {
+              "name": "Professional",
+              "price": 0.0,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "search_candidate_limit": 3
+    }
+  ]
+}

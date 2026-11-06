@@ -1,0 +1,3 @@
+ok   #test Fab pull concatenation is bounded and integer range endpoints are decimal (1 case, 947 steps, 0 ms)
+1 of 111 checks (--only 'Fab pull'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

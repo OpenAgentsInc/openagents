@@ -1,0 +1,3 @@
+ok   #test Fab source matching requires an exact delimited ID and safe input (1 case, 963 steps, 0 ms)
+1 of 87 checks (--only 'Fab source matching'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,2863 @@
+{
+  "schema": "valley.unreal-source-inventory.v1",
+  "prefix_bytes": 262144,
+  "mesh_packages": 317,
+  "metadata_not_found_in_prefix": 18,
+  "actor_packages": 13801,
+  "actor_packages_larger_than_prefix": 247,
+  "assets": [
+    {
+      "package": "AncientContent/Megascans/3DAssets/BurntFirewoodPack/SM_BurntFirewoodPack.uasset",
+      "package_bytes": 60423476,
+      "import_metadata_found": true,
+      "source_file": "tkvmbanva_High.fbx",
+      "source_md5": "159416edfed79f81716681404e4a88d5",
+      "quixel_id_candidate": "tkvmbanva",
+      "ancient_world_actor_references": 1
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/BurntFirewoodPack/SM_BurntFirewoodPack_00.uasset",
+      "package_bytes": 60885893,
+      "import_metadata_found": true,
+      "source_file": "tkvmbanva_High.fbx",
+      "source_md5": "159416edfed79f81716681404e4a88d5",
+      "quixel_id_candidate": "tkvmbanva",
+      "ancient_world_actor_references": 1
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/BurntFirewoodPack/SM_BurntFirewoodPack_01.uasset",
+      "package_bytes": 59828161,
+      "import_metadata_found": true,
+      "source_file": "tkvmbanva_High.fbx",
+      "source_md5": "159416edfed79f81716681404e4a88d5",
+      "quixel_id_candidate": "tkvmbanva",
+      "ancient_world_actor_references": 1
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/BurntFirewoodPack/SM_BurntFirewoodPack_02.uasset",
+      "package_bytes": 59682479,
+      "import_metadata_found": true,
+      "source_file": "tkvmbanva_High.fbx",
+      "source_md5": "159416edfed79f81716681404e4a88d5",
+      "quixel_id_candidate": "tkvmbanva",
+      "ancient_world_actor_references": 1
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/BurntFirewoodPack/SM_BurntFirewoodPack_03.uasset",
+      "package_bytes": 59944600,
+      "import_metadata_found": true,
+      "source_file": "tkvmbanva_High.fbx",
+      "source_md5": "159416edfed79f81716681404e4a88d5",
+      "quixel_id_candidate": "tkvmbanva",
+      "ancient_world_actor_references": 1
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/BurntTreeBranch/SM_BurntTreeBranch.uasset",
+      "package_bytes": 82696530,
+      "import_metadata_found": true,
+      "source_file": "vdpgbhfva_High.fbx",
+      "source_md5": "ce56120fd6d10c8d7e00ea44a78f09d6",
+      "quixel_id_candidate": "vdpgbhfva",
+      "ancient_world_actor_references": 1
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/CanyonSandstone/SM_CanyonSandstone.uasset",
+      "package_bytes": 77140649,
+      "import_metadata_found": true,
+      "source_file": "uk4sehs_High.fbx",
+      "source_md5": "4cee05cbe3f0854dcb62c07ac8c075f0",
+      "quixel_id_candidate": "uk4sehs",
+      "ancient_world_actor_references": 288
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/ConcreteCastleStairs/SM_ConcreteCastleStairs.uasset",
+      "package_bytes": 197735600,
+      "import_metadata_found": true,
+      "source_file": "Aset_castle_stairs_L_sdEvm_High.fbx",
+      "source_md5": "236d70f5f7d397ccc2c2fc2773322581",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 4
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/ConcreteRubblePack/SM_ConcreteRubblePack.uasset",
+      "package_bytes": 51626461,
+      "import_metadata_found": true,
+      "source_file": "tmkhdecva_High.fbx",
+      "source_md5": "43ea226e1d6a75c5038b780887d80953",
+      "quixel_id_candidate": "tmkhdecva",
+      "ancient_world_actor_references": 12
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/ConcreteRubblePack/SM_ConcreteRubblePack_00.uasset",
+      "package_bytes": 51090567,
+      "import_metadata_found": true,
+      "source_file": "tmkhdecva_High.fbx",
+      "source_md5": "43ea226e1d6a75c5038b780887d80953",
+      "quixel_id_candidate": "tmkhdecva",
+      "ancient_world_actor_references": 6
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/ConcreteRubblePack/SM_ConcreteRubblePack_01.uasset",
+      "package_bytes": 51509803,
+      "import_metadata_found": true,
+      "source_file": "tmkhdecva_High.fbx",
+      "source_md5": "43ea226e1d6a75c5038b780887d80953",
+      "quixel_id_candidate": "tmkhdecva",
+      "ancient_world_actor_references": 8
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/DamagedCastleStairs/SM_DamagedCastleStairs.uasset",
+      "package_bytes": 133851222,
+      "import_metadata_found": true,
+      "source_file": "Aset_castle_stairs_M_scCxt_High.fbx",
+      "source_md5": "344c865536cc49a975dfb218383323ac",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 5
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicBoulder/SM_IcelandicBoulder_01.uasset",
+      "package_bytes": 135220632,
+      "import_metadata_found": true,
+      "source_file": "tbiu3_High.fbx",
+      "source_md5": "7878268dc5a6353c5d70b6eef172ab5d",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicBoulder/SM_IcelandicBoulder_02.uasset",
+      "package_bytes": 134808340,
+      "import_metadata_found": true,
+      "source_file": "tbiv1_High.fbx",
+      "source_md5": "8a051648bc27a2eb202e37fcdfa32e41",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 6
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicBoulder/SM_IcelandicBoulder_03.uasset",
+      "package_bytes": 134170924,
+      "import_metadata_found": true,
+      "source_file": "tbpwp_High.fbx",
+      "source_md5": "b279c1ee6598a88908629b5a9654571c",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 8
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicLavaSpire/SM_IcelandicLavaSpire_01.uasset",
+      "package_bytes": 102055788,
+      "import_metadata_found": true,
+      "source_file": "siExJ_High.fbx",
+      "source_md5": "ceca9b7076e624db477ad8df7f2474f9",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 39
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicLavaSpire/SM_IcelandicLavaSpire_02.uasset",
+      "package_bytes": 135790687,
+      "import_metadata_found": true,
+      "source_file": "sjbrG_High.fbx",
+      "source_md5": "0cb4ac231ed5763b73e428487df3c12f",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 4
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicLavaSpire/SM_IcelandicLavaSpire_03.uasset",
+      "package_bytes": 102158456,
+      "import_metadata_found": true,
+      "source_file": "siuw3_High.fbx",
+      "source_md5": "b27d18c633d64dde3078080946f77a1b",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 7
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicRock/SM_IcelandicRock.uasset",
+      "package_bytes": 116352100,
+      "import_metadata_found": true,
+      "source_file": "taclb_High.fbx",
+      "source_md5": "d2f881991c06d30d5e64a7461b02abfc",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 13
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicRock/SM_IcelandicVolcanicRock.uasset",
+      "package_bytes": 135579444,
+      "import_metadata_found": true,
+      "source_file": "slnv6_High.fbx",
+      "source_md5": "c96bb5a996eed2299890e69b26c11d9c",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 13
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicRockAssembly/SM_IcelandicRockEruption.uasset",
+      "package_bytes": 133365888,
+      "import_metadata_found": true,
+      "source_file": "sjzbj_High.fbx",
+      "source_md5": "6e0ed459ab6a96bd8a0ef02d2434c559",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 17
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicRockAssembly/SM_IcelandicRockLarge.uasset",
+      "package_bytes": 270560922,
+      "import_metadata_found": true,
+      "source_file": "slesW_High.fbx",
+      "source_md5": "a3e728458a9c711568ecdd6a840ebcfb",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 3
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicRockAssembly/SM_IcelandicRockNoSkirt_02.uasset",
+      "package_bytes": 201648928,
+      "import_metadata_found": true,
+      "source_file": "td0nfjsda_High.fbx",
+      "source_md5": "bd5e84b212d23fa4e43e65eff8718be6",
+      "quixel_id_candidate": "td0nfjsda",
+      "ancient_world_actor_references": 10
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicRockAssembly/SM_IcelandicRock_01.uasset",
+      "package_bytes": 132659724,
+      "import_metadata_found": true,
+      "source_file": "tczbcguda_High.fbx",
+      "source_md5": "462c04b2d2f14f2c0abc7d2a40d44606",
+      "quixel_id_candidate": "tczbcguda",
+      "ancient_world_actor_references": 13
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicRockAssembly/SM_IcelandicRock_02.uasset",
+      "package_bytes": 268704768,
+      "import_metadata_found": true,
+      "source_file": "td0nfjsda_High.fbx",
+      "source_md5": "bd5e84b212d23fa4e43e65eff8718be6",
+      "quixel_id_candidate": "td0nfjsda",
+      "ancient_world_actor_references": 6
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicRockAssembly/SM_IcelandicRock_03.uasset",
+      "package_bytes": 134175889,
+      "import_metadata_found": true,
+      "source_file": "tfplcgrqa_High.fbx",
+      "source_md5": "53e5d26b06365da14968124943129bef",
+      "quixel_id_candidate": "tfplcgrqa",
+      "ancient_world_actor_references": 3
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicRockAssembly/SM_JaggedRock.uasset",
+      "package_bytes": 238322578,
+      "import_metadata_found": true,
+      "source_file": "siCs3_High.fbx",
+      "source_md5": "a1fc8676f23878af5d5a8ad9a0e11f08",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 17
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/IcelandicRockAssembly/SM_JaggedRockNoSkirt.uasset",
+      "package_bytes": 143063176,
+      "import_metadata_found": true,
+      "source_file": "siCs3_High.fbx",
+      "source_md5": "a1fc8676f23878af5d5a8ad9a0e11f08",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 14
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/JapaneseShrineFloor/SM_ShrineFLoor.uasset",
+      "package_bytes": 99450634,
+      "import_metadata_found": true,
+      "source_file": "udyqbjkfa_High.fbx",
+      "source_md5": "fe5c1832dcb545ed01f5dc992d2300cc",
+      "quixel_id_candidate": "udyqbjkfa",
+      "ancient_world_actor_references": 14
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/JapaneseShrineFloor/SM_ShrineFLoor_02.uasset",
+      "package_bytes": 130467172,
+      "import_metadata_found": true,
+      "source_file": "ugrxbjkfa_High.fbx",
+      "source_md5": "a4cfc172a9094c7b3df952225272de63",
+      "quixel_id_candidate": "ugrxbjkfa",
+      "ancient_world_actor_references": 9
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/LimestoneRocks/SM_LimestoneRocks1.uasset",
+      "package_bytes": 155745774,
+      "import_metadata_found": true,
+      "source_file": "SM_Limestone_Rocks_07.fbx",
+      "source_md5": "ae1413405807e5a6145a2f54bc882802",
+      "quixel_id_candidate": "ub3sddsda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/LimestoneRocks/SM_LimestoneRocks2.uasset",
+      "package_bytes": 314838796,
+      "import_metadata_found": true,
+      "source_file": "SM_Limestone_Rocks_06.fbx",
+      "source_md5": "57364506eeaf23c8193cb87eb0da7027",
+      "quixel_id_candidate": "ub5tabnda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/LimestoneRocks/SM_LimestoneRocks3.uasset",
+      "package_bytes": 116168609,
+      "import_metadata_found": true,
+      "source_file": "SM_Limestone_Rocks_05.fbx",
+      "source_md5": "39f5b96bc38cd96281bbcd781b1db03c",
+      "quixel_id_candidate": "ubhxafwda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/LimestoneRocks/SM_LimestoneRocks4.uasset",
+      "package_bytes": 155990897,
+      "import_metadata_found": true,
+      "source_file": "SM_Limestone_Rocks_04.fbx",
+      "source_md5": "71b7e00d070334f781db98aa9e426be4",
+      "quixel_id_candidate": "ubordbyda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/LimestoneRocks/SM_LimestoneRocks5.uasset",
+      "package_bytes": 116317140,
+      "import_metadata_found": true,
+      "source_file": "SM_Limestone_Rocks_03.fbx",
+      "source_md5": "d45eeb70d6a64cb0fe8498e30b6730c2",
+      "quixel_id_candidate": "ubqxai2da",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/LimestoneRocks/SM_LimestoneRocks6.uasset",
+      "package_bytes": 156397864,
+      "import_metadata_found": true,
+      "source_file": "SM_Limestone_Rocks_02.fbx",
+      "source_md5": "8cfe177cc75724cfdb92095517b1bfe9",
+      "quixel_id_candidate": "ubvsaf3da",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/LimestoneRocks/SM_LimestoneRocks6Lattice.uasset",
+      "package_bytes": 156488180,
+      "import_metadata_found": true,
+      "source_file": "SM_Limestone_Rocks_02.fbx",
+      "source_md5": "8cfe177cc75724cfdb92095517b1bfe9",
+      "quixel_id_candidate": "ubvsaf3da",
+      "ancient_world_actor_references": 36
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/LimestoneRocks/SM_LimestoneRocks7.uasset",
+      "package_bytes": 156371135,
+      "import_metadata_found": true,
+      "source_file": "SM_Limestone_Rocks_01.fbx",
+      "source_md5": "6fc28f8f433fd2f7f35017e4da33c58d",
+      "quixel_id_candidate": "ubxaajpda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/LimestoneRocks/SM_LimestoneRubble.uasset",
+      "package_bytes": 313675422,
+      "import_metadata_found": true,
+      "source_file": "SM_Limestone_Rubble_01.fbx",
+      "source_md5": "14676a5e773a7d4c442e46bb5228a051",
+      "quixel_id_candidate": "ubxbejwda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/LimestoneRocks/SM_LimestoneSlab.uasset",
+      "package_bytes": 78046053,
+      "import_metadata_found": true,
+      "source_file": "SM_Limestone_Slab_03.fbx",
+      "source_md5": "d9887d8b2a59e1aedc1242faf7f867b2",
+      "quixel_id_candidate": "ub3rcjzda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/LimestoneRocks/SM_LimestoneSlab2.uasset",
+      "package_bytes": 176458487,
+      "import_metadata_found": true,
+      "source_file": "SM_Limestone_Slab_02.fbx",
+      "source_md5": "83e9d6e2e4e1ad504ba7b269e0e90591",
+      "quixel_id_candidate": "ubvtce1da",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/LimestoneRocks/SM_Limestone_Rocks1Flat.uasset",
+      "package_bytes": 155894075,
+      "import_metadata_found": true,
+      "source_file": "SM_Limestone_Rocks_07.fbx",
+      "source_md5": "ae1413405807e5a6145a2f54bc882802",
+      "quixel_id_candidate": "ub3sddsda",
+      "ancient_world_actor_references": 29
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/LimestoneRocks/SM_Limestone_Rocks2Flat.uasset",
+      "package_bytes": 315118194,
+      "import_metadata_found": true,
+      "source_file": "SM_Limestone_Rocks_06.fbx",
+      "source_md5": "57364506eeaf23c8193cb87eb0da7027",
+      "quixel_id_candidate": "ub5tabnda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/LimestoneRocks/SM_Limestone_Slab_01.uasset",
+      "package_bytes": 156970334,
+      "import_metadata_found": true,
+      "source_file": "SM_Limestone_Slab_01.fbx",
+      "source_md5": "0ebce6bb3a4cbc16004f4bc9f5e38858",
+      "quixel_id_candidate": "ubxbadpda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureEmbankment/SM_NatureEmbankment_00.uasset",
+      "package_bytes": 46954881,
+      "import_metadata_found": true,
+      "source_file": "uk4qcgx_High.fbx",
+      "source_md5": "5153ecc53fa6b4c1253d8e3577d98cf4",
+      "quixel_id_candidate": "uk4qcgx",
+      "ancient_world_actor_references": 86
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureEmbankment/SM_NatureEmbankment_01.uasset",
+      "package_bytes": 46962723,
+      "import_metadata_found": true,
+      "source_file": "uk4qcgx_High.fbx",
+      "source_md5": "5153ecc53fa6b4c1253d8e3577d98cf4",
+      "quixel_id_candidate": "uk4qcgx",
+      "ancient_world_actor_references": 411
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureEmbankment/SM_NatureEmbankment_02.uasset",
+      "package_bytes": 46919037,
+      "import_metadata_found": true,
+      "source_file": "uk4qcgx_High.fbx",
+      "source_md5": "5153ecc53fa6b4c1253d8e3577d98cf4",
+      "quixel_id_candidate": "uk4qcgx",
+      "ancient_world_actor_references": 242
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureEmbankment/SM_NatureEmbankment_03.uasset",
+      "package_bytes": 46900631,
+      "import_metadata_found": true,
+      "source_file": "uk4qcgx_High.fbx",
+      "source_md5": "5153ecc53fa6b4c1253d8e3577d98cf4",
+      "quixel_id_candidate": "uk4qcgx",
+      "ancient_world_actor_references": 56
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock/SM_NatureRock1.uasset",
+      "package_bytes": 77479210,
+      "import_metadata_found": true,
+      "source_file": "uk4pdco_High.fbx",
+      "source_md5": "1b79818e8af3c41faed3f63330960cce",
+      "quixel_id_candidate": "uk4pdco",
+      "ancient_world_actor_references": 482
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock/SM_NatureRock10.uasset",
+      "package_bytes": 311328483,
+      "import_metadata_found": true,
+      "source_file": "uk5oded_High.fbx",
+      "source_md5": "9f590119d0684d04cb892e04e8d1bf97",
+      "quixel_id_candidate": "uk5oded",
+      "ancient_world_actor_references": 7
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock/SM_NatureRock11.uasset",
+      "package_bytes": 154783007,
+      "import_metadata_found": true,
+      "source_file": "uk5oefk_High.fbx",
+      "source_md5": "1843d1e763052518384355e5653037a8",
+      "quixel_id_candidate": "uk5oefk",
+      "ancient_world_actor_references": 524
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock/SM_NatureRock12.uasset",
+      "package_bytes": 153147808,
+      "import_metadata_found": true,
+      "source_file": "uk5ofde_High.fbx",
+      "source_md5": "c7135a7bdb3fdddbd5bd56d953cf0cc2",
+      "quixel_id_candidate": "uk5ofde",
+      "ancient_world_actor_references": 520
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock/SM_NatureRock2.uasset",
+      "package_bytes": 282205166,
+      "import_metadata_found": true,
+      "source_file": "uk4paip_High.fbx",
+      "source_md5": "bcfa9b46f2de4b98fc0a0af6f75ab802",
+      "quixel_id_candidate": "uk4paip",
+      "ancient_world_actor_references": 42
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock/SM_NatureRock3.uasset",
+      "package_bytes": 106692361,
+      "import_metadata_found": true,
+      "source_file": "uk4teag_High.fbx",
+      "source_md5": "52bfe3308b32a06394fd21a85468a04b",
+      "quixel_id_candidate": "uk4teag",
+      "ancient_world_actor_references": 426
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock/SM_NatureRock4.uasset",
+      "package_bytes": 106499742,
+      "import_metadata_found": true,
+      "source_file": "uk4teag_High.fbx",
+      "source_md5": "52bfe3308b32a06394fd21a85468a04b",
+      "quixel_id_candidate": "uk4teag",
+      "ancient_world_actor_references": 93
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock/SM_NatureRock5.uasset",
+      "package_bytes": 108999035,
+      "import_metadata_found": true,
+      "source_file": "uk4teag_High_Curved.fbx",
+      "source_md5": "b4581fdae960db68932bec56c77ca1a5",
+      "quixel_id_candidate": "uk4teag",
+      "ancient_world_actor_references": 324
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock/SM_NatureRock6.uasset",
+      "package_bytes": 109012803,
+      "import_metadata_found": true,
+      "source_file": "uk4teag_High_Curved_01.fbx",
+      "source_md5": "c29ec56c99b9aafe06a7770912573269",
+      "quixel_id_candidate": "uk4teag",
+      "ancient_world_actor_references": 74
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock/SM_NatureRock7.uasset",
+      "package_bytes": 312695748,
+      "import_metadata_found": true,
+      "source_file": "uk5ebcp_High.fbx",
+      "source_md5": "6a82f0ecb616c0c2e3e5ce7bfc1e2a6f",
+      "quixel_id_candidate": "uk5ebcp",
+      "ancient_world_actor_references": 481
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock/SM_NatureRock8.uasset",
+      "package_bytes": 311346419,
+      "import_metadata_found": true,
+      "source_file": "uk5oded_High.fbx",
+      "source_md5": "9f590119d0684d04cb892e04e8d1bf97",
+      "quixel_id_candidate": "uk5oded",
+      "ancient_world_actor_references": 147
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock/SM_NatureRock9.uasset",
+      "package_bytes": 316285435,
+      "import_metadata_found": true,
+      "source_file": "uk5oded_High_Curved.fbx",
+      "source_md5": "040164102451655db3b5a938a796ef88",
+      "quixel_id_candidate": "uk5oded",
+      "ancient_world_actor_references": 95
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_00.uasset",
+      "package_bytes": 312851457,
+      "import_metadata_found": true,
+      "source_file": "uk5pbhv_High.fbx",
+      "source_md5": "5fee9dd0f971cc79552cfd47425c5eb4",
+      "quixel_id_candidate": "uk5pbhv",
+      "ancient_world_actor_references": 366
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_01.uasset",
+      "package_bytes": 155276946,
+      "import_metadata_found": true,
+      "source_file": "uk5pdhh_High.fbx",
+      "source_md5": "9905b5d90461641c428f67d86e917e56",
+      "quixel_id_candidate": "uk5pdhh",
+      "ancient_world_actor_references": 246
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_010.uasset",
+      "package_bytes": 154160863,
+      "import_metadata_found": true,
+      "source_file": "ulducap_High.fbx",
+      "source_md5": "50dd82ef4ab08055626693c18d3e3d9e",
+      "quixel_id_candidate": "ulducap",
+      "ancient_world_actor_references": 231
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_011.uasset",
+      "package_bytes": 76410958,
+      "import_metadata_found": true,
+      "source_file": "uldxbim_High.fbx",
+      "source_md5": "9b4f9e37b148a3c5e2e498bfc7997199",
+      "quixel_id_candidate": "uldxbim",
+      "ancient_world_actor_references": 654
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_012.uasset",
+      "package_bytes": 46419581,
+      "import_metadata_found": true,
+      "source_file": "ulebdjn_High.fbx",
+      "source_md5": "434105fb07363185c78839b323878354",
+      "quixel_id_candidate": "ulebdjn",
+      "ancient_world_actor_references": 451
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_013.uasset",
+      "package_bytes": 155876165,
+      "import_metadata_found": true,
+      "source_file": "ulerccg_High.fbx",
+      "source_md5": "388ee9f1929732ad1b2ad45c29d29bb6",
+      "quixel_id_candidate": "ulerccg",
+      "ancient_world_actor_references": 446
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_014.uasset",
+      "package_bytes": 155813910,
+      "import_metadata_found": true,
+      "source_file": "ulerccg_High.fbx",
+      "source_md5": "388ee9f1929732ad1b2ad45c29d29bb6",
+      "quixel_id_candidate": "ulerccg",
+      "ancient_world_actor_references": 391
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_015.uasset",
+      "package_bytes": 267490709,
+      "import_metadata_found": true,
+      "source_file": "ulfucbn_High.fbx",
+      "source_md5": "03e92bd657b8cdf53ae53d93ef143653",
+      "quixel_id_candidate": "ulfucbn",
+      "ancient_world_actor_references": 195
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_016.uasset",
+      "package_bytes": 267490452,
+      "import_metadata_found": true,
+      "source_file": "ulfucbn_High.fbx",
+      "source_md5": "03e92bd657b8cdf53ae53d93ef143653",
+      "quixel_id_candidate": "ulfucbn",
+      "ancient_world_actor_references": 16
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_017.uasset",
+      "package_bytes": 155669082,
+      "import_metadata_found": true,
+      "source_file": "ulfucbn_High.fbx",
+      "source_md5": "03e92bd657b8cdf53ae53d93ef143653",
+      "quixel_id_candidate": "ulfucbn",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_018.uasset",
+      "package_bytes": 77073176,
+      "import_metadata_found": true,
+      "source_file": "ulksajz_High.fbx",
+      "source_md5": "8e5a9ad9ac4879599b46f3967ce3652f",
+      "quixel_id_candidate": "ulksajz",
+      "ancient_world_actor_references": 101
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_019.uasset",
+      "package_bytes": 77004477,
+      "import_metadata_found": true,
+      "source_file": "ulksajz_High.fbx",
+      "source_md5": "8e5a9ad9ac4879599b46f3967ce3652f",
+      "quixel_id_candidate": "ulksajz",
+      "ancient_world_actor_references": 52
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_02.uasset",
+      "package_bytes": 155316769,
+      "import_metadata_found": true,
+      "source_file": "uk5pdhh_High.fbx",
+      "source_md5": "9905b5d90461641c428f67d86e917e56",
+      "quixel_id_candidate": "uk5pdhh",
+      "ancient_world_actor_references": 494
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_020.uasset",
+      "package_bytes": 81758808,
+      "import_metadata_found": true,
+      "source_file": "ulksbbk_High.fbx",
+      "source_md5": "cdd8a36d2732a3e3660edd2f099dccf8",
+      "quixel_id_candidate": "ulksbbk",
+      "ancient_world_actor_references": 273
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_021.uasset",
+      "package_bytes": 81672052,
+      "import_metadata_found": true,
+      "source_file": "ulksbbk_High.fbx",
+      "source_md5": "cdd8a36d2732a3e3660edd2f099dccf8",
+      "quixel_id_candidate": "ulksbbk",
+      "ancient_world_actor_references": 1
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_022.uasset",
+      "package_bytes": 47179742,
+      "import_metadata_found": true,
+      "source_file": "ulksbcz_High.fbx",
+      "source_md5": "42e7c52240a30f1be8d3021a2037cf69",
+      "quixel_id_candidate": "ulksbcz",
+      "ancient_world_actor_references": 132
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_023.uasset",
+      "package_bytes": 47084794,
+      "import_metadata_found": true,
+      "source_file": "ulksbcz_High.fbx",
+      "source_md5": "42e7c52240a30f1be8d3021a2037cf69",
+      "quixel_id_candidate": "ulksbcz",
+      "ancient_world_actor_references": 78
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_024.uasset",
+      "package_bytes": 47151149,
+      "import_metadata_found": true,
+      "source_file": "ulksbcz_High.fbx",
+      "source_md5": "42e7c52240a30f1be8d3021a2037cf69",
+      "quixel_id_candidate": "ulksbcz",
+      "ancient_world_actor_references": 52
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_025.uasset",
+      "package_bytes": 46763000,
+      "import_metadata_found": true,
+      "source_file": "ulksbdy_High.fbx",
+      "source_md5": "8c9940f7af3d134d0470551208e7c88e",
+      "quixel_id_candidate": "ulksbdy",
+      "ancient_world_actor_references": 69
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_026.uasset",
+      "package_bytes": 46670476,
+      "import_metadata_found": true,
+      "source_file": "ulksbdy_High.fbx",
+      "source_md5": "8c9940f7af3d134d0470551208e7c88e",
+      "quixel_id_candidate": "ulksbdy",
+      "ancient_world_actor_references": 137
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_027.uasset",
+      "package_bytes": 76814711,
+      "import_metadata_found": true,
+      "source_file": "ulksbgw_High.fbx",
+      "source_md5": "a586b0eee8e58b10ed162b4f0309e9fb",
+      "quixel_id_candidate": "ulksbgw",
+      "ancient_world_actor_references": 161
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_028.uasset",
+      "package_bytes": 76689969,
+      "import_metadata_found": true,
+      "source_file": "ulksbgw_High.fbx",
+      "source_md5": "a586b0eee8e58b10ed162b4f0309e9fb",
+      "quixel_id_candidate": "ulksbgw",
+      "ancient_world_actor_references": 8
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_029.uasset",
+      "package_bytes": 76735513,
+      "import_metadata_found": true,
+      "source_file": "ulksbgw_High.fbx",
+      "source_md5": "a586b0eee8e58b10ed162b4f0309e9fb",
+      "quixel_id_candidate": "ulksbgw",
+      "ancient_world_actor_references": 105
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_03.uasset",
+      "package_bytes": 118504252,
+      "import_metadata_found": true,
+      "source_file": "uk5qbct_High.fbx",
+      "source_md5": "264fd015d25485f65c9d7ba615403c2f",
+      "quixel_id_candidate": "uk5qbct",
+      "ancient_world_actor_references": 639
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_030.uasset",
+      "package_bytes": 77243277,
+      "import_metadata_found": true,
+      "source_file": "ulmfcfc_High.fbx",
+      "source_md5": "a7527567bbe1e24ef3edbe354a91a810",
+      "quixel_id_candidate": "ulmfcfc",
+      "ancient_world_actor_references": 578
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_031.uasset",
+      "package_bytes": 47060633,
+      "import_metadata_found": true,
+      "source_file": "ulmtabz_High.fbx",
+      "source_md5": "6f509fddcf0800ab32f866064d7d6a19",
+      "quixel_id_candidate": "ulmtabz",
+      "ancient_world_actor_references": 569
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_032.uasset",
+      "package_bytes": 46915348,
+      "import_metadata_found": true,
+      "source_file": "ulnfeaq_High.fbx",
+      "source_md5": "ff17f73e274278846b3e673fda1eb020",
+      "quixel_id_candidate": "ulnfeaq",
+      "ancient_world_actor_references": 58
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_033.uasset",
+      "package_bytes": 46845627,
+      "import_metadata_found": true,
+      "source_file": "ulnfeaq_High.fbx",
+      "source_md5": "ff17f73e274278846b3e673fda1eb020",
+      "quixel_id_candidate": "ulnfeaq",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_034.uasset",
+      "package_bytes": 46911721,
+      "import_metadata_found": true,
+      "source_file": "ulnfeaq_High.fbx",
+      "source_md5": "ff17f73e274278846b3e673fda1eb020",
+      "quixel_id_candidate": "ulnfeaq",
+      "ancient_world_actor_references": 41
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_035.uasset",
+      "package_bytes": 101205368,
+      "import_metadata_found": true,
+      "source_file": "ulnfeaw_High.fbx",
+      "source_md5": "bb3b8531cfa5bce68e58cfc82afdc300",
+      "quixel_id_candidate": "ulnfeaw",
+      "ancient_world_actor_references": 100
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_036.uasset",
+      "package_bytes": 101127155,
+      "import_metadata_found": true,
+      "source_file": "ulnfeaw_High.fbx",
+      "source_md5": "bb3b8531cfa5bce68e58cfc82afdc300",
+      "quixel_id_candidate": "ulnfeaw",
+      "ancient_world_actor_references": 154
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_037.uasset",
+      "package_bytes": 310788061,
+      "import_metadata_found": true,
+      "source_file": "ulqtdgx_High.fbx",
+      "source_md5": "6b17f05dee82fdb6d9fe779e8de73125",
+      "quixel_id_candidate": "ulqtdgx",
+      "ancient_world_actor_references": 44
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_038.uasset",
+      "package_bytes": 310325253,
+      "import_metadata_found": true,
+      "source_file": "ulqtdgx_High.fbx",
+      "source_md5": "6b17f05dee82fdb6d9fe779e8de73125",
+      "quixel_id_candidate": "ulqtdgx",
+      "ancient_world_actor_references": 315
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_039.uasset",
+      "package_bytes": 120896747,
+      "import_metadata_found": true,
+      "source_file": "ulqteed_High.fbx",
+      "source_md5": "f3cc781a7a70c322b40362edfbf47756",
+      "quixel_id_candidate": "ulqteed",
+      "ancient_world_actor_references": 302
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_04.uasset",
+      "package_bytes": 155789018,
+      "import_metadata_found": true,
+      "source_file": "ulbdbaf_High.fbx",
+      "source_md5": "56b53fedd261c4ae3faad6efcca58f95",
+      "quixel_id_candidate": "ulbdbaf",
+      "ancient_world_actor_references": 128
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_040.uasset",
+      "package_bytes": 120872143,
+      "import_metadata_found": true,
+      "source_file": "ulqteed_High.fbx",
+      "source_md5": "f3cc781a7a70c322b40362edfbf47756",
+      "quixel_id_candidate": "ulqteed",
+      "ancient_world_actor_references": 396
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_041.uasset",
+      "package_bytes": 155484449,
+      "import_metadata_found": true,
+      "source_file": "ulqteek_High.fbx",
+      "source_md5": "3a723b4a54a6326aa05cf1cb35e5fb69",
+      "quixel_id_candidate": "ulqteek",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_042.uasset",
+      "package_bytes": 214940957,
+      "import_metadata_found": true,
+      "source_file": "umdjfhfga_High.fbx",
+      "source_md5": "add7970936c4e14a8e54166e5f0b08be",
+      "quixel_id_candidate": "umdjfhfga",
+      "ancient_world_actor_references": 111
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_043.uasset",
+      "package_bytes": 154378280,
+      "import_metadata_found": true,
+      "source_file": "umjibfffa_High.fbx",
+      "source_md5": "3f836d5ef782fd8c189c3810d0bc4ce0",
+      "quixel_id_candidate": "umjibfffa",
+      "ancient_world_actor_references": 533
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_044.uasset",
+      "package_bytes": 206749000,
+      "import_metadata_found": true,
+      "source_file": "umqkchpga_High.fbx",
+      "source_md5": "24815100ebbdbd3868ae89125624ceb6",
+      "quixel_id_candidate": "umqkchpga",
+      "ancient_world_actor_references": 235
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_045.uasset",
+      "package_bytes": 129613464,
+      "import_metadata_found": true,
+      "source_file": "umqkchpga_High.fbx",
+      "source_md5": "24815100ebbdbd3868ae89125624ceb6",
+      "quixel_id_candidate": "umqkchpga",
+      "ancient_world_actor_references": 410
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_046.uasset",
+      "package_bytes": 281183750,
+      "import_metadata_found": true,
+      "source_file": "umshejnga_High.fbx",
+      "source_md5": "40f637ceb6eaf1f0f0065066156938ad",
+      "quixel_id_candidate": "umshejnga",
+      "ancient_world_actor_references": 320
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_047.uasset",
+      "package_bytes": 153563712,
+      "import_metadata_found": true,
+      "source_file": "vb1macxfa_High.fbx",
+      "source_md5": "ebc582b67eda69411ff995cdbd0d12e3",
+      "quixel_id_candidate": "vb1macxfa",
+      "ancient_world_actor_references": 175
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_048.uasset",
+      "package_bytes": 153462580,
+      "import_metadata_found": true,
+      "source_file": "vb1mbdega_High.fbx",
+      "source_md5": "32fa9f70abe19e7a1386869f139b2e4f",
+      "quixel_id_candidate": "vb1mbdega",
+      "ancient_world_actor_references": 333
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_049.uasset",
+      "package_bytes": 155245347,
+      "import_metadata_found": true,
+      "source_file": "vb1ueaofa_High.fbx",
+      "source_md5": "173de612eaf7a8c8146b3852c52c1ead",
+      "quixel_id_candidate": "vb1ueaofa",
+      "ancient_world_actor_references": 329
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_05.uasset",
+      "package_bytes": 159224552,
+      "import_metadata_found": true,
+      "source_file": "ulbdbaf_High.fbx",
+      "source_md5": "56b53fedd261c4ae3faad6efcca58f95",
+      "quixel_id_candidate": "ulbdbaf",
+      "ancient_world_actor_references": 491
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_050.uasset",
+      "package_bytes": 153125031,
+      "import_metadata_found": true,
+      "source_file": "vbuieclga_High.fbx",
+      "source_md5": "09851bcc5f4cedacb9f5783e4c1aaa74",
+      "quixel_id_candidate": "vbuieclga",
+      "ancient_world_actor_references": 284
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_051.uasset",
+      "package_bytes": 153839577,
+      "import_metadata_found": true,
+      "source_file": "vbujejqfa_High.fbx",
+      "source_md5": "7a13f8c9b84107d469e700a2e1f54818",
+      "quixel_id_candidate": "vbujejqfa",
+      "ancient_world_actor_references": 310
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_052.uasset",
+      "package_bytes": 149257817,
+      "import_metadata_found": true,
+      "source_file": "vbvqbbofa_High.fbx",
+      "source_md5": "523919d527d92a6748c24457128dce68",
+      "quixel_id_candidate": "vbvqbbofa",
+      "ancient_world_actor_references": 360
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_053.uasset",
+      "package_bytes": 151982757,
+      "import_metadata_found": true,
+      "source_file": "vbzmdd1ga_High.fbx",
+      "source_md5": "aaef2acfe0d251548275ff4ab376ecb6",
+      "quixel_id_candidate": "vbzmdd1ga",
+      "ancient_world_actor_references": 19
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_054.uasset",
+      "package_bytes": 188499610,
+      "import_metadata_found": true,
+      "source_file": "SM_vceicdsga_High.fbx",
+      "source_md5": "1949956f48e52593226087e47783671c",
+      "quixel_id_candidate": "vceicdsga",
+      "ancient_world_actor_references": 6
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_055.uasset",
+      "package_bytes": 155200072,
+      "import_metadata_found": true,
+      "source_file": "vceldhvfa_High.fbx",
+      "source_md5": "9e2f687697eac68fa957977ec5d0f13b",
+      "quixel_id_candidate": "vceldhvfa",
+      "ancient_world_actor_references": 115
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_056.uasset",
+      "package_bytes": 154832463,
+      "import_metadata_found": true,
+      "source_file": "SM_vceoferfa_High.fbx",
+      "source_md5": "62ae45393050257a7bfaeba32b9a95d8",
+      "quixel_id_candidate": "vceoferfa",
+      "ancient_world_actor_references": 43
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_057.uasset",
+      "package_bytes": 153843106,
+      "import_metadata_found": true,
+      "source_file": "SM_vcepaakga_High.fbx",
+      "source_md5": "cfd9a2832953c8ed387174786ad117f7",
+      "quixel_id_candidate": "vcepaakga",
+      "ancient_world_actor_references": 7
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_058.uasset",
+      "package_bytes": 154826562,
+      "import_metadata_found": true,
+      "source_file": "SM_vcepbapga_High.fbx",
+      "source_md5": "b91b2711dd59e51b69cddc8dacb66f39",
+      "quixel_id_candidate": "vcepbapga",
+      "ancient_world_actor_references": 13
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_059.uasset",
+      "package_bytes": 156024486,
+      "import_metadata_found": true,
+      "source_file": "vcepcehga_High.fbx",
+      "source_md5": "d6e6450e269c7a787c80f71dbd32c435",
+      "quixel_id_candidate": "vcepcehga",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_06.uasset",
+      "package_bytes": 154618662,
+      "import_metadata_found": true,
+      "source_file": "ulbpfjj_High.fbx",
+      "source_md5": "dc6fb64f17b394c4b082362e4fbffe04",
+      "quixel_id_candidate": "ulbpfjj",
+      "ancient_world_actor_references": 544
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_060.uasset",
+      "package_bytes": 143825398,
+      "import_metadata_found": true,
+      "source_file": "SM_vcercdtfa_High.fbx",
+      "source_md5": "30fdf2e3ae889f956aebb6acdf9af276",
+      "quixel_id_candidate": "vcercdtfa",
+      "ancient_world_actor_references": 19
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_061.uasset",
+      "package_bytes": 311922804,
+      "import_metadata_found": true,
+      "source_file": "ulbdbaf_Bent_High.fbx",
+      "source_md5": "f6d8a9ef873a2f94ffd1833f2c62917f",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 126
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_062.uasset",
+      "package_bytes": 281326772,
+      "import_metadata_found": true,
+      "source_file": "umshejnga_Bent_High.fbx",
+      "source_md5": "44165ca9854bd0fc98ccad5d9a183977",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 316
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_07.uasset",
+      "package_bytes": 155407842,
+      "import_metadata_found": true,
+      "source_file": "ulccfbr_High.fbx",
+      "source_md5": "5739a5c024c482c30e312b4ee193f5b2",
+      "quixel_id_candidate": "ulccfbr",
+      "ancient_world_actor_references": 510
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_08.uasset",
+      "package_bytes": 311921418,
+      "import_metadata_found": true,
+      "source_file": "ulcofaf_High.fbx",
+      "source_md5": "37bdc58ff02eab2cd082ec231b7347a8",
+      "quixel_id_candidate": "ulcofaf",
+      "ancient_world_actor_references": 89
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NatureRock2/SM_NatureRock_09.uasset",
+      "package_bytes": 155086882,
+      "import_metadata_found": true,
+      "source_file": "uldrcd0_High.fbx",
+      "source_md5": "7f58364a40d2fa366fbf9f3000c0f592",
+      "quixel_id_candidate": "uldrcd0",
+      "ancient_world_actor_references": 543
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NordicCliff/SM_NordicRock_00.uasset",
+      "package_bytes": 133379856,
+      "import_metadata_found": true,
+      "source_file": "ullqbb1ga_High.fbx",
+      "source_md5": "23936298b7081b1a468664d6c2d8e600",
+      "quixel_id_candidate": "ullqbb1ga",
+      "ancient_world_actor_references": 4
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NordicCliff/SM_NordicRock_01.uasset",
+      "package_bytes": 134462363,
+      "import_metadata_found": true,
+      "source_file": "ullqbb1ga_High.fbx",
+      "source_md5": "23936298b7081b1a468664d6c2d8e600",
+      "quixel_id_candidate": "ullqbb1ga",
+      "ancient_world_actor_references": 17
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NordicCliff/SM_NordicRock_02.uasset",
+      "package_bytes": 19706740,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/NordicCliff/SM_NordicRock_03.uasset",
+      "package_bytes": 41626703,
+      "import_metadata_found": true,
+      "source_file": "ullqbb1ga_High.fbx",
+      "source_md5": "23936298b7081b1a468664d6c2d8e600",
+      "quixel_id_candidate": "ullqbb1ga",
+      "ancient_world_actor_references": 3
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_00.uasset",
+      "package_bytes": 310463299,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_10.fbx",
+      "source_md5": "460f8e0c26e41a78c7e8395cf1d6051e",
+      "quixel_id_candidate": "ubhvccfda",
+      "ancient_world_actor_references": 9
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_01.uasset",
+      "package_bytes": 153312297,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_11.fbx",
+      "source_md5": "5d552d26e587a57a6c56cde895517649",
+      "quixel_id_candidate": "ubhubhyda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_010.uasset",
+      "package_bytes": 155964473,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_04.fbx",
+      "source_md5": "34a2b4fcf0a30317061c6e2bc84e11f4",
+      "quixel_id_candidate": "uchofe0fa",
+      "ancient_world_actor_references": 3
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_011.uasset",
+      "package_bytes": 310557945,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_05.fbx",
+      "source_md5": "ac85c91d49c1654baaed471faabcb0d7",
+      "quixel_id_candidate": "uchoab3fa",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_012.uasset",
+      "package_bytes": 155640667,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_06.fbx",
+      "source_md5": "dd61c4586f5cb2de724f5dc41be3fd92",
+      "quixel_id_candidate": "ubotbfjda",
+      "ancient_world_actor_references": 7
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_013.uasset",
+      "package_bytes": 311706509,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_07.fbx",
+      "source_md5": "44ed6a617b4f305e3f3af1fb90f3da49",
+      "quixel_id_candidate": "ubjvbczda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_014.uasset",
+      "package_bytes": 154677607,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_08.fbx",
+      "source_md5": "ff97ed7345c36e32947bb2feb4c48540",
+      "quixel_id_candidate": "ubjuddqda",
+      "ancient_world_actor_references": 7
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_015.uasset",
+      "package_bytes": 153582040,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_09.fbx",
+      "source_md5": "6b48de0396870a824c924e15986cbd60",
+      "quixel_id_candidate": "ubhwbepda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_016.uasset",
+      "package_bytes": 313086538,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_Detail_01.fbx",
+      "source_md5": "15b3fa428d6c9a19ef39d43c58676f69",
+      "quixel_id_candidate": "uboxeeada",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_017.uasset",
+      "package_bytes": 152925821,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_Detail_02.fbx",
+      "source_md5": "22287cdd225593448ab9c4557453a87a",
+      "quixel_id_candidate": "ubotefpda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_018.uasset",
+      "package_bytes": 233271192,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_Detail_03.fbx",
+      "source_md5": "790a6ce41d93b7b30af0b4be24fff0a5",
+      "quixel_id_candidate": "ubjxdipda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_019.uasset",
+      "package_bytes": 153954687,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_Detail_04.fbx",
+      "source_md5": "53c2787c4ffc8806743bbe538a0018f3",
+      "quixel_id_candidate": "ubjteehda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_02.uasset",
+      "package_bytes": 315028608,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_12.fbx",
+      "source_md5": "753253dcf93b76baa9abc6cfcba12e70",
+      "quixel_id_candidate": "ub5tefsda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_020.uasset",
+      "package_bytes": 152846334,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Outcrop_01.fbx",
+      "source_md5": "88924940c3b9211431e379b1b3e193a9",
+      "quixel_id_candidate": "ub4bdhwda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_03.uasset",
+      "package_bytes": 155124774,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_13.fbx",
+      "source_md5": "49febf20c4f9663056ef2d7b8ef7f3ed",
+      "quixel_id_candidate": "ub5rfjsda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_04.uasset",
+      "package_bytes": 154910736,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_14.fbx",
+      "source_md5": "faadfd05d215340dedc8874e640ba1a1",
+      "quixel_id_candidate": "ub3xdjnda",
+      "ancient_world_actor_references": 3
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_05.uasset",
+      "package_bytes": 154581149,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_15.fbx",
+      "source_md5": "fc516f9f27bee3a5cbb68fd7ffab60f4",
+      "quixel_id_candidate": "ub3teb1da",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_06.uasset",
+      "package_bytes": 157375113,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_16.fbx",
+      "source_md5": "4333cc15b1140b11b75dd683b2d0a9f9",
+      "quixel_id_candidate": "ub3sahcda",
+      "ancient_world_actor_references": 7
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_07.uasset",
+      "package_bytes": 233829880,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_01.fbx",
+      "source_md5": "46c41ec04694a8d8cc56d6953c5df42e",
+      "quixel_id_candidate": "uchwaffda",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_08.uasset",
+      "package_bytes": 312516276,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_02.fbx",
+      "source_md5": "b543aad20f03fc8015f4a8f7b49b651b",
+      "quixel_id_candidate": "uchudhida",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_09.uasset",
+      "package_bytes": 154897546,
+      "import_metadata_found": true,
+      "source_file": "SM_Quarry_Cliff_03.fbx",
+      "source_md5": "d9f85aafec74cdb9ac8b0eb04c09e40a",
+      "quixel_id_candidate": "uchpbg3fa",
+      "ancient_world_actor_references": 5
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_00.uasset",
+      "package_bytes": 116545620,
+      "import_metadata_found": true,
+      "source_file": "Aset_rock_sandstone_M_rkuun_High.fbx",
+      "source_md5": "fafe7342261cacbecfa83da368a365ee",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 84
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_01.uasset",
+      "package_bytes": 552859107,
+      "import_metadata_found": true,
+      "source_file": "Aset_rock_sandstone_L_sakbO_High.fbx",
+      "source_md5": "f459a793a7f1dac893a4534ca6f3a6d6",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 12
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_010.uasset",
+      "package_bytes": 156301693,
+      "import_metadata_found": true,
+      "source_file": "uk4pfc1_High.fbx",
+      "source_md5": "babe786bc7f08bfa77bc2187370c007a",
+      "quixel_id_candidate": "uk4pfc1",
+      "ancient_world_actor_references": 530
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_011.uasset",
+      "package_bytes": 77260329,
+      "import_metadata_found": true,
+      "source_file": "uk4qahn_High.fbx",
+      "source_md5": "167e238772e6bdde3ff37aea2d2f36ad",
+      "quixel_id_candidate": "uk4qahn",
+      "ancient_world_actor_references": 294
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_012.uasset",
+      "package_bytes": 77066687,
+      "import_metadata_found": true,
+      "source_file": "SM_uk4qed3_01.fbx",
+      "source_md5": "4f3de39aca4eb00ce168a52c5c4e4441",
+      "quixel_id_candidate": "uk4qed3",
+      "ancient_world_actor_references": 307
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_013.uasset",
+      "package_bytes": 77107958,
+      "import_metadata_found": true,
+      "source_file": "SM_uk4qed3_01.fbx",
+      "source_md5": "4f3de39aca4eb00ce168a52c5c4e4441",
+      "quixel_id_candidate": "uk4qed3",
+      "ancient_world_actor_references": 407
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_014.uasset",
+      "package_bytes": 77186740,
+      "import_metadata_found": true,
+      "source_file": "SM_uk4qed3_01.fbx",
+      "source_md5": "4f3de39aca4eb00ce168a52c5c4e4441",
+      "quixel_id_candidate": "uk4qed3",
+      "ancient_world_actor_references": 595
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_015.uasset",
+      "package_bytes": 77178735,
+      "import_metadata_found": true,
+      "source_file": "SM_uk4qed3_01.fbx",
+      "source_md5": "4f3de39aca4eb00ce168a52c5c4e4441",
+      "quixel_id_candidate": "uk4qed3",
+      "ancient_world_actor_references": 450
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_016.uasset",
+      "package_bytes": 155598837,
+      "import_metadata_found": true,
+      "source_file": "SM_uk4rabe_01.fbx",
+      "source_md5": "6152f8ab6fc0e8e97039308baa437a6b",
+      "quixel_id_candidate": "uk4rabe",
+      "ancient_world_actor_references": 301
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_017.uasset",
+      "package_bytes": 155832851,
+      "import_metadata_found": true,
+      "source_file": "SM_uk4rabe_01.fbx",
+      "source_md5": "6152f8ab6fc0e8e97039308baa437a6b",
+      "quixel_id_candidate": "uk4rabe",
+      "ancient_world_actor_references": 658
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_018.uasset",
+      "package_bytes": 155821647,
+      "import_metadata_found": true,
+      "source_file": "SM_uk4rabe_01.fbx",
+      "source_md5": "6152f8ab6fc0e8e97039308baa437a6b",
+      "quixel_id_candidate": "uk4rabe",
+      "ancient_world_actor_references": 588
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_019.uasset",
+      "package_bytes": 156323616,
+      "import_metadata_found": true,
+      "source_file": "uk4sfjs_High.fbx",
+      "source_md5": "a7cf66df9a8985508b00cc39257e6aee",
+      "quixel_id_candidate": "uk4sfjs",
+      "ancient_world_actor_references": 558
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_02.uasset",
+      "package_bytes": 294316717,
+      "import_metadata_found": true,
+      "source_file": "Aset_rock_sandstone_M_saxvy_High.fbx",
+      "source_md5": "ca8aa2ea9eaa9b07ec7b71586cc57914",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 273
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_020.uasset",
+      "package_bytes": 153362704,
+      "import_metadata_found": true,
+      "source_file": "SM_uk4tej2_01.fbx",
+      "source_md5": "13e7016a3aabf8a2428face116ecf522",
+      "quixel_id_candidate": "uk4tej2",
+      "ancient_world_actor_references": 436
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_021.uasset",
+      "package_bytes": 47206283,
+      "import_metadata_found": true,
+      "source_file": "SM_uk4uebx_01.fbx",
+      "source_md5": "ff178e1e2513b819ec8697057dcfb187",
+      "quixel_id_candidate": "uk4uebx",
+      "ancient_world_actor_references": 175
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_022.uasset",
+      "package_bytes": 47206650,
+      "import_metadata_found": true,
+      "source_file": "SM_uk4uebx_01.fbx",
+      "source_md5": "ff178e1e2513b819ec8697057dcfb187",
+      "quixel_id_candidate": "uk4uebx",
+      "ancient_world_actor_references": 126
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_023.uasset",
+      "package_bytes": 82923924,
+      "import_metadata_found": true,
+      "source_file": "SM_uk5ocf2_01.fbx",
+      "source_md5": "f258da97203695ee7dd772cb2a2b893d",
+      "quixel_id_candidate": "uk5ocf2",
+      "ancient_world_actor_references": 8
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_024.uasset",
+      "package_bytes": 83013005,
+      "import_metadata_found": true,
+      "source_file": "SM_uk5ocf2_01.fbx",
+      "source_md5": "f258da97203695ee7dd772cb2a2b893d",
+      "quixel_id_candidate": "uk5ocf2",
+      "ancient_world_actor_references": 689
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_025.uasset",
+      "package_bytes": 82953059,
+      "import_metadata_found": true,
+      "source_file": "SM_uk5ocf2_01.fbx",
+      "source_md5": "f258da97203695ee7dd772cb2a2b893d",
+      "quixel_id_candidate": "uk5ocf2",
+      "ancient_world_actor_references": 7
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_026.uasset",
+      "package_bytes": 155108916,
+      "import_metadata_found": true,
+      "source_file": "SM_uk5pebv_01.fbx",
+      "source_md5": "cbd4fd888f1aba0b7b06823fc0bed35b",
+      "quixel_id_candidate": "uk5pebv",
+      "ancient_world_actor_references": 633
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_027.uasset",
+      "package_bytes": 155105466,
+      "import_metadata_found": true,
+      "source_file": "SM_uk5pebv_01.fbx",
+      "source_md5": "cbd4fd888f1aba0b7b06823fc0bed35b",
+      "quixel_id_candidate": "uk5pebv",
+      "ancient_world_actor_references": 178
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_028.uasset",
+      "package_bytes": 76995797,
+      "import_metadata_found": true,
+      "source_file": "uk5sbdy_High.fbx",
+      "source_md5": "2557f67ec72fd9be6bbd6a6d2d31876b",
+      "quixel_id_candidate": "uk5sbdy",
+      "ancient_world_actor_references": 558
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_029.uasset",
+      "package_bytes": 82410745,
+      "import_metadata_found": true,
+      "source_file": "uk5sccn_High.fbx",
+      "source_md5": "3e952e6c7eb94b1486583b1fb83f1955",
+      "quixel_id_candidate": "uk5sccn",
+      "ancient_world_actor_references": 558
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_03.uasset",
+      "package_bytes": 314945044,
+      "import_metadata_found": true,
+      "source_file": "Aset_rock_sandstone_M_saxvy_High.fbx",
+      "source_md5": "ca8aa2ea9eaa9b07ec7b71586cc57914",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 131
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_030.uasset",
+      "package_bytes": 77441577,
+      "import_metadata_found": true,
+      "source_file": "uk5seau_High.fbx",
+      "source_md5": "ed17bce6638b4824f6de9595dc3b27e1",
+      "quixel_id_candidate": "uk5seau",
+      "ancient_world_actor_references": 485
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_031.uasset",
+      "package_bytes": 46276280,
+      "import_metadata_found": true,
+      "source_file": "uk5tddx_High.fbx",
+      "source_md5": "77177a41a2354b1066e1822154819d1d",
+      "quixel_id_candidate": "uk5tddx",
+      "ancient_world_actor_references": 565
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_032.uasset",
+      "package_bytes": 38112093,
+      "import_metadata_found": true,
+      "source_file": "SM_ul4lehiga_01.fbx",
+      "source_md5": "a60e5cde8876f36e0b3e0fd10c6a9bfb",
+      "quixel_id_candidate": "ul4lehiga",
+      "ancient_world_actor_references": 266
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_033.uasset",
+      "package_bytes": 38159921,
+      "import_metadata_found": true,
+      "source_file": "SM_ul4lehiga_01.fbx",
+      "source_md5": "a60e5cde8876f36e0b3e0fd10c6a9bfb",
+      "quixel_id_candidate": "ul4lehiga",
+      "ancient_world_actor_references": 560
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_034.uasset",
+      "package_bytes": 118768278,
+      "import_metadata_found": true,
+      "source_file": "SM_ulbcedi_01.fbx",
+      "source_md5": "881207fc4ec57f77561530c6fee82a98",
+      "quixel_id_candidate": "ulbcedi",
+      "ancient_world_actor_references": 174
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_035.uasset",
+      "package_bytes": 118810083,
+      "import_metadata_found": true,
+      "source_file": "SM_ulbcedi_01.fbx",
+      "source_md5": "881207fc4ec57f77561530c6fee82a98",
+      "quixel_id_candidate": "ulbcedi",
+      "ancient_world_actor_references": 427
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_036.uasset",
+      "package_bytes": 155525883,
+      "import_metadata_found": true,
+      "source_file": "SM_ulbdbeq_01.fbx",
+      "source_md5": "bf3edbf2190acec6ffb0d66d0eaa0f13",
+      "quixel_id_candidate": "ulbdbeq",
+      "ancient_world_actor_references": 18
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_037.uasset",
+      "package_bytes": 155578997,
+      "import_metadata_found": true,
+      "source_file": "SM_ulbdbeq_01.fbx",
+      "source_md5": "bf3edbf2190acec6ffb0d66d0eaa0f13",
+      "quixel_id_candidate": "ulbdbeq",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_038.uasset",
+      "package_bytes": 153112150,
+      "import_metadata_found": true,
+      "source_file": "SM_ulbrbdt_01.fbx",
+      "source_md5": "ace052b3b65b34f66abbf46cd283f7f2",
+      "quixel_id_candidate": "ulbrbdt",
+      "ancient_world_actor_references": 52
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_039.uasset",
+      "package_bytes": 65918291,
+      "import_metadata_found": true,
+      "source_file": "ulbwebv_High.fbx",
+      "source_md5": "22fb34f50bb7e6a1fc5ac82e564ad0d5",
+      "quixel_id_candidate": "ulbwebv",
+      "ancient_world_actor_references": 221
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_04.uasset",
+      "package_bytes": 155517480,
+      "import_metadata_found": true,
+      "source_file": "uk4cdch_High.fbx",
+      "source_md5": "b17ddac62af12e5eb58d0ee5a92d7f9d",
+      "quixel_id_candidate": "uk4cdch",
+      "ancient_world_actor_references": 649
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_040.uasset",
+      "package_bytes": 40255962,
+      "import_metadata_found": true,
+      "source_file": "ulbwebv_High.fbx",
+      "source_md5": "22fb34f50bb7e6a1fc5ac82e564ad0d5",
+      "quixel_id_candidate": "ulbwebv",
+      "ancient_world_actor_references": 660
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_041.uasset",
+      "package_bytes": 153683113,
+      "import_metadata_found": true,
+      "source_file": "ulbwebv_High.fbx",
+      "source_md5": "22fb34f50bb7e6a1fc5ac82e564ad0d5",
+      "quixel_id_candidate": "ulbwebv",
+      "ancient_world_actor_references": 185
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_042.uasset",
+      "package_bytes": 153681051,
+      "import_metadata_found": true,
+      "source_file": "ulcpcad_High.fbx",
+      "source_md5": "e60e92bd9b9cae2a1897d8f75063af21",
+      "quixel_id_candidate": "ulcpcad",
+      "ancient_world_actor_references": 248
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_043.uasset",
+      "package_bytes": 153585292,
+      "import_metadata_found": true,
+      "source_file": "ulcpcad_High.fbx",
+      "source_md5": "e60e92bd9b9cae2a1897d8f75063af21",
+      "quixel_id_candidate": "ulcpcad",
+      "ancient_world_actor_references": 331
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_044.uasset",
+      "package_bytes": 46307515,
+      "import_metadata_found": true,
+      "source_file": "SM_ulebebz_01.fbx",
+      "source_md5": "a365fbaf4f70b82481880dea6c0fb667",
+      "quixel_id_candidate": "ulebebz",
+      "ancient_world_actor_references": 389
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_045.uasset",
+      "package_bytes": 77183408,
+      "import_metadata_found": true,
+      "source_file": "ulsjcazga_High.fbx",
+      "source_md5": "ad71525da6537b2f18f3a663a33e2170",
+      "quixel_id_candidate": "ulsjcazga",
+      "ancient_world_actor_references": 634
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_046.uasset",
+      "package_bytes": 77174555,
+      "import_metadata_found": true,
+      "source_file": "ulsjcazga_High.fbx",
+      "source_md5": "ad71525da6537b2f18f3a663a33e2170",
+      "quixel_id_candidate": "ulsjcazga",
+      "ancient_world_actor_references": 5
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_047.uasset",
+      "package_bytes": 105893237,
+      "import_metadata_found": true,
+      "source_file": "SM_ulzibc1va_01.fbx",
+      "source_md5": "a79fc93ad0edb2e11f1a6be64dea7bfc",
+      "quixel_id_candidate": "ulzibc1va",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_048.uasset",
+      "package_bytes": 155377599,
+      "import_metadata_found": true,
+      "source_file": "SM_umcjabuva_01.fbx",
+      "source_md5": "32270b16bb4b4acec0dfde0fa952afa9",
+      "quixel_id_candidate": "umcjabuva",
+      "ancient_world_actor_references": 294
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_049.uasset",
+      "package_bytes": 155520749,
+      "import_metadata_found": true,
+      "source_file": "SM_umcjabuva_01.fbx",
+      "source_md5": "32270b16bb4b4acec0dfde0fa952afa9",
+      "quixel_id_candidate": "umcjabuva",
+      "ancient_world_actor_references": 735
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_05.uasset",
+      "package_bytes": 81919575,
+      "import_metadata_found": true,
+      "source_file": "uk4paev_High.fbx",
+      "source_md5": "f3b16f3c9bb2ec2e17118cfe0794377f",
+      "quixel_id_candidate": "uk4paev",
+      "ancient_world_actor_references": 574
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_050.uasset",
+      "package_bytes": 155520996,
+      "import_metadata_found": true,
+      "source_file": "SM_umcjabuva_01.fbx",
+      "source_md5": "32270b16bb4b4acec0dfde0fa952afa9",
+      "quixel_id_candidate": "umcjabuva",
+      "ancient_world_actor_references": 26
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_051.uasset",
+      "package_bytes": 154339171,
+      "import_metadata_found": true,
+      "source_file": "SM_umcrbbwga_01.fbx",
+      "source_md5": "f50cfa7e769adbdead139bb8ac7a0328",
+      "quixel_id_candidate": "umcrbbwga",
+      "ancient_world_actor_references": 318
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_052.uasset",
+      "package_bytes": 154392795,
+      "import_metadata_found": true,
+      "source_file": "SM_umcrbbwga_01.fbx",
+      "source_md5": "f50cfa7e769adbdead139bb8ac7a0328",
+      "quixel_id_candidate": "umcrbbwga",
+      "ancient_world_actor_references": 110
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_053.uasset",
+      "package_bytes": 156120731,
+      "import_metadata_found": true,
+      "source_file": "umdrfdxga_High.fbx",
+      "source_md5": "d600a75c2af48a98b0ba1e3559c402b6",
+      "quixel_id_candidate": "umdrfdxga",
+      "ancient_world_actor_references": 408
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_054.uasset",
+      "package_bytes": 312790178,
+      "import_metadata_found": true,
+      "source_file": "umsocbyfa_High.fbx",
+      "source_md5": "6260ec86e621a1d61329a444a80613d0",
+      "quixel_id_candidate": "umsocbyfa",
+      "ancient_world_actor_references": 441
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_06.uasset",
+      "package_bytes": 155083845,
+      "import_metadata_found": true,
+      "source_file": "SM_uk4pdew_01.fbx",
+      "source_md5": "9ac00889815d3f2d02af843042bc162e",
+      "quixel_id_candidate": "uk4pdew",
+      "ancient_world_actor_references": 22
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_07.uasset",
+      "package_bytes": 155162355,
+      "import_metadata_found": true,
+      "source_file": "SM_uk4pdew_01.fbx",
+      "source_md5": "9ac00889815d3f2d02af843042bc162e",
+      "quixel_id_candidate": "uk4pdew",
+      "ancient_world_actor_references": 182
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_08.uasset",
+      "package_bytes": 76974587,
+      "import_metadata_found": true,
+      "source_file": "uk4pehu_High.fbx",
+      "source_md5": "21c2da1f4f8405a424fdb5184d3207ab",
+      "quixel_id_candidate": "uk4pehu",
+      "ancient_world_actor_references": 316
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_09.uasset",
+      "package_bytes": 156085389,
+      "import_metadata_found": true,
+      "source_file": "uk4pfc1_High.fbx",
+      "source_md5": "babe786bc7f08bfa77bc2187370c007a",
+      "quixel_id_candidate": "uk4pfc1",
+      "ancient_world_actor_references": 283
+    },
+    {
+      "package": "AncientContent/Megascans/3DAssets/RomanStoneFloor/SM_RomanStoneFloor.uasset",
+      "package_bytes": 134656536,
+      "import_metadata_found": true,
+      "source_file": "tkkrcayfa_High.fbx",
+      "source_md5": "89ee7e9d25f3cd98fba6a722b3015d64",
+      "quixel_id_candidate": "tkkrcayfa",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/BuddingRabbitbrush/SM_BuddingRabbitbrush_00.uasset",
+      "package_bytes": 1874919,
+      "import_metadata_found": true,
+      "source_file": "Var1_LOD0.fbx",
+      "source_md5": "e49fabd20e4dea8deaea9e55e05b78af",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 5
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/BuddingRabbitbrush/SM_BuddingRabbitbrush_01.uasset",
+      "package_bytes": 1449202,
+      "import_metadata_found": true,
+      "source_file": "Var2_LOD0.fbx",
+      "source_md5": "1095f17fb76dc27d0563aa7c52efb0e3",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 5
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/BuddingRabbitbrush/SM_BuddingRabbitbrush_02.uasset",
+      "package_bytes": 935922,
+      "import_metadata_found": true,
+      "source_file": "Var4_LOD0.fbx",
+      "source_md5": "829de1ccffc297c5b4e32e253293f5bb",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 5
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/BuddingRabbitbrush/SM_BuddingRabbitbrush_03.uasset",
+      "package_bytes": 477206,
+      "import_metadata_found": true,
+      "source_file": "Var5_LOD0.fbx",
+      "source_md5": "5320e95d7d80180f833e0c5fd97c34a2",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 12
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/BuddingRabbitbrush/SM_BuddingRabbitbrush_04.uasset",
+      "package_bytes": 459414,
+      "import_metadata_found": true,
+      "source_file": "Var6_LOD0.fbx",
+      "source_md5": "fe9747c8a3eac8f611fdeda20cf2cfee",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 6
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/BuddingRabbitbrush/SM_BuddingRabbitbrush_05.uasset",
+      "package_bytes": 510777,
+      "import_metadata_found": true,
+      "source_file": "Var7_LOD0.fbx",
+      "source_md5": "0dae8a9679ffb20e195ed8a7a4ca1ca6",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 6
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/BuddingRabbitbrush/SM_BuddingRabbitbrush_06.uasset",
+      "package_bytes": 343105,
+      "import_metadata_found": true,
+      "source_file": "Var8_LOD0.fbx",
+      "source_md5": "29f1ae54bcb648903cbfe9541a5da75c",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 7
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/BuddingRabbitbrush/SM_BuddingRabbitbrush_07.uasset",
+      "package_bytes": 340627,
+      "import_metadata_found": true,
+      "source_file": "Var9_LOD0.fbx",
+      "source_md5": "4cba96f28f342ea4e1d2b392f1536bef",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 8
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Deadshrub_00.uasset",
+      "package_bytes": 148179,
+      "import_metadata_found": true,
+      "source_file": "Var10_LOD0.fbx",
+      "source_md5": "e2ca3d98a4c4d4c0fb771c948b74b629",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Deadshrub_01.uasset",
+      "package_bytes": 177177,
+      "import_metadata_found": true,
+      "source_file": "Var11_LOD0.fbx",
+      "source_md5": "c8b0089bea8fe72ad207193d4e1cef45",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 3
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Deadshrub_010.uasset",
+      "package_bytes": 152764,
+      "import_metadata_found": true,
+      "source_file": "Var8_LOD0.fbx",
+      "source_md5": "bc444e3f9cb7d400a13744ec4731dd8c",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 6
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Deadshrub_011.uasset",
+      "package_bytes": 134117,
+      "import_metadata_found": true,
+      "source_file": "Var9_LOD0.fbx",
+      "source_md5": "8de3457154669353176898740f200e60",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 3
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Deadshrub_012.uasset",
+      "package_bytes": 305934,
+      "import_metadata_found": true,
+      "source_file": "Var11_LOD0.fbx",
+      "source_md5": "e64b4c68260f73216bee942d119d2c12",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Deadshrub_013.uasset",
+      "package_bytes": 241148,
+      "import_metadata_found": true,
+      "source_file": "Var12_LOD0.fbx",
+      "source_md5": "ae23bbdb733df72163b2cb638272c0b1",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Deadshrub_02.uasset",
+      "package_bytes": 113554,
+      "import_metadata_found": true,
+      "source_file": "Var12_LOD0.fbx",
+      "source_md5": "5abb8e408e0f61e8acb360d35c33373a",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Deadshrub_03.uasset",
+      "package_bytes": 343015,
+      "import_metadata_found": true,
+      "source_file": "Var13_LOD0.fbx",
+      "source_md5": "3b4b3e4977c2817a1fd206ab4afe4efe",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 5
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Deadshrub_04.uasset",
+      "package_bytes": 138665,
+      "import_metadata_found": true,
+      "source_file": "Var1_LOD0.fbx",
+      "source_md5": "6ee7c4fe66b39fd67815ac83d9b47304",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Deadshrub_05.uasset",
+      "package_bytes": 137517,
+      "import_metadata_found": true,
+      "source_file": "Var2_LOD0.fbx",
+      "source_md5": "66f2efa0146ef9dd3240d5b54239300a",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 3
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Deadshrub_06.uasset",
+      "package_bytes": 192658,
+      "import_metadata_found": true,
+      "source_file": "Var3_LOD0.fbx",
+      "source_md5": "1523b0bf9e94f0fffbf7d2922940d086",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 3
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Deadshrub_07.uasset",
+      "package_bytes": 236982,
+      "import_metadata_found": true,
+      "source_file": "Var4_LOD0.fbx",
+      "source_md5": "f8cf1718a39294391e032168ead81cf2",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Deadshrub_08.uasset",
+      "package_bytes": 544208,
+      "import_metadata_found": true,
+      "source_file": "Var5_LOD0.fbx",
+      "source_md5": "5295450fd6eacfbaf507996f248afab9",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 5
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Deadshrub_09.uasset",
+      "package_bytes": 243435,
+      "import_metadata_found": true,
+      "source_file": "Var7_LOD0.fbx",
+      "source_md5": "fd685e0bbf53d4c88a6daf08f0b6fb31",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/Deadshrub/SM_Dryshrub.uasset",
+      "package_bytes": 240751,
+      "import_metadata_found": true,
+      "source_file": "Var3_LOD0.fbx",
+      "source_md5": "a713eea591dc03d3b2487a6fb99cd7da",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_00.uasset",
+      "package_bytes": 330643,
+      "import_metadata_found": true,
+      "source_file": "Var10_LOD0.fbx",
+      "source_md5": "889a1f1bb513f9f0fcfd9384da41ed19",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 23
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_01.uasset",
+      "package_bytes": 978847,
+      "import_metadata_found": true,
+      "source_file": "Var11_LOD0.fbx",
+      "source_md5": "61ad8aeeb6469d5ffa7bf019b81ae440",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 110
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_010.uasset",
+      "package_bytes": 1421774,
+      "import_metadata_found": true,
+      "source_file": "Var1_LOD0.fbx",
+      "source_md5": "c2d73bba2820e3fd88b26855acaaab3b",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 69
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_011.uasset",
+      "package_bytes": 294762,
+      "import_metadata_found": true,
+      "source_file": "Var20_LOD0.fbx",
+      "source_md5": "30cf95ed81a778f7fb3ee099ce6bc80b",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 65
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_012.uasset",
+      "package_bytes": 139980,
+      "import_metadata_found": true,
+      "source_file": "Var21_LOD0.fbx",
+      "source_md5": "658e94cd5c2eaead3e9002c65f81bb81",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_013.uasset",
+      "package_bytes": 1231469,
+      "import_metadata_found": true,
+      "source_file": "Var2_LOD0.fbx",
+      "source_md5": "bc54a60ad87bf88f823c57a1bc5c6dee",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 51
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_014.uasset",
+      "package_bytes": 1729588,
+      "import_metadata_found": true,
+      "source_file": "Var3_LOD0.fbx",
+      "source_md5": "0de527b2aeb3b2300520eb5ed23f877a",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 108
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_015.uasset",
+      "package_bytes": 1631722,
+      "import_metadata_found": true,
+      "source_file": "Var4_LOD0.fbx",
+      "source_md5": "3594e42c7681de5f79d399292fe9802c",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 106
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_016.uasset",
+      "package_bytes": 1320276,
+      "import_metadata_found": true,
+      "source_file": "Var5_LOD0.fbx",
+      "source_md5": "d3649d3fae53c7fee791e50c362c3ea5",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 96
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_017.uasset",
+      "package_bytes": 1911661,
+      "import_metadata_found": true,
+      "source_file": "Var6_LOD0.fbx",
+      "source_md5": "6c74753860dbc43195a2ef7128ef21b6",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 69
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_018.uasset",
+      "package_bytes": 460184,
+      "import_metadata_found": true,
+      "source_file": "Var7_LOD0.fbx",
+      "source_md5": "0892b320b0d2ed729fc07607b9c876ad",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 70
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_019.uasset",
+      "package_bytes": 491756,
+      "import_metadata_found": true,
+      "source_file": "Var8_LOD0.fbx",
+      "source_md5": "adc3e23b375b3a315d6916be0e3a9e2c",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 28
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_02.uasset",
+      "package_bytes": 582236,
+      "import_metadata_found": true,
+      "source_file": "Var12_LOD0.fbx",
+      "source_md5": "895cf7790425d7c669e1300d44358f45",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 77
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_020.uasset",
+      "package_bytes": 303718,
+      "import_metadata_found": true,
+      "source_file": "Var9_LOD0.fbx",
+      "source_md5": "defc06ed6a157701b0dff914fbd373cc",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 4
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_021.uasset",
+      "package_bytes": 318500,
+      "import_metadata_found": true,
+      "source_file": "Var10_LOD0.fbx",
+      "source_md5": "f4018468685f6e42ad8a43714d922ebe",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 4
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_022.uasset",
+      "package_bytes": 239240,
+      "import_metadata_found": true,
+      "source_file": "Var11_LOD0.fbx",
+      "source_md5": "0a05a212ab8de0f76113cec7c8536156",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_023.uasset",
+      "package_bytes": 148753,
+      "import_metadata_found": true,
+      "source_file": "Var12_LOD0.fbx",
+      "source_md5": "1314ffdcd7238db596b4e5d016138a7e",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 4
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_024.uasset",
+      "package_bytes": 277770,
+      "import_metadata_found": true,
+      "source_file": "Var13_LOD0.fbx",
+      "source_md5": "310ee6cbd32363e41e20c05a0b63a647",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 5
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_025.uasset",
+      "package_bytes": 1493249,
+      "import_metadata_found": true,
+      "source_file": "Var1_LOD0.fbx",
+      "source_md5": "c3a5ae2503e7c35285cab2507e2acca1",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_026.uasset",
+      "package_bytes": 1455530,
+      "import_metadata_found": true,
+      "source_file": "Var4_LOD0.fbx",
+      "source_md5": "f95764dafa021a788e53338dc6917e4d",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_027.uasset",
+      "package_bytes": 1472036,
+      "import_metadata_found": true,
+      "source_file": "Var5_LOD0.fbx",
+      "source_md5": "53d9fd2771360c94d7662bef58e3c560",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_028.uasset",
+      "package_bytes": 966668,
+      "import_metadata_found": true,
+      "source_file": "Var6_LOD0.fbx",
+      "source_md5": "7582d181987ed70c4b3b80d4e08319e0",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 5
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_029.uasset",
+      "package_bytes": 398805,
+      "import_metadata_found": true,
+      "source_file": "Var7_LOD0.fbx",
+      "source_md5": "8d7c490f980ace8ad7c3a3e7f5217d19",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 7
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_03.uasset",
+      "package_bytes": 342843,
+      "import_metadata_found": true,
+      "source_file": "Var13_LOD0.fbx",
+      "source_md5": "99a978e457b4265cf90f5a9b9eabcf45",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 33
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_030.uasset",
+      "package_bytes": 417727,
+      "import_metadata_found": true,
+      "source_file": "Var8_LOD0.fbx",
+      "source_md5": "6671990a1f048c7c7167b0cf64dead07",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 7
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_031.uasset",
+      "package_bytes": 657244,
+      "import_metadata_found": true,
+      "source_file": "Var9_LOD0.fbx",
+      "source_md5": "05f923e9d7e4dfde4fed1c8359bf73d2",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 3
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_04.uasset",
+      "package_bytes": 507802,
+      "import_metadata_found": true,
+      "source_file": "Var14_LOD0.fbx",
+      "source_md5": "0fd90a53f750ae8ad27d3696507f704e",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 46
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_05.uasset",
+      "package_bytes": 395385,
+      "import_metadata_found": true,
+      "source_file": "Var15_LOD0.fbx",
+      "source_md5": "21faa2dde413c36b047a77160e224262",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 72
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_06.uasset",
+      "package_bytes": 313663,
+      "import_metadata_found": true,
+      "source_file": "Var16_LOD0.fbx",
+      "source_md5": "7d95c79c93f7030a515bef00d94a9e3b",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 71
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_07.uasset",
+      "package_bytes": 389433,
+      "import_metadata_found": true,
+      "source_file": "Var17_LOD0.fbx",
+      "source_md5": "64ac9c7e6cc89d4a9fe1297d277346fd",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 150
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_08.uasset",
+      "package_bytes": 335687,
+      "import_metadata_found": true,
+      "source_file": "Var18_LOD0.fbx",
+      "source_md5": "d284304ccd73bdc1255b9c9c1ced4d90",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 33
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/GrassClump/SM_GrassClump_09.uasset",
+      "package_bytes": 325850,
+      "import_metadata_found": true,
+      "source_file": "Var19_LOD0.fbx",
+      "source_md5": "49b110f4fe6dfd3fc96c6b5c5ea6e005",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 25
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/RiverSaltbush/SM_RiverSaltbush_00.uasset",
+      "package_bytes": 426145,
+      "import_metadata_found": true,
+      "source_file": "Var10_LOD0.fbx",
+      "source_md5": "becf936eb120103b12e6a27d37ac9314",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 4
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/RiverSaltbush/SM_RiverSaltbush_01.uasset",
+      "package_bytes": 665430,
+      "import_metadata_found": true,
+      "source_file": "Var11_LOD0.fbx",
+      "source_md5": "01b96b0aaefd921cd1d7158eb2cbd9b9",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/RiverSaltbush/SM_RiverSaltbush_010.uasset",
+      "package_bytes": 547977,
+      "import_metadata_found": true,
+      "source_file": "Var9_LOD0.fbx",
+      "source_md5": "a6bc4afc90feb0910fc160590b6d6194",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 4
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/RiverSaltbush/SM_RiverSaltbush_011.uasset",
+      "package_bytes": 4729711,
+      "import_metadata_found": true,
+      "source_file": "Var12_LOD0.fbx",
+      "source_md5": "d0bd0fbaf3362d6f6b04a4f84e2ab706",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/RiverSaltbush/SM_RiverSaltbush_02.uasset",
+      "package_bytes": 854629,
+      "import_metadata_found": true,
+      "source_file": "Var12_LOD0.fbx",
+      "source_md5": "4fb91cad017aa1fc447ff8a7328d2ba0",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 3
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/RiverSaltbush/SM_RiverSaltbush_03.uasset",
+      "package_bytes": 1520302,
+      "import_metadata_found": true,
+      "source_file": "Var1_LOD0.fbx",
+      "source_md5": "3dbb7713f923a04e920434c587f5389a",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 4
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/RiverSaltbush/SM_RiverSaltbush_04.uasset",
+      "package_bytes": 1275287,
+      "import_metadata_found": true,
+      "source_file": "Var2_LOD0.fbx",
+      "source_md5": "953ba0d08f1f3b1014a2d67004cbcca1",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 8
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/RiverSaltbush/SM_RiverSaltbush_05.uasset",
+      "package_bytes": 519908,
+      "import_metadata_found": true,
+      "source_file": "Var3_LOD0.fbx",
+      "source_md5": "09bd0a024f27ee994e641390f672c8ba",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 6
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/RiverSaltbush/SM_RiverSaltbush_06.uasset",
+      "package_bytes": 1079504,
+      "import_metadata_found": true,
+      "source_file": "Var4_LOD0.fbx",
+      "source_md5": "4ff6ff0fb222fec64e74d678ce95615e",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 3
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/RiverSaltbush/SM_RiverSaltbush_07.uasset",
+      "package_bytes": 662773,
+      "import_metadata_found": true,
+      "source_file": "Var5_LOD0.fbx",
+      "source_md5": "64d49953fd023ee3781046c902425739",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 2
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/RiverSaltbush/SM_RiverSaltbush_08.uasset",
+      "package_bytes": 1282164,
+      "import_metadata_found": true,
+      "source_file": "Var6_LOD0.fbx",
+      "source_md5": "7ba44680f764b22e194a7d37bf2498be",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 5
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/RiverSaltbush/SM_RiverSaltbush_09.uasset",
+      "package_bytes": 1063013,
+      "import_metadata_found": true,
+      "source_file": "Var8_LOD0.fbx",
+      "source_md5": "79efd8e898321b25b7826ccc6af4d0a2",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 5
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_00.uasset",
+      "package_bytes": 1565191,
+      "import_metadata_found": true,
+      "source_file": "Var10_LOD0.fbx",
+      "source_md5": "753794ddf893f884d0946a0662053816",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 83
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_01.uasset",
+      "package_bytes": 1902567,
+      "import_metadata_found": true,
+      "source_file": "Var11_LOD0.fbx",
+      "source_md5": "61a5388dd90afd5c2a74217cebda0362",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 71
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_010.uasset",
+      "package_bytes": 2738697,
+      "import_metadata_found": true,
+      "source_file": "Var1_LOD0.fbx",
+      "source_md5": "4f98d41daa9619ff65527c68a74cd3e0",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 134
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_011.uasset",
+      "package_bytes": 286119,
+      "import_metadata_found": true,
+      "source_file": "Var20_LOD0.fbx",
+      "source_md5": "864aed3431c9ac8303a0e266cadf960d",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 103
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_012.uasset",
+      "package_bytes": 278580,
+      "import_metadata_found": true,
+      "source_file": "Var21_LOD0.fbx",
+      "source_md5": "637d7b7de5a34fb4dee6d3233453a71d",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 100
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_013.uasset",
+      "package_bytes": 641422,
+      "import_metadata_found": true,
+      "source_file": "Var22_LOD0.fbx",
+      "source_md5": "69597b1a87e88a6517723ea53f1ccc11",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 53
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_014.uasset",
+      "package_bytes": 260650,
+      "import_metadata_found": true,
+      "source_file": "Var23_LOD0.fbx",
+      "source_md5": "0ca3c89a65f142fafc6c892bbdec6ecb",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 37
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_015.uasset",
+      "package_bytes": 383441,
+      "import_metadata_found": true,
+      "source_file": "Var24_LOD0.fbx",
+      "source_md5": "ffe5534ce55127d039788f97e25bd090",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 42
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_016.uasset",
+      "package_bytes": 225288,
+      "import_metadata_found": true,
+      "source_file": "Var25_LOD0.fbx",
+      "source_md5": "fa4d3ae0af9a9dd57246c4e3467d0a74",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 44
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_017.uasset",
+      "package_bytes": 128947,
+      "import_metadata_found": true,
+      "source_file": "Var26_LOD0.fbx",
+      "source_md5": "ecf98d93b4e629ba67c25f777337f336",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 9
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_018.uasset",
+      "package_bytes": 111580,
+      "import_metadata_found": true,
+      "source_file": "Var27_LOD0.fbx",
+      "source_md5": "8e6a5e1831cfd069f72f1b09b9032189",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 8
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_019.uasset",
+      "package_bytes": 99023,
+      "import_metadata_found": true,
+      "source_file": "Var28_LOD0.fbx",
+      "source_md5": "145fb48c9ddf4f106dcbfa47e9c20482",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 4
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_02.uasset",
+      "package_bytes": 2080447,
+      "import_metadata_found": true,
+      "source_file": "Var12_LOD0.fbx",
+      "source_md5": "0ccb1d80e438f52a2c088779691aec32",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 62
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_020.uasset",
+      "package_bytes": 93706,
+      "import_metadata_found": true,
+      "source_file": "Var29_LOD0.fbx",
+      "source_md5": "61f5fc467dc763a4c815c5282e1f4459",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 3
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_021.uasset",
+      "package_bytes": 2337448,
+      "import_metadata_found": true,
+      "source_file": "Var2_LOD0.fbx",
+      "source_md5": "9d89928a42061c76c6715bc74f4e0eaa",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 172
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_022.uasset",
+      "package_bytes": 1871895,
+      "import_metadata_found": true,
+      "source_file": "Var3_LOD0.fbx",
+      "source_md5": "a73d52b5eb19c63b28b4cc8cdf17f554",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 58
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_023.uasset",
+      "package_bytes": 1304219,
+      "import_metadata_found": true,
+      "source_file": "Var4_LOD0.fbx",
+      "source_md5": "62955197371a4f11e5211e6812c5682a",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 54
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_024.uasset",
+      "package_bytes": 1898080,
+      "import_metadata_found": true,
+      "source_file": "Var5_LOD0.fbx",
+      "source_md5": "4cf1742d7fe2fd4e41ce326c2b07d33c",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 58
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_025.uasset",
+      "package_bytes": 1320164,
+      "import_metadata_found": true,
+      "source_file": "Var6_LOD0.fbx",
+      "source_md5": "dbbec653757624442d1cc11d4148bb8f",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 51
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_026.uasset",
+      "package_bytes": 2398055,
+      "import_metadata_found": true,
+      "source_file": "Var7_LOD0.fbx",
+      "source_md5": "e211ca91f6bf24f92dafc93a841b9451",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 83
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_027.uasset",
+      "package_bytes": 2692157,
+      "import_metadata_found": true,
+      "source_file": "Var8_LOD0.fbx",
+      "source_md5": "f6eea1113932371cd4b225978095dce7",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 111
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_028.uasset",
+      "package_bytes": 1409288,
+      "import_metadata_found": true,
+      "source_file": "Var9_LOD0.fbx",
+      "source_md5": "9bb2ec00c69f468905e7d0c4cdd491dc",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 77
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_03.uasset",
+      "package_bytes": 1201787,
+      "import_metadata_found": true,
+      "source_file": "Var13_LOD0.fbx",
+      "source_md5": "7e3ff895f65f0733de111ded1e9e7940",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 56
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_04.uasset",
+      "package_bytes": 1320603,
+      "import_metadata_found": true,
+      "source_file": "Var14_LOD0.fbx",
+      "source_md5": "b26a2ec25573075aee76857c6dc2fc8c",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 42
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_05.uasset",
+      "package_bytes": 1124063,
+      "import_metadata_found": true,
+      "source_file": "Var15_LOD0.fbx",
+      "source_md5": "67a9721729e273b4db4a1d1b7395fe35",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 66
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_06.uasset",
+      "package_bytes": 1248433,
+      "import_metadata_found": true,
+      "source_file": "Var16_LOD0.fbx",
+      "source_md5": "026f3f4eea804bb7e62ca8fb3ce02981",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 70
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_07.uasset",
+      "package_bytes": 636229,
+      "import_metadata_found": true,
+      "source_file": "Var17_LOD0.fbx",
+      "source_md5": "73f252a761fba6323a728d4e3e29e0bb",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 68
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_08.uasset",
+      "package_bytes": 316987,
+      "import_metadata_found": true,
+      "source_file": "Var18_LOD0.fbx",
+      "source_md5": "2bf07010d07b3e9328c3dbfc1ce34ac1",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 88
+    },
+    {
+      "package": "AncientContent/Megascans/3DPlants/ToadRush/SM_ToadRush_09.uasset",
+      "package_bytes": 335427,
+      "import_metadata_found": true,
+      "source_file": "Var19_LOD0.fbx",
+      "source_md5": "4c7fcbed6099cb452ae3bd927a425e6c",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 77
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/FlatgroundGravel/SM_FlatgroundGravel1_00.uasset",
+      "package_bytes": 89180317,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/FlatgroundGravel/SM_FlatgroundGravel1_01.uasset",
+      "package_bytes": 148677333,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/FlatgroundGravel/SM_FlatgroundGravel2_00.uasset",
+      "package_bytes": 106151169,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 4
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/FlatgroundGravel/SM_FlatgroundGravel2_01.uasset",
+      "package_bytes": 183536870,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 4
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/Mud/SM_SoilMud.uasset",
+      "package_bytes": 89478093,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/NaturalGravel/SM_NaturalGravel.uasset",
+      "package_bytes": 82650957,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/Rock/SM_RockGround1_01.uasset",
+      "package_bytes": 78508054,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 29
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/Rock/SM_RockGround2.uasset",
+      "package_bytes": 78012136,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 22
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/Rock/SM_RockMisc.uasset",
+      "package_bytes": 69164113,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 1
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/Rock/SM_RockRough1.uasset",
+      "package_bytes": 81790710,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 22
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/Rock/SM_RockRough2.uasset",
+      "package_bytes": 82197146,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 0
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/Rock/SM_RockRough3.uasset",
+      "package_bytes": 89814011,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 1
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/Rock/SM_RockRough4.uasset",
+      "package_bytes": 82800113,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 32
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/Sand/SM_SmoothSand_01.uasset",
+      "package_bytes": 68730003,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 46
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/Sand/SM_SmoothSand_02.uasset",
+      "package_bytes": 69812589,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 46
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/Sand/SM_SmoothSand_03.uasset",
+      "package_bytes": 65555735,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 61
+    },
+    {
+      "package": "AncientContent/Megascans/Surfaces/Sand/SM_Smooth_Sand_04.uasset",
+      "package_bytes": 14737310,
+      "import_metadata_found": false,
+      "source_file": "",
+      "source_md5": "",
+      "quixel_id_candidate": "",
+      "ancient_world_actor_references": 18
+    }
+  ]
+}

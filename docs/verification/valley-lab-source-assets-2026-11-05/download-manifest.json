@@ -1,0 +1,83 @@
+{
+  "schema": "valley.private-scans.v1",
+  "assets": [
+    {
+      "quixel_id": "uk4cdch",
+      "listing_uid": "11700737-077c-416b-a005-53d0b5e1e285",
+      "listing_url": "https://www.fab.com/listings/11700737-077c-416b-a005-53d0b5e1e285",
+      "file_uid": "849bcfb2-0f4a-4ec4-b277-2df435c0338e",
+      "tier": "glTF low / tier 3",
+      "license": "Fab Standard",
+      "downloaded_at": "2026-11-05",
+      "files": [
+        {
+          "name": "low.zip",
+          "bytes": 2053796,
+          "sha256": "3279bfdc961fe825a0b159320a5ab92a814b6af2242517804b65f81783f2f0b1"
+        },
+        {
+          "name": "uk4cdch_tier_3.gltf",
+          "bytes": 4684,
+          "sha256": "9ba2677451232d445fc6ca3680211abbfce1a3eef9beb05d01c9cee3d3d30bde"
+        },
+        {
+          "name": "uk4cdch_tier_3.bin",
+          "bytes": 397644,
+          "sha256": "c37dad0976550fc265a3cd1fd03e883d2e275b52b31f6a7da440531a6f4a1c3d"
+        },
+        {
+          "name": "basecolor.jpg",
+          "bytes": 426429,
+          "sha256": "b7a1b0ff8586c556719728ed1131c7cecb0a51d8d40c7b1843822198e7461233"
+        },
+        {
+          "name": "mesh.vsm",
+          "bytes": 280024,
+          "sha256": "a686ae6f30929511933c8a2a351760cb6ecefc34d70bfb6f6d22e52fb0152425"
+        }
+      ],
+      "unreal_source_packages": [
+        "AncientContent/Megascans/3DAssets/RockSandstone/SM_RockSandstone_04.uasset"
+      ]
+    },
+    {
+      "quixel_id": "ubhvccfda",
+      "listing_uid": "c47f6376-20c4-4631-a6d6-82f626652691",
+      "listing_url": "https://www.fab.com/listings/c47f6376-20c4-4631-a6d6-82f626652691",
+      "file_uid": "61789c49-84d4-45a8-bd98-fbeebd988256",
+      "tier": "glTF low / tier 3",
+      "license": "Fab Standard",
+      "downloaded_at": "2026-11-05",
+      "files": [
+        {
+          "name": "low.zip",
+          "bytes": 1639935,
+          "sha256": "33214eaebee405959ddec86462ba8927f3abbe4eb5c350a069a28e229e4c40df"
+        },
+        {
+          "name": "ubhvccfda_tier_3.gltf",
+          "bytes": 4349,
+          "sha256": "c88d2306eb153518a09ffdc34dbee019c7490363c8cb21a2d0fa768ba2ba5a1b"
+        },
+        {
+          "name": "ubhvccfda_tier_3.bin",
+          "bytes": 112148,
+          "sha256": "e6be6628555bc2f01d53cdf0a9f1e4e60e270220ea9019563e7f2b83cc304806"
+        },
+        {
+          "name": "basecolor.jpg",
+          "bytes": 413936,
+          "sha256": "2409b14c815036bcdb35bacfe8293c69b6200c9ea2b7daf939b536e95319d2d8"
+        },
+        {
+          "name": "mesh.vsm",
+          "bytes": 107368,
+          "sha256": "795d9ddcc81b95502fc64e89281969e81720c4c21115cae3841589e6daa0c3a1"
+        }
+      ],
+      "unreal_source_packages": [
+        "AncientContent/Megascans/3DAssets/QuarryCliff/SM_QuarryCliff_00.uasset"
+      ]
+    }
+  ]
+}
