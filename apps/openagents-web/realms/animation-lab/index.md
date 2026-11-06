@@ -15,6 +15,10 @@ Echo and the Slay face clips load from the owner's private animation bundle.
   face curve. Faded skeletons show the poses eight frames before and after;
   G cycles the spacing through 4, 8, 16 and off. Event ticks mark clip events.
 
+- `#retarget`: show source and target beside each other on the same clock.
+  Green joints are paired anchors; purple joints are unpaired. The target
+  keeps unpaired joints at local rest. T or RETARGET selects this station.
+
 Drag the model to orbit. Scroll to zoom. On a phone, the same controls are
 at the top and bottom of the stage. M selects the mannequin, E selects Echo;
 J/K select joints, U/I shapes, V switches joint/curve plots, S toggles the
@@ -22,7 +26,8 @@ skeleton. Space or P toggles playback; comma and period step. Escape returns
 to Worlds.
 
 A deep link selects the station, rig and clip, for example
-`#clip?rig=echo&clip=jog_fwd`. Unknown names stay visibly refused.
+`#clip?rig=echo&clip=jog_fwd`. Unknown names stay visibly refused. Retarget links also select the target,
+for example `#retarget?rig=echo&clip=jog_fwd&to=mannequin`.
 
 ## Private source
 

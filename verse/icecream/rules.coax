@@ -1076,7 +1076,7 @@ input_same :: (a: Input, b: Input) -> bool {
 DropKind :: enum u8 { cone; weapon; }
 Drop :: struct { at: V2; kind: DropKind; tool: Tool = Tool.sword; age: f32; }
 ShotKind :: enum u8 { fudge; cone; sugar; sprinkle; }
-Shot :: struct { kind: ShotKind; colour: u8; pos: V2; height: f32; vel: V2; left: f32; }
+IceShot :: struct { kind: ShotKind; colour: u8; pos: V2; height: f32; vel: V2; left: f32; }
 Cloud :: struct { at: V2; age: f32; }
 Noise :: struct { at: V2; radius: f32; }
 
@@ -1166,7 +1166,7 @@ Game :: struct {
   man: Man;
   man_on: bool = true;   // Options::man: whether the Ice Cream Man is in the house
   tuning: Tuning;
-  shots: [MAX_SHOTS] Shot;
+  shots: [MAX_SHOTS] IceShot;
   shot_n: int;
   clouds: [MAX_CLOUDS] Cloud;
   cloud_n: int;
@@ -1213,7 +1213,7 @@ noise :: (g: [] Game, at: V2, radius: f32) {
   g[0].noises[g[0].noise_n] = Noise.{at = at, radius = radius};
   g[0].noise_n += 1;
 }
-add_shot :: (g: [] Game, s: Shot) {
+add_shot :: (g: [] Game, s: IceShot) {
   #assert g[0].shot_n < MAX_SHOTS;
   g[0].shots[g[0].shot_n] = s;
   g[0].shot_n += 1;
@@ -1865,7 +1865,7 @@ fire :: (g: [] Game) {
     if g[0].player.fudge > 0 {
       g[0].player.fudge -= 1;
       g[0].player.fire_wait = one / t.fudge_rate;
-      add_shot(g, Shot.{kind = ShotKind.fudge, colour = 0, pos = vadd(pos, vmul(aim, half)), height = 1.1, vel = vmul(aim, t.fudge_speed), left = t.fudge_range});
+      add_shot(g, IceShot.{kind = ShotKind.fudge, colour = 0, pos = vadd(pos, vmul(aim, half)), height = 1.1, vel = vmul(aim, t.fudge_speed), left = t.fudge_range});
       g[0].stats.fudge_shots += 1;
       noise(g, pos, t.fudge_noise);
       ev0(g, EventKind.fudge_fired);
@@ -1916,7 +1916,7 @@ fire :: (g: [] Game) {
     if g[0].player.cones > 0 {
       g[0].player.cones -= 1;
       g[0].player.fire_wait = one / t.pistol_rate;
-      add_shot(g, Shot.{kind = ShotKind.cone, colour = 0, pos = vadd(pos, vmul(aim, half)), height = 1.1, vel = vmul(aim, t.pistol_speed), left = t.pistol_range});
+      add_shot(g, IceShot.{kind = ShotKind.cone, colour = 0, pos = vadd(pos, vmul(aim, half)), height = 1.1, vel = vmul(aim, t.pistol_speed), left = t.pistol_range});
       ev0(g, EventKind.cone_fired);
       return;
     }
@@ -1924,7 +1924,7 @@ fire :: (g: [] Game) {
     if g[0].player.sugar > 0 {
       g[0].player.sugar -= 1;
       g[0].player.fire_wait = t.sugar_wait;
-      add_shot(g, Shot.{kind = ShotKind.sugar, colour = 0, pos = vadd(pos, vmul(aim, half)), height = 1.2, vel = vmul(aim, t.sugar_speed), left = t.sugar_range});
+      add_shot(g, IceShot.{kind = ShotKind.sugar, colour = 0, pos = vadd(pos, vmul(aim, half)), height = 1.2, vel = vmul(aim, t.sugar_speed), left = t.sugar_range});
       ev0(g, EventKind.sugar_fired);
       return;
     }
@@ -2189,7 +2189,7 @@ step_man :: (g: [] Game) {
       for q: 0..<VOLLEY_PELLETS {
         vel := vmul(rot2(act.dir, turns[q].x, turns[q].z), t.pellet_speed);
         g[0].sprinkle = cast(u8) ((cast(int) g[0].sprinkle + 1) % 5);
-        add_shot(g, Shot.{kind = ShotKind.sprinkle, colour = g[0].sprinkle, pos = vadd(g[0].man.pos, vmul(act.dir, MAN_RADIUS + ahead)), height = high, vel = vel, left = t.volley_max + more});
+        add_shot(g, IceShot.{kind = ShotKind.sprinkle, colour = g[0].sprinkle, pos = vadd(g[0].man.pos, vmul(act.dir, MAN_RADIUS + ahead)), height = high, vel = vel, left = t.volley_max + more});
       }
       ev0(g, EventKind.volley);
     } else if act.kind == ActKind.grab {

@@ -1,0 +1,17 @@
+// Token-aware command grammar. Paths are literal, never semantic directions.
+#load "anime-args.coax";
+#load "anim-args-checks.coax";
+#authority;
+AnimArgs :: struct {clip:string;target:string;source:string;out:string;profile:string;json:bool;help:bool;err:string;}
+AN_FLAGS :: [6]string.["--profile","--json","--help","--to","--out","--source-rig"];
+an_flag :: (text:string)->int #effects(all) {for name,k:AN_FLAGS {if name==text {return k;}}return -1;}
+an_parse :: (a:[]Args)->AnimArgs #effects(all) {
+ r:AnimArgs;if a.count<1 {r.err="missing arguments";return r;}if a[0].full {r.err="argument capacity";return r;}seen:[6]bool;pos:=0;i:=0;
+ while i<args_count(a) {text:=args_at(a,i);i+=1;
+  if text.count>1 && text[0]=='-' && text[1]=='-' {flag:=an_flag(text);if flag<0 {r.err="unknown animation flag";return r;}if seen[flag] {r.err="repeated animation flag";return r;}seen[flag]=true;value:="";
+   if flag==0 || flag>=3 {if i>=args_count(a) {r.err="animation flag needs a value";return r;}value=args_at(a,i);i+=1;if !aa_file_ok(value) {r.err="invalid animation flag value";return r;}}
+   if flag==0 {r.profile=value;}if flag==1 {r.json=true;}if flag==2 {r.help=true;}if flag==3 {r.target=value;}if flag==4 {r.out=value;}if flag==5 {r.source=value;}
+  }else {if pos==0 && text!="labs" {r.err="expected labs";return r;}if pos==1 && text!="anim" {r.err="expected labs anim";return r;}if pos==2 && text!="retarget" {r.err="unknown animation verb";return r;}if pos==3 {r.clip=text;}if pos>3 {r.err="extra animation operand";return r;}pos+=1;}
+ }
+ if pos<2 {r.err="expected labs anim";return r;}if pos==2 {r.help=true;return r;}if r.help {return r;}if !aa_file_ok(r.clip) || r.target=="" {r.err="labs anim retarget CLIP --to RIG [--out PRIVATE_DIR]";}return r;
+}

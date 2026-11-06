@@ -1,0 +1,16 @@
+#test "animation number writer round trips binary32 metadata including signed zero" {
+ for value:[9]f32.[0.0,-0.0,0.1,1.0,3.1415927,1.0e-38,1.0e38,f32_from_bits(1),f32_from_bits(0x80800000)] {
+  bytes:[128]u8;o:[1]Jo;jo_start(o[..],bytes[..]);aw_number(o[..],value);n:=anim_decimal(jo_text(o[..]));#assert !o[0].bad && n.ok && f32_bits(cast(f32)n.value)==f32_bits(value);
+ }
+}
+#test "animation writer re-admits a compacted rig without changing mesh or bind words" {
+ source:[452]u8;text:[4096]u8;n:=anim_test_rig(text[..],source[..]);packs:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)source[..]),bytes=source[..]}];rig:[1]AnimRig;#assert anim_rig_load(cast(string)text[0..<n],packs[..],rig[..])==0;
+ bytes:[1024]u8;next:[1]AnimRig;layout:=aw_pack_rig(rig[0],packs[..],bytes[..],next[..]);#assert layout.bytes==452;for k:0..<452 {#assert bytes[k]==source[k];}
+ packed:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[0..<layout.bytes]),bytes=bytes[0..<layout.bytes]}];hash:[64]u8;#assert asset_hex(packed[0].id,hash[..]);n=aw_rig(text[..],next[0],layout,cast(string)hash[..]);#assert n>0 && anim_rig_load(cast(string)text[0..<n],packed[..],rig[..])==0 && rig[0].joints==2 && rig[0].face_bindings==1 && rig[0].bind[10]==1;
+ #assert aw_pack_rig(rig[0],packed[..],bytes[0..<451],next[..]).bytes== -1;
+}
+#test "animation clip writer preserves root face events and provenance on re-admission" {
+ bytes:[296]u8;text:[8192]u8;n:=anim_test_clip_full(text[..],bytes[..]);packs:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];r:[1]AnimRig;anim_test_clip_rig(r[..]);c:[1]AnimClip;#assert anim_clip_load(cast(string)text[0..<n],packs[..],r[..],c[..])==0;
+ hash:[64]u8;#assert asset_hex(packs[0].id,hash[..]);next:[1]AnimClip;n=aw_clip(text[..],c[0],r[0],cast(string)hash[..]);#assert n>0 && anim_clip_load(cast(string)text[0..<n],packs[..],r[..],next[..])==0;
+ #assert next[0].event_count==4 && next[0].events[1].at==c[0].events[1].at && next[0].events[1].joint==1 && next[0].root.offset==224 && next[0].face_joint_count==2 && next[0].curves[0]==1 && asset_same(next[0].source,c[0].source);
+}

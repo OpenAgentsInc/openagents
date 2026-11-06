@@ -1,0 +1,39 @@
+rt_test_rig :: ()->AnimRig {
+ r:AnimRig;r.ready=true;r.joints=3;
+ r.names[0]=anim_named("root");r.names[1]=anim_named("upperarm_l");r.names[2]=anim_named("upperarm_twist_01_l");
+ r.parents[0]= -1;r.parents[1]=0;r.parents[2]=1;r.mapped[0]=0;r.mapped[1]=8;r.mapped[2]=8;
+ return r;
+}
+#test "retarget maps select a canonical anchor and list folded helpers" {
+ r:=rt_test_rig();out:[1]RtAnchors;#assert rt_anchors(r,out[..])==0 && out[0].count==2 && out[0].joints[0]==0 && out[0].joints[8]==1 && out[0].joints[64]== -1;
+ #assert rt_anchor_slot(out[0],0)==0 && rt_anchor_slot(out[0],1)==8 && rt_anchor_slot(out[0],2)== -1;
+ #assert rt_anchor_slot(out[0],-1)== -1 && rt_anchor_slot(out[0],512)== -1;
+ r.names[1]=anim_named("custom-arm");#assert rt_anchors(r,out[..])==ANIM_REFERENCE && out[0].joints[8]==1;
+ r.mapped[2]= -1;#assert rt_anchors(r,out[..])==0 && out[0].joints[8]==1;
+ r.mapped[2]=8;r.names[2]=anim_named("upperarm_l");#assert rt_anchors(r,out[..])==0 && out[0].joints[8]==2;
+ r.names[1]=anim_named("upperarm_l");#assert rt_anchors(r,out[..])==ANIM_REFERENCE;
+}
+#test "retarget mapping refuses unknown slots cycles and invalid offsets before publication" {
+ r:=rt_test_rig();out:[1]RtAnchors;#assert rt_anchors(r,out[..])==0;
+ for k:0..<7 {bad:=r;if k==0 {bad.ready=false;}if k==1 {bad.joints=0;}if k==2 {bad.joints=513;}if k==3 {bad.mapped[1]=65;}if k==4 {bad.mapped[1]= -2;}if k==5 {bad.parents[1]=1;}if k==6 {bad.offsets[1]=Quat.{w=0};}#assert rt_anchors(bad,out[..])==[7]int.[ANIM_LIMIT,ANIM_LIMIT,ANIM_LIMIT,ANIM_REFERENCE,ANIM_REFERENCE,ANIM_SKELETON,ANIM_NUMBER][k] && out[0].count==2;}
+ r.parents[1]= -2;#assert rt_anchors(r,out[..])==ANIM_SKELETON;r.parents[1]=2;r.parents[2]=1;#assert rt_anchors(r,out[..])==ANIM_SKELETON;
+ r=rt_test_rig();#assert rt_anchors(r,out[0..<0])==ANIM_CAPACITY;
+}
+#test "retarget mapping endpoint predicates preserve the complete index domains" {
+ #assert !rt_joint_count(0) && rt_joint_count(1) && rt_joint_count(512) && !rt_joint_count(513);
+ #assert rt_parent(-1,0) && !rt_parent(0,0) && rt_parent(0,1) && !rt_parent(-2,1) && !rt_parent(1,1);
+ #assert rt_slot(-1) && rt_slot(0) && rt_slot(64) && !rt_slot(-2) && !rt_slot(65);
+}
+
+#test "retarget validates root fields and distinguishes empty from one-anchor maps" {
+ r:=rt_test_rig();out:[1]RtAnchors;r.parents[0]=0;#assert rt_anchors(r,out[..])==ANIM_SKELETON;
+ r=rt_test_rig();r.mapped[0]=65;#assert rt_anchors(r,out[..])==ANIM_REFERENCE;r=rt_test_rig();r.offsets[0]=Quat.{w=0};#assert rt_anchors(r,out[..])==ANIM_NUMBER;
+ r=rt_test_rig();for j:0..<3 {r.mapped[j]= -1;}#assert rt_anchors(r,out[..])==ANIM_REFERENCE;
+ r=rt_test_rig();r.joints=1;#assert rt_anchors(r,out[..])==0 && out[0].count==1 && out[0].joints[0]==0;
+ r=rt_test_rig();r.names[1]=anim_named("UPPERARM_L");#assert rt_anchors(r,out[..])==0 && out[0].joints[8]==1;
+}
+#test "retarget canonical joint zero disambiguates helpers and detects duplicate anchors" {
+ r:=rt_test_rig();r.mapped[1]=0;r.mapped[2]= -1;r.names[1]=anim_named("root-helper");out:[1]RtAnchors;
+ #assert rt_anchors(r,out[..])==0 && out[0].count==1 && out[0].joints[0]==0;
+ r.names[1]=anim_named("ROOT");#assert rt_anchors(r,out[..])==ANIM_REFERENCE;
+}

@@ -1,0 +1,33 @@
+#test "animation CLI parses retarget paths literally and consumes each flag value once" {
+ a:[1]Args;for token:[10]string.["--json","labs","anim","retarget","clip.json","--to","mannequin","--source-rig","rig.json","--help"] {#assert args_add(a[..],token);}
+ r:=an_parse(a[..]);#assert r.err=="" && r.json && r.help && r.clip=="clip.json" && r.target=="mannequin" && r.source=="rig.json";
+ a[0]=Args.{};for token:[6]string.["labs","anim","retarget","clip.json","--to","--json"] {#assert args_add(a[..],token);}r=an_parse(a[..]);#assert r.err=="" && !r.json && r.target=="--json";
+}
+#test "animation CLI refuses missing repeated unknown and extra operands" {
+ a:[1]Args;for token:[6]string.["labs","anim","retarget","clip.json","--to","mannequin"] {#assert args_add(a[..],token);}#assert an_parse(a[..]).err=="";
+ #assert args_add(a[..],"extra");#assert an_parse(a[..]).err!="";a[0].n=6;
+ #assert args_add(a[..],"--to") && args_add(a[..],"other");#assert an_parse(a[..]).err!="";a[0].n=6;
+ #assert args_add(a[..],"--unknown");#assert an_parse(a[..]).err!="";a[0].n=5;#assert an_parse(a[..]).err!="";a[0].n=4;#assert an_parse(a[..]).err!="";
+ a[0]=Args.{};#assert args_add(a[..],"labs") && args_add(a[..],"anim");#assert an_parse(a[..]).err=="" && an_parse(a[..]).help;
+}
+an_test_error :: (tokens:[]string,expected:string) {
+ a:[1]Args;for token:tokens {#assert args_add(a[..],token);}#assert an_parse(a[..]).err==expected;
+}
+#test "animation CLI reports each refusal without treating literal path bytes as flags" {
+ tokens_0:=[6]string.["other","anim","retarget","clip","--to","rig"];an_test_error(tokens_0[..],"expected labs");
+ tokens_1:=[6]string.["labs","other","retarget","clip","--to","rig"];an_test_error(tokens_1[..],"expected labs anim");
+ tokens_2:=[6]string.["labs","anim","other","clip","--to","rig"];an_test_error(tokens_2[..],"unknown animation verb");
+ tokens_3:=[1]string.["labs"];an_test_error(tokens_3[..],"expected labs anim");
+ tokens_4:=[5]string.["labs","anim","retarget","clip","--to"];an_test_error(tokens_4[..],"animation flag needs a value");
+ tokens_5:=[8]string.["labs","anim","retarget","clip","--to","rig","--out",""];an_test_error(tokens_5[..],"invalid animation flag value");
+ tokens_6:=[6]string.["labs","anim","retarget","--to","rig","--"];an_test_error(tokens_6[..],"unknown animation flag");
+ #assert an_flag("--unknown")== -1;
+ for path:[3]string.["-","-x","a-clip"] {a:[1]Args;for token:[6]string.["labs","anim","retarget",path,"--to","rig"] {#assert args_add(a[..],token);}r:=an_parse(a[..]);#assert r.err=="" && r.clip==path && !r.help && !r.json;}
+ a:[1]Args;#assert an_parse(a[..]).err=="expected labs anim";a[0].full=true;#assert an_parse(a[..]).err=="argument capacity";#assert an_parse(a[0..<0]).err=="missing arguments";
+}
+#test "animation CLI retains every option independently and accepts help before a clip" {
+ a:[1]Args;for token:[14]string.["labs","anim","retarget","clip","--profile","owner","--to","rig","--out","output","--source-rig","source","--json","--help"] {#assert args_add(a[..],token);}r:=an_parse(a[..]);#assert r.err=="" && r.profile=="owner" && r.target=="rig" && r.out=="output" && r.source=="source" && r.json && r.help;
+ a[0]=Args.{};for token:[7]string.["labs","anim","retarget","clip","--to","rig","--help"] {#assert args_add(a[..],token);}#assert an_parse(a[..]).help && !an_parse(a[..]).json;
+ a[0]=Args.{};for token:[6]string.["labs","anim","retarget","clip","--to","rig"] {#assert args_add(a[..],token);}#assert !an_parse(a[..]).help && !an_parse(a[..]).json;
+ #assert args_add(a[..],"--json");#assert an_parse(a[..]).json && !an_parse(a[..]).help;
+}

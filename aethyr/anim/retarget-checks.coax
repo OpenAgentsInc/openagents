@@ -1,0 +1,25 @@
+#test "retarget correction carries world rotations across different rest axes and back" {
+ source:=rt_test_rig();target:=source;target.joints=2;target.rest[0].q=Quat.{x= -0.70710678,w=0.70710678};target.rest[1].q=Quat.{z=0.38268343,w=0.92387953};source.rest[1].t=v3(0,1,0);target.rest[1].t=v3(0,2,0);
+ target.offsets[1]=Quat.{y=0.38268343,w=0.92387953};source.offsets[1]=target.offsets[1];
+ plan:[1]RtPlan;back:[1]RtPlan;#assert rt_plan(source,target,plan[..])==0 && rt_plan(target,source,back[..])==0;
+ a:[1]AnimSample;b:[1]AnimSample;c:[1]AnimSample;p:[1]AnimPack;empty:AnimClip;anim_sample(source,empty,p[..],0,a[..]);a[0].local[1].q=Quat.{z=0.70710678,w=0.70710678};a[0].local[0].t=v3(1,0,0);rt_chain(source,a[..]);
+ rt_apply(source,target,plan[0],a[..],b[..]);rt_apply(target,source,back[0],b[..],c[..]);
+ #assert rt_rotation_error(a[0].rotation[1],c[0].rotation[1])<0.1 && rt_rotation_error(a[0].rotation[0],c[0].rotation[0])<0.1;
+ #assert same(c[0].position[0],a[0].position[0],0.00001) && c[0].local[2].q.w==source.rest[2].q.w;
+ #assert rt_rotation_error(Quat.{},Quat.{z=0.70710678,w=0.70710678})>89.9;
+}
+#test "retarget leg scale uses both hip knee foot chains and reverses root displacement" {
+ source:=rt_test_legs(1);target:=rt_test_legs(2);plan:[1]RtPlan;back:[1]RtPlan;#assert rt_plan(source,target,plan[..])==0 && abs(plan[0].root_scale-2)<0.00001 && plan[0].scaled;
+ #assert rt_plan(target,source,back[..])==0 && abs(back[0].root_scale-0.5)<0.00001;
+ a:[1]AnimSample;b:[1]AnimSample;c:[1]AnimSample;p:[1]AnimPack;empty:AnimClip;anim_sample(source,empty,p[..],0,a[..]);a[0].local[0].t=v3(3,0,1);rt_chain(source,a[..]);rt_apply(source,target,plan[0],a[..],b[..]);rt_apply(target,source,back[0],b[..],c[..]);#assert same(b[0].position[0],v3(6,0,2),0.00001) && same(c[0].position[0],v3(3,0,1),0.00001);
+}
+rt_test_legs :: (scale:f32)->AnimRig {
+ r:AnimRig;r.ready=true;r.joints=7;slots:=[7]int.[0,55,56,57,60,61,62];parents:=[7]int.[-1,0,1,2,0,4,5];
+ for k:0..<7 {r.names[k]=anim_named(MANNEQUIN_NAME[slots[k]]);r.mapped[k]=slots[k];r.parents[k]=parents[k];if k>0 {r.rest[k].t=v3(ifx k==1 then -0.1*scale else ifx k==4 then 0.1*scale else 0,ifx k==1 || k==4 then scale else -0.5*scale,0);}}
+ return r;
+}
+#test "retarget root displacement subtracts world rest when the mapped root has a parent" {
+ r:=rt_test_rig();r.joints=2;r.mapped[0]= -1;r.names[0]=anim_named("container");r.mapped[1]=0;r.names[1]=anim_named("root");r.rest[0].t=v3(2,0,0);r.rest[1].t=v3(1,0,0);
+ p:[1]RtPlan;#assert rt_plan(r,r,p[..])==0;a:[1]AnimSample;b:[1]AnimSample;empty:AnimClip;packs:[1]AnimPack;anim_sample(r,empty,packs[..],0,a[..]);rt_apply(r,r,p[0],a[..],b[..]);#assert same(a[0].position[1],b[0].position[1],0.00001);
+ a[0].local[1].t.x+=3;rt_chain(r,a[..]);rt_apply(r,r,p[0],a[..],b[..]);#assert same(a[0].position[1],b[0].position[1],0.00001);
+}

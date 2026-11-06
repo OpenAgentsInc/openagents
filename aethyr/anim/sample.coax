@@ -7,6 +7,14 @@ AnimSample :: struct {
  palette:[6144]f32;weights:[256]f32;
 }
 
+#test "independent root tracks replace the first root translation at the sampled time" {
+ bytes:[80]u8;anim_test_put(bytes[..],24,f32_bits(1));anim_test_put(bytes[..],52,f32_bits(1));anim_test_put(bytes[..],28,f32_bits(2));anim_test_put(bytes[..],68,f32_bits(4));
+ packs:=[1]AnimPack.[AnimPack.{bytes=bytes[..]}];r:AnimRig;r.ready=true;r.joints=1;r.parents[0]= -1;c:AnimClip;c.ready=true;c.frames=2;c.rate=1;c.length=1;c.joint_count=1;c.joints[0]=0;c.body=AnimPart.{pack=0,count=2,stride=28,width=28};c.root=AnimPart.{pack=0,offset=56,count=2,stride=12,width=12};out:[1]AnimSample;
+ anim_sample(r,c,packs[..],0.5,out[..]);#assert out[0].position[0].x==2;anim_sample(r,c,packs[..],1,out[..]);#assert out[0].position[0].x==4;
+ c.face_joint_count=1;c.face_joints[0]=0;c.face_pose=c.body;anim_sample(r,c,packs[..],1,out[..]);#assert out[0].position[0].x==4;
+ c.face_joint_count=0;c.root.pack= -1;anim_sample(r,c,packs[..],0.5,out[..]);#assert out[0].position[0].x==1;
+}
+
 #test "document playback interpolates named sparse tracks and starts each face from rest" {
  bytes:[128]u8;for k:0..<4 {anim_test_put(bytes[..],k*28+24,f32_bits(1));}
  anim_test_put(bytes[..],28,f32_bits(2));anim_test_put(bytes[..],112,f32_bits(0.2));anim_test_put(bytes[..],116,f32_bits(0.8));
@@ -32,6 +40,7 @@ anim_sample :: (r:AnimRig,c:AnimClip,packs:[]AnimPack,time:f32,out:[]AnimSample)
   frame:=lo(anim_sample_time(c,time)*c.rate,cast(f32)(c.frames-1));a:=cast(int)floor(frame);b:=ifx a+1<c.frames then a+1 else a;share:=frame-cast(f32)a;
   for k:0..<c.joint_count {out[0].local[c.joints[k]]=anim_sample_pose(c.body,packs,c.joint_count,k,a,b,share);}
   for k:0..<c.face_joint_count {out[0].local[c.face_joints[k]]=anim_sample_pose(c.face_pose,packs,c.face_joint_count,k,a,b,share);}
+  if c.root.pack>=0 {p:=c.root;bytes:=packs[p.pack].bytes;x:=p.offset+a*p.stride;y:=p.offset+b*p.stride;out[0].local[0].t=mix(v3(anim_float(bytes,x),anim_float(bytes,x+4),anim_float(bytes,x+8)),v3(anim_float(bytes,y),anim_float(bytes,y+4),anim_float(bytes,y+8)),share);}
   if c.curve_count>0 {p:=c.face;bytes:=packs[p.pack].bytes;for k:0..<c.curve_count {x:=anim_float(bytes,p.offset+(a*c.curve_count+k)*p.stride);y:=anim_float(bytes,p.offset+(b*c.curve_count+k)*p.stride);out[0].weights[c.curves[k]]=x+(y-x)*share;}}
  }
  for j:0..<r.joints {pose_chain(out[0].rotation[..],out[0].position[..],r.parents[j],j,out[0].local[j]);}

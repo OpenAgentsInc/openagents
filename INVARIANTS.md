@@ -5859,3 +5859,22 @@ Checks: `bundle-policy.coax` kills 66 mutants; the exact renderer/memory
 adoption gate kills 55, with zero survivors. Station checks, fixed-frame
 captures, recovery and timing are recorded in
 `docs/verification/animation-lab-a1-2026-11-06/README.md`.
+
+## Retargeting declares its representable joints and preserves target rest
+
+`aethyr/anim/retarget-policy.coax` admits one rotational anchor per mannequin
+slot. Canonical names disambiguate folded helpers; ambiguous aliases, unknown
+slots and cyclic or forward parent edges are refused before plan publication.
+The mapping authority kills 81 mutants with zero survivors. All source joint
+errors are reported; only paired anchors have the 2° round-trip guarantee.
+Unpaired target joints retain local rest. Independent input and output pose
+snapshots keep parent-order evaluation deterministic. Root motion subtracts
+the source's world rest position and scales by both rigs' leg chains.
+
+Native animation exports admit all generated documents before creating a new
+private output directory. Canonical parent resolution confines output below
+`~/.openagents/`; existing destinations are refused. Path authority kills
+32 mutants and token-aware CLI authority kills 115, all with zero survivors.
+The synchronized two-rig GPU upload stays within the inspector's combined
+64 MiB limit. Metrics and frame hashes are recorded in
+`docs/verification/animation-lab-a2-2026-11-06/README.md`.

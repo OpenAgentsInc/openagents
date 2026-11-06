@@ -145,6 +145,25 @@ Labs adds one exit code to the CLI's table:
 | --- | --- |
 | 8 | a program Labs needs is missing: Chrome, ffmpeg, or the transcribe backend. The message names it and the one command that installs it, for example `brew install ffmpeg` |
 
+### `labs anim retarget`
+
+```sh
+openagents labs anim retarget CLIP --to RIG [--source-rig FILE] [--out PRIVATE_DIR] [--json]
+```
+
+`RIG` is an `anim.rig.v1` JSON file or `mannequin` for the built-in rig.
+The source rig defaults to `rig.json`, then `echo.rig.json`, beside the clip.
+Each rig's hash-named binary must be beside its JSON. Output defaults to
+`CLIP.retarget`; its existing parent must resolve under `~/.openagents/`.
+The destination must be new. It contains `rig.json`, `clip-0.json`, the
+hash-named binary, `report.json` and `receipt.json`.
+
+Rotational anchors use rest correction, and root displacement scales by
+leg length. Unpaired target joints keep local rest and appear in the
+report. Folded helpers cannot retain independent motion through a 65-slot
+mannequin; the [Animation Lab spec](../verse/2026-11-06-animation-lab.md)
+states the mapping and measurement limits.
+
 ### `labs anime`
 
 ```sh

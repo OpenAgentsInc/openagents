@@ -1,0 +1,29 @@
+// Private all-clip round trip and explicitly defined foot-joint metrics.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../verse/animlab/mannequin.coax";
+#load "../anim/retarget.coax";
+#load "../anim/write.coax";
+RtStats :: struct {degrees:[512]f32;mapped:f32;other:f32;contacts:[2]int;sum_height:[2]f32;max_height:[2]f32;}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=2 {print("usage: anim-retarget-check PRIVATE.bundle PRIVATE_REPORT.json\n");return 2;}
+ bytes:[67108864]u8;n:=fs_read(args_at(args[..],0),bytes[..]);#assert n>0;source:[1]AnimLibrary;target:[1]AnimLibrary;made:[262144]u8;#assert anim_bundle_load(bytes[0..<n],source[..])==0;al_mannequin(target[..],made[..]);sr:=source[0].rig[0];tr:=target[0].rig[0];plans:[2]RtPlan;error:=rt_plan(sr,tr,plans[..]);if error!=0 {print("source mapping: %\n",anim_error_name(error));return 1;}#assert rt_plan(tr,sr,plans[1..<2])==0;
+ a:[1]AnimSample;b:[1]AnimSample;c:[1]AnimSample;empty:AnimClip;anim_sample(sr,empty,source[0].packs[..],0,a[..]);anim_sample(tr,empty,target[0].packs[..],0,b[..]);sfeet:=[2]int.[plans[0].source.joints[57],plans[0].source.joints[62]];tfeet:=[2]int.[plans[0].target.joints[57],plans[0].target.joints[62]];#assert sfeet[0]>=0 && sfeet[1]>=0 && tfeet[0]>=0 && tfeet[1]>=0;
+ source_ground:=lo(a[0].position[sfeet[0]].y,a[0].position[sfeet[1]].y);target_ground:=lo(b[0].position[tfeet[0]].y,b[0].position[tfeet[1]].y);
+ report:[2097152]u8;o:[1]Jo;jo_start(o[..],report[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.retarget.check.v1");jo_key(o[..],"mapping");jo_str(o[..],"canonical-anchor.v1");jo_key(o[..],"rotation_space");jo_str(o[..],"world");jo_key(o[..],"limit_degrees");jo_int(o[..],2);jo_key(o[..],"source_joints");jo_int(o[..],sr.joints);jo_key(o[..],"source_anchors");jo_int(o[..],plans[0].source.count);jo_key(o[..],"paired_anchors");jo_int(o[..],plans[0].paired);jo_key(o[..],"root_scale");aw_number(o[..],plans[0].root_scale);jo_key(o[..],"contacts");jo_str(o[..],"inferred: foot joint within 0.02 m of its clip minimum and vertical speed <= 0.15 m/s");jo_key(o[..],"height_error");jo_str(o[..],"target foot joint Y minus (target rest ground + leg scale * source height above source rest ground)");jo_key(o[..],"clips");jo_arr(o[..]);
+ clips:=0;frames:=0;max_mapped:f32=0;max_other:f32=0;ok:=true;
+ for k:0..<source[0].count {clip:=source[0].clips[k];if clip.joint_count==0 {continue;}clip.looping=false;stats:RtStats;heights:[4000]f32;minimum:=[2]f32.[1000000000,1000000000];
+  for frame:0..<clip.frames {anim_sample(sr,clip,source[0].packs[..],cast(f32)frame/clip.rate,a[..]);for foot:0..<2 {y:=a[0].position[sfeet[foot]].y;heights[frame*2+foot]=y;minimum[foot]=lo(minimum[foot],y);}}
+  for frame:0..<clip.frames {anim_sample(sr,clip,source[0].packs[..],cast(f32)frame/clip.rate,a[..]);rt_apply(sr,tr,plans[0],a[..],b[..]);rt_apply(tr,sr,plans[1],b[..],c[..]);
+   for j:0..<sr.joints {angle:=rt_rotation_error(a[0].rotation[j],c[0].rotation[j]);stats.degrees[j]=hi(stats.degrees[j],angle);slot:=rt_anchor_slot(plans[0].source,j);paired:=slot>=0 && plans[0].target.joints[slot]>=0;if paired {stats.mapped=hi(stats.mapped,angle);}else {stats.other=hi(stats.other,angle);}}
+   for foot:0..<2 {previous:=ifx frame>0 then frame-1 else frame;next:=ifx frame+1<clip.frames then frame+1 else frame;y:=heights[frame*2+foot];speed:=abs(heights[next*2+foot]-heights[previous*2+foot])*clip.rate/cast(f32)(next-previous);if y>minimum[foot]+0.02 || speed>0.15 {continue;}error_height:=abs(b[0].position[tfeet[foot]].y-(target_ground+plans[0].root_scale*(y-source_ground)));stats.contacts[foot]+=1;stats.sum_height[foot]+=error_height;stats.max_height[foot]=hi(stats.max_height[foot],error_height);}
+  }
+  max_mapped=hi(max_mapped,stats.mapped);max_other=hi(max_other,stats.other);ok=ok && stats.mapped<2;clips+=1;frames+=clip.frames;
+  jo_obj(o[..]);jo_key(o[..],"index");jo_int(o[..],k);jo_key(o[..],"clip");aw_name(o[..],clip.name);jo_key(o[..],"frames");jo_int(o[..],clip.frames);jo_key(o[..],"max_paired_degrees");aw_number(o[..],stats.mapped);jo_key(o[..],"max_other_degrees");aw_number(o[..],stats.other);jo_key(o[..],"feet");jo_arr(o[..]);for foot:0..<2 {jo_obj(o[..]);jo_key(o[..],"contacts");jo_int(o[..],stats.contacts[foot]);jo_key(o[..],"max_height_error_cm");aw_number(o[..],stats.max_height[foot]*100);jo_key(o[..],"mean_height_error_cm");aw_number(o[..],ifx stats.contacts[foot]>0 then stats.sum_height[foot]*100/cast(f32)stats.contacts[foot] else 0);jo_end(o[..]);}jo_end(o[..]);
+  jo_key(o[..],"joints");jo_arr(o[..]);for j:0..<sr.joints {slot:=rt_anchor_slot(plans[0].source,j);jo_obj(o[..]);jo_key(o[..],"joint");aw_name(o[..],sr.names[j]);jo_key(o[..],"declared_slot");jo_int(o[..],sr.mapped[j]);jo_key(o[..],"paired_anchor");jo_bool(o[..],slot>=0 && plans[0].target.joints[slot]>=0);jo_key(o[..],"max_degrees");aw_number(o[..],stats.degrees[j]);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);
+  if k==1 || k==2 {print("contact clip_index=% left=% right=% max_left_cm=% max_right_cm=%\n",k,stats.contacts[0],stats.contacts[1],stats.max_height[0]*100,stats.max_height[1]*100);ok=ok && stats.contacts[0]>0 && stats.contacts[1]>0;}
+ }
+ jo_end(o[..]);jo_end(o[..]);#assert !o[0].bad && fs_write(args_at(args[..],1),jo_text(o[..]));hash:[64]u8;#assert asset_hex(asset_id(jo_text(o[..])),hash[..]);print("round_trip clips=% frames=% source_joints=% anchors=% paired=% max_paired_degrees=% max_other_degrees=% report_sha256=%\n",clips,frames,sr.joints,plans[0].source.count,plans[0].paired,max_mapped,max_other,cast(string)hash[..]);return ifx ok then 0 else 1;
+}

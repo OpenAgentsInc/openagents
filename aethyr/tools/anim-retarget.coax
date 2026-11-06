@@ -1,0 +1,7 @@
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "anim-retarget-io.coax";
+tool_main :: ()->int #export_c #effects(all) {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<5 {print("usage: anim-retarget CLIP --to RIG --out PRIVATE_DIR [--source-rig FILE]\n");return 2;}
+ result:=anim_retarget_files(args_at(a[..],0),args_value(a[..],"--source-rig",""),args_value(a[..],"--to",""),args_value(a[..],"--out",""));if result.code!=0 {print("retarget: %\n",ar_error(result.code));return 1;}print("retargeted frames=% joints=% paired=% bytes=% dropped_curves=% dropped_events=%\n",result.frames,result.joints,result.paired,result.bytes,result.dropped_curves,result.dropped_events);return 0;
+}

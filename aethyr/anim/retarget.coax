@@ -1,0 +1,38 @@
+// World-space rest deltas pass through the mannequin axes, then target rest.
+// Unpaired joints retain target local rest. Source storage stays immutable.
+// rt_apply requires distinct input and output snapshots.
+#load "retarget-policy.coax";
+#load "sample.coax";
+#load "retarget-checks.coax";
+RtPlan :: struct {
+ source:RtAnchors;target:RtAnchors;source_for_target:[512]int;
+ source_rest:[512]Quat;target_rest:[512]Quat;source_root_rest:Point;root_scale:f32=1;scaled:bool;paired:int;
+}
+rt_inverse :: (rotation:Quat)->Quat {q:=quat_unit(rotation);return Quat.{x= -q.x,y= -q.y,z= -q.z,w=q.w};}
+rt_chain :: (r:AnimRig,sample:[]AnimSample) {
+ for j:0..<r.joints {pose_chain(sample[0].rotation[..],sample[0].position[..],r.parents[j],j,sample[0].local[j]);}
+ bind:=r.bind;for j:0..<r.joints {pose_palette(sample[0].rotation[j],sample[0].position[j],bind[..],j,sample[0].palette[..]);}
+}
+rt_leg_length :: (map:RtAnchors,positions:[]Point)->f32 {
+ total:f32=0;for hip:[2]int.[55,60] {a:=map.joints[hip];b:=map.joints[hip+1];c:=map.joints[hip+2];if a<0 || b<0 || c<0 {return 0;}total+=length(sub(positions[a],positions[b]))+length(sub(positions[b],positions[c]));}return total/2;
+}
+rt_plan :: (source:AnimRig,target:AnimRig,out:[]RtPlan)->int {
+ if out.count<1 {return ANIM_CAPACITY;}next:RtPlan;maps:[2]RtAnchors;e:=rt_anchors(source,maps[..]);if e!=0 {return e;}e=rt_anchors(target,maps[1..<2]);if e!=0 {return e;}next.source=maps[0];next.target=maps[1];
+ for j:0..<512 {next.source_for_target[j]= -1;}for slot:0..<65 {a:=maps[0].joints[slot];b:=maps[1].joints[slot];if a>=0 && b>=0 {next.source_for_target[b]=a;next.paired+=1;}}
+ if next.paired==0 {return ANIM_REFERENCE;}a:[1]AnimSample;b:[1]AnimSample;empty:AnimClip;packs:[1]AnimPack;anim_sample(source,empty,packs[..],0,a[..]);anim_sample(target,empty,packs[..],0,b[..]);next.source_rest=a[0].rotation;next.target_rest=b[0].rotation;if maps[0].joints[0]>=0 {next.source_root_rest=a[0].position[maps[0].joints[0]];}
+ sl:=rt_leg_length(maps[0],a[0].position[..]);tl:=rt_leg_length(maps[1],b[0].position[..]);if sl>0.000001 && tl>0.000001 {next.root_scale=tl/sl;next.scaled=true;}
+ out[0]=next;return ANIM_OK;
+}
+rt_apply :: (source:AnimRig,target:AnimRig,plan:RtPlan,input:[]AnimSample,out:[]AnimSample) {
+ sr:=plan.source.joints[0];tr:=plan.target.joints[0];
+ for j:0..<target.joints {p:=target.rest[j];parent:=target.parents[j];from:=plan.source_for_target[j];
+  if j==tr && sr>=0 {motion:=times(sub(input[0].position[sr],plan.source_root_rest),plan.root_scale);if parent>=0 {motion=quat_rotate(rt_inverse(out[0].rotation[parent]),motion);}p.t=add(p.t,motion);}
+  if from>=0 {delta:=quat_mul(input[0].rotation[from],rt_inverse(plan.source_rest[from]));canonical:=quat_mul(quat_mul(source.offsets[from],delta),rt_inverse(source.offsets[from]));world:=quat_mul(quat_mul(quat_mul(rt_inverse(target.offsets[j]),canonical),target.offsets[j]),plan.target_rest[j]);p.q=quat_unit(ifx parent>=0 then quat_mul(rt_inverse(out[0].rotation[parent]),world) else world);}
+  out[0].local[j]=p;pose_chain(out[0].rotation[..],out[0].position[..],parent,j,p);
+ }
+ for k:0..<256 {out[0].weights[k]=0;}source_names:=source.shapes;for k:0..<target.shape_count {id:=anim_find(source_names[0..<source.shape_count],target.shapes[k]);if id>=0 {out[0].weights[k]=input[0].weights[id];}}
+ bind:=target.bind;for j:0..<target.joints {pose_palette(out[0].rotation[j],out[0].position[j],bind[..],j,out[0].palette[..]);}
+}
+rt_rotation_error :: (a:Quat,b:Quat)->f32 {
+ av:=[4]f64.[cast(f64)a.x,cast(f64)a.y,cast(f64)a.z,cast(f64)a.w];bv:=[4]f64.[cast(f64)b.x,cast(f64)b.y,cast(f64)b.z,cast(f64)b.w];dot:f64=0;aa:f64=0;bb:f64=0;for k:0..<4 {dot+=av[k]*bv[k];aa+=av[k]*av[k];bb+=bv[k]*bv[k];}d:=abs(dot)/sqrt(aa*bb);if d>1 {d=1;}return cast(f32)(2*atan2(cast(f32)sqrt(1-d*d),cast(f32)d)*57.29577951308232);
+}

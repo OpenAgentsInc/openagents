@@ -41,7 +41,7 @@ struct coax_io_14 {
   @location(2) w: vec4f,
   @location(3) f4: vec4f,
 }
-@group(0) @binding(0) var<uniform> u: array<vec4f, 8>;
+@group(0) @binding(0) var<uniform> u: array<vec4f, 12>;
 fn coax_at_u(i: i32) -> f32 {
   return u[i / 4][i % 4];
 }
@@ -55,7 +55,10 @@ fn coax_p_bg_vs(p_id: u32, p_instance: u32) -> vec4f {
 fn coax_p_scene_vs(p_id: u32, p_instance: u32) -> coax_t10 {
   var l_id: u32 = p_id;
   var l_instance: u32 = p_instance;
+  var l_model: i32;
+  var l_bank: i32;
   var l_index: i32;
+  var l_base: i32;
   var l_at: i32;
   var l_position: vec3f;
   var l_normal: vec3f;
@@ -68,21 +71,26 @@ fn coax_p_scene_vs(p_id: u32, p_instance: u32) -> coax_t10 {
   var l_direction: vec3f;
   var l_sum: f32;
   var l_heat: f32;
-  var l_k_18: i32;
+  var l_k_21: i32;
   var l_word: u32;
   var l_joint: i32;
-  var l_weight_21: f32;
+  var l_weight_24: f32;
   var l_b: i32;
   var l_p: vec4f;
   var l_n: vec4f;
   var l_transformed: vec3f;
   var l_turned: vec3f;
+  var l_origin: vec3f;
   var l_delta: vec3f;
   var l_z: f32;
   var l_x: f32;
   var l_y: f32;
+  var l_shift: f32;
+  l_model = select(0i, 1i, (l_instance >= 256u));
+  l_bank = (l_model * 6400i);
   l_index = i32(geometry[i32(l_id)]);
-  l_at = (i32(geometry[0i]) + (l_index * 26i));
+  l_base = i32(geometry[l_model]);
+  l_at = (l_base + (l_index * 26i));
   l_position = coax_p_al_word3(l_at);
   l_normal = coax_p_al_word3((l_at + 3i));
   l_first = i32(geometry[(l_at + 24i)]);
@@ -92,8 +100,8 @@ fn coax_p_scene_vs(p_id: u32, p_instance: u32) -> coax_t10 {
     let coax_to: i32 = l_count;
     for (l_k = coax_from; l_k < coax_to; l_k = l_k + 1i)
     {
-      l_m = (l_first + (l_k * 8i));
-      l_weight = bones[(6144i + i32(geometry[l_m]))];
+      l_m = ((l_first + (l_k * 8i)) + (l_base - 16i));
+      l_weight = bones[((l_bank + 6144i) + i32(geometry[l_m]))];
       l_position = coax_p_wg_add_f3f3(l_position, coax_p_wg_mul_f3f(coax_p_al_word3((l_m + 1i)), l_weight));
       l_normal = coax_p_wg_add_f3f3(l_normal, coax_p_wg_mul_f3f(coax_p_al_word3((l_m + 4i)), l_weight));
     }
@@ -105,31 +113,33 @@ fn coax_p_scene_vs(p_id: u32, p_instance: u32) -> coax_t10 {
   {
     let coax_from: i32 = 0i;
     let coax_to: i32 = 8i;
-    for (l_k_18 = coax_from; l_k_18 < coax_to; l_k_18 = l_k_18 + 1i)
+    for (l_k_21 = coax_from; l_k_21 < coax_to; l_k_21 = l_k_21 + 1i)
     {
-      l_word = geometry[((l_at + 9i) + (l_k_18 / 2i))];
-      l_joint = i32(((l_word >> u32(u32(((l_k_18 % 2i) * 16i)))) & 65535u));
-      l_weight_21 = f32(((geometry[((l_at + 13i) + (l_k_18 / 4i))] >> u32(u32(((l_k_18 % 4i) * 8i)))) & 255u));
-      l_sum = (l_sum + l_weight_21);
+      l_word = geometry[((l_at + 9i) + (l_k_21 / 2i))];
+      l_joint = i32(((l_word >> u32(u32(((l_k_21 % 2i) * 16i)))) & 65535u));
+      l_weight_24 = f32(((geometry[((l_at + 13i) + (l_k_21 / 4i))] >> u32(u32(((l_k_21 % 4i) * 8i)))) & 255u));
+      l_sum = (l_sum + l_weight_24);
       if ((l_joint == i32(coax_at_u(i32(29i)))))
       {
-        l_heat = (l_heat + l_weight_21);
+        l_heat = (l_heat + l_weight_24);
       }
-      l_b = (l_joint * 12i);
+      l_b = (l_bank + (l_joint * 12i));
       l_p = coax_p_v4(l_position.x, l_position.y, l_position.z, 0x1.000000p0f);
       l_n = coax_p_v4(l_normal.x, l_normal.y, l_normal.z, 0.0f);
       l_transformed = coax_p_v3(coax_p_wg_dot4(coax_p_wg_at4(l_b), l_p), coax_p_wg_dot4(coax_p_wg_at4((l_b + 4i)), l_p), coax_p_wg_dot4(coax_p_wg_at4((l_b + 8i)), l_p));
       l_turned = coax_p_v3(coax_p_wg_dot4(coax_p_wg_at4(l_b), l_n), coax_p_wg_dot4(coax_p_wg_at4((l_b + 4i)), l_n), coax_p_wg_dot4(coax_p_wg_at4((l_b + 8i)), l_n));
-      l_posed = coax_p_wg_add_f3f3(l_posed, coax_p_wg_mul_f3f(l_transformed, l_weight_21));
-      l_direction = coax_p_wg_add_f3f3(l_direction, coax_p_wg_mul_f3f(l_turned, l_weight_21));
+      l_posed = coax_p_wg_add_f3f3(l_posed, coax_p_wg_mul_f3f(l_transformed, l_weight_24));
+      l_direction = coax_p_wg_add_f3f3(l_direction, coax_p_wg_mul_f3f(l_turned, l_weight_24));
     }
   }
   l_posed = coax_p_wg_mul_f3f(l_posed, (0x1.000000p0f / l_sum));
-  l_delta = coax_p_wg_sub_f3f3(coax_p_wg_sub_f3f3(l_posed, coax_p_al_at(24i)), coax_p_al_at(8i));
+  l_origin = select(coax_p_al_at(36i), coax_p_al_at(24i), (l_model == 0i));
+  l_delta = coax_p_wg_sub_f3f3(coax_p_wg_sub_f3f3(l_posed, l_origin), coax_p_al_at(8i));
   l_z = coax_p_wg_dot3(l_delta, coax_p_al_at(20i));
   l_x = (coax_p_wg_dot3(l_delta, coax_p_al_at(12i)) * coax_at_u(i32(28i)));
   l_y = (coax_p_wg_dot3(l_delta, coax_p_al_at(16i)) * coax_at_u(i32(28i)));
-  return coax_t10(coax_p_v4(((l_x * 0x1.000000p1f) / coax_at_u(i32(0i))), (((l_y * 0x1.000000p1f) / coax_at_u(i32(1i))) + ((0x1.000000p0f - ((coax_at_u(i32(31i)) * 0x1.000000p1f) / coax_at_u(i32(1i)))) * l_z)), ((0x1.900000p7f / 0x1.8ffae2p7f) * (l_z - 0x1.47ae14p-7f)), l_z), coax_p_wg_normalize3(l_direction), (l_heat / l_sum), f32(geometry[(l_at + 8i)]));
+  l_shift = select(0.0f, select(0x1.d70a3ep-2f, (-0x1.d70a3ep-2f), (l_model == 0i)), (coax_at_u(i32(32i)) > 0x1.000000p-1f));
+  return coax_t10(coax_p_v4((((l_x * 0x1.000000p1f) / coax_at_u(i32(0i))) + (l_shift * l_z)), (((l_y * 0x1.000000p1f) / coax_at_u(i32(1i))) + ((0x1.000000p0f - ((coax_at_u(i32(31i)) * 0x1.000000p1f) / coax_at_u(i32(1i)))) * l_z)), ((0x1.900000p7f / 0x1.8ffae2p7f) * (l_z - 0x1.47ae14p-7f)), l_z), coax_p_wg_normalize3(l_direction), (l_heat / l_sum), f32(geometry[(l_at + 8i)]));
 }
 fn coax_p_fx_vs(p_id: u32, p_instance: u32, p_v: coax_t11) -> coax_t14 {
   var l_id: u32 = p_id;

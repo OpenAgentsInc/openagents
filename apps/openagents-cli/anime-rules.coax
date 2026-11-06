@@ -9,7 +9,7 @@
 
 ANIME_CLI_INVALID :: -1; ANIME_CLI_LIMIT :: -2; ANIME_CLI_REPLY :: -3; ANIME_CLI_CAPACITY :: -4;
 ANIME_CLI_URL_BYTES :: 49152;
-ANIME_CLI_B64_BYTES :: ((ANIME_TAKE_BYTES+2)/3)*4 #effects(all);
+ANIME_CLI_B64_BYTES :: ((ANIME_TAKE_BYTES+2)/3)*4;
 AnimeCommand :: struct {verb:string;arguments:string;flags:string;method:string;help:string;}
 ANIME_COMMANDS :: [3]AnimeCommand.[
   AnimeCommand.{verb="catalogue",method="LOCAL",help="the finite Anime catalogue and stock boundaries"},

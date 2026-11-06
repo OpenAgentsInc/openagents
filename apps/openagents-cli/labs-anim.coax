@@ -1,0 +1,8 @@
+#load "anim-args.coax";
+#load "../../aethyr/tools/anim-retarget-io.coax";
+labs_anim :: (a:[]Args,r:[]Rep)->int {
+ request:=an_parse(a);if request.err!="" {return fail(r,EXIT_USAGE,request.err);}buffer:[4096]u8;destination:=request.out;
+ if destination=="" {n:=copy(request.clip,buffer[..]);if n<0 {return fail(r,EXIT_USAGE,"animation path is too long");}m:=copy(".retarget",buffer[n..<buffer.count]);if m<0 {return fail(r,EXIT_USAGE,"animation path is too long");}destination=cast(string)buffer[0..<n+m];}
+ result:=anim_retarget_files(request.clip,request.source,request.target,destination);if result.code!=0 {return fail(r,ifx result.code==91 then EXIT_CONFLICT else EXIT_FAIL,ar_error(result.code));}
+ rep_str(r,"out",destination);rep_int(r,"frames",result.frames);rep_int(r,"joints",result.joints);rep_int(r,"paired_anchors",result.paired);rep_int(r,"pack_bytes",result.bytes);rep_int(r,"dropped_curves",result.dropped_curves);rep_int(r,"dropped_events",result.dropped_events);return rep_done(r,EXIT_OK);
+}

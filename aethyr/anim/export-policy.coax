@@ -1,0 +1,18 @@
+// Inputs are canonical existing directories, resolved by the filesystem SDK.
+// Generated animation packages remain under the owner's private asset root.
+#authority;
+#test "private exports require the complete canonical root and a single new leaf" {
+ #assert anim_export_path("/private/.openagents","/private/.openagents","take");
+ #assert anim_export_path("/private/.openagents/animation","/private/.openagents","take-2");
+ #assert anim_export_path("/a","/a","b");
+ #assert !anim_export_path("/private/.openagentx","/private/.openagents","take");
+ for parent:[5]string.["", "/private", "/private/.openagents-old", "/private/.openagent", "/outside"] {#assert !anim_export_path(parent,"/private/.openagents","take");}
+ for leaf:[5]string.["", ".", "..", "a/b", "a\0b"] {#assert !anim_export_path("/private/.openagents","/private/.openagents",leaf);}
+ #assert !anim_export_path("/a","","take") && !anim_export_path("/a","/","take") && !anim_export_path("rel/root","rel/root","take");
+ #assert !anim_export_path("/","/","take");
+}
+anim_export_path :: (parent:string,root:string,leaf:string)->bool #effects(all) {
+ if root.count<2 || root[0]!='/' || parent.count<root.count || leaf.count<1 || leaf=="." || leaf==".." {return false;}
+ if parent[0..<root.count]!=root {return false;}if parent.count>root.count && parent[root.count]!='/' {return false;}
+ for c:leaf {if c==0 || c=='/' {return false;}}return true;
+}

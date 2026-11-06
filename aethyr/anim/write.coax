@@ -1,0 +1,46 @@
+// Writers for admitted records. Re-admit the complete output before publishing.
+#load "inspect-mesh.coax";
+#load "../../verse/tools/humans/ph_num.coax";
+#load "write-checks.coax";
+AwRigParts :: struct {rest:AnimPart;bind:AnimPart;bytes:int= -1;}
+AwPack :: struct {count:int;source:[512]AnimPart;output:[512]AnimPart;at:int;}
+aw_put :: (b:[]u8,at:int,value:u32) {for k:0..<4 {b[at+k]=cast,trunc(u8)(value>>(k*8));}}
+aw_number :: (o:[]Jo,value:f32) {
+ bytes:[128]u8;p:[1]PnOut;p[0].buf=bytes[..];v:=cast(f64)value;if (f32_bits(value)&0x80000000)!=0 {pn_put(p[..],"-");v= -v;}
+ if v==0 {pn_put(p[..],"0");}else {exponent:=0;while v>=10 {v/=10;exponent+=1;}while v<1 && exponent> -38 {v*=10;exponent-=1;}pn_fixed(p[..],v,9);pn_put(p[..],"e");pn_putint(p[..],exponent);}jo_raw(o,pn_text(p[..]));
+}
+aw_name :: (o:[]Jo,name:AnimName) {bytes:=name.bytes;jo_str(o,cast(string)bytes[0..<name.n]);}
+aw_names :: (o:[]Jo,names:[]AnimName) {jo_arr(o);for name:names {aw_name(o,name);}jo_end(o);}
+aw_part :: (o:[]Jo,p:AnimPart,hash:string) {jo_obj(o);jo_key(o,"pack");jo_str(o,hash);jo_key(o,"offset");jo_int(o,p.offset);jo_key(o,"count");jo_int(o,p.count);jo_key(o,"stride");jo_int(o,p.stride);jo_key(o,"width");jo_int(o,p.width);jo_end(o);}
+aw_quat :: (o:[]Jo,q:Quat) {jo_arr(o);for value:[4]f32.[q.x,q.y,q.z,q.w] {aw_number(o,value);}jo_end(o);}
+aw_copy_part :: (p:AnimPart,packs:[]AnimPack,out:[]u8,work:[]AwPack)->AnimPart {
+ for k:0..<work[0].count {if anim_same_part(p,work[0].source[k]) {return work[0].output[k];}}
+ if p.count>(out.count-work[0].at)/p.width {return AnimPart.{};}next:=AnimPart.{pack=0,offset=work[0].at,count=p.count,stride=p.width,width=p.width};b:=packs[p.pack].bytes;
+ for k:0..<p.count {for byte:0..<p.width {out[work[0].at+k*p.width+byte]=b[p.offset+k*p.stride+byte];}}
+ at:=work[0].count;work[0].source[at]=p;work[0].output[at]=next;work[0].count+=1;work[0].at+=p.count*p.width;return next;
+}
+aw_pack_rig :: (rig:AnimRig,packs:[]AnimPack,out:[]u8,next:[]AnimRig)->AwRigParts {
+ r:=rig;layout:AwRigParts;rest_bytes:=r.joints*28;bind_bytes:=r.joints*48;if rest_bytes+bind_bytes>out.count {return layout;}
+ layout.rest=AnimPart.{pack=0,offset=0,count=r.joints,stride=28,width=28};layout.bind=AnimPart.{pack=0,offset=rest_bytes,count=r.joints,stride=48,width=48};
+ for j:0..<r.joints {p:=r.rest[j];for value,k:[7]f32.[p.t.x,p.t.y,p.t.z,p.q.x,p.q.y,p.q.z,p.q.w] {aw_put(out,j*28+k*4,f32_bits(value));}for k:0..<12 {aw_put(out,rest_bytes+j*48+k*4,f32_bits(r.bind[j*12+k]));}}
+ work:[1]AwPack;work[0].at=rest_bytes+bind_bytes;
+ for k:0..<r.sections {r.meshes[k].vertices=aw_copy_part(r.meshes[k].vertices,packs,out,work[..]);if r.meshes[k].vertices.pack<0 {return layout;}r.meshes[k].indices=aw_copy_part(r.meshes[k].indices,packs,out,work[..]);if r.meshes[k].indices.pack<0 {return layout;}}
+ for k:0..<r.morph_count {r.morphs[k].data=aw_copy_part(r.morphs[k].data,packs,out,work[..]);if r.morphs[k].data.pack<0 {return layout;}}
+ if r.dna.pack>=0 {r.dna=aw_copy_part(r.dna,packs,out,work[..]);if r.dna.pack<0 {return layout;}}
+ layout.bytes=work[0].at;next[0]=r;return layout;
+}
+aw_rig :: (text:[]u8,rig:AnimRig,p:AwRigParts,hash:string)->int {
+ r:=rig;o:[1]Jo;jo_start(o[..],text);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.rig.v1");jo_key(o[..],"name");aw_name(o[..],r.name);jo_key(o[..],"joints");jo_arr(o[..]);
+ for j:0..<r.joints {jo_obj(o[..]);jo_key(o[..],"name");aw_name(o[..],r.names[j]);jo_key(o[..],"parent");jo_int(o[..],r.parents[j]);jo_key(o[..],"mannequin");if r.mapped[j]<0 {jo_null(o[..]);}else {jo_str(o[..],MANNEQUIN_NAME[r.mapped[j]]);}jo_key(o[..],"offset");aw_quat(o[..],r.offsets[j]);jo_end(o[..]);}jo_end(o[..]);
+ jo_key(o[..],"rest");aw_part(o[..],p.rest,hash);jo_key(o[..],"bind");aw_part(o[..],p.bind,hash);jo_key(o[..],"materials");aw_names(o[..],r.materials[0..<r.material_count]);jo_key(o[..],"shapes");aw_names(o[..],r.shapes[0..<r.shape_count]);jo_key(o[..],"controls");aw_names(o[..],r.controls[0..<r.control_count]);jo_key(o[..],"face_bones");jo_arr(o[..]);for k:0..<r.face_joint_count {aw_name(o[..],r.names[r.face_joints[k]]);}jo_end(o[..]);
+ jo_key(o[..],"face_map");jo_arr(o[..]);for input:0..<52 {found:=false;for k:0..<r.face_bindings {if r.face_map[k].input==input {found=true;}}if !found {continue;}jo_obj(o[..]);jo_key(o[..],"input");jo_str(o[..],ARKIT_NAMES[input]);jo_key(o[..],"outputs");jo_arr(o[..]);for k:0..<r.face_bindings {b:=r.face_map[k];if b.input!=input {continue;}jo_obj(o[..]);jo_key(o[..],"kind");jo_str(o[..],ifx b.control then "control" else "shape");jo_key(o[..],"name");aw_name(o[..],ifx b.control then r.controls[b.target] else r.shapes[b.target]);jo_key(o[..],"weight");aw_number(o[..],b.weight);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);}jo_end(o[..]);
+ jo_key(o[..],"sections");jo_arr(o[..]);for k:0..<r.sections {m:=r.meshes[k];jo_obj(o[..]);jo_key(o[..],"format");jo_str(o[..],"skin8.v1");jo_key(o[..],"material");aw_name(o[..],r.materials[m.material]);jo_key(o[..],"vertices");aw_part(o[..],m.vertices,hash);jo_key(o[..],"indices");aw_part(o[..],m.indices,hash);jo_end(o[..]);}jo_end(o[..]);
+ jo_key(o[..],"morphs");jo_arr(o[..]);for k:0..<r.morph_count {m:=r.morphs[k];jo_obj(o[..]);jo_key(o[..],"shape");aw_name(o[..],r.shapes[m.shape]);jo_key(o[..],"section");jo_int(o[..],m.section);jo_key(o[..],"data");aw_part(o[..],m.data,hash);jo_end(o[..]);}jo_end(o[..]);if r.dna.pack>=0 {jo_key(o[..],"dna");aw_part(o[..],r.dna,hash);}jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+aw_clip :: (text:[]u8,clip:AnimClip,rig:AnimRig,hash:string)->int {
+ c:=clip;r:=rig;o:[1]Jo;jo_start(o[..],text);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.clip.v1");jo_key(o[..],"name");aw_name(o[..],c.name);jo_key(o[..],"rig");aw_name(o[..],c.rig);jo_key(o[..],"frames");jo_int(o[..],c.frames);jo_key(o[..],"rate");aw_number(o[..],c.rate);jo_key(o[..],"length");aw_number(o[..],c.length);jo_key(o[..],"loop");jo_bool(o[..],c.looping);
+ jo_key(o[..],"joints");jo_arr(o[..]);for k:0..<c.joint_count {aw_name(o[..],r.names[c.joints[k]]);}jo_end(o[..]);if c.body.pack>=0 {jo_key(o[..],"body");aw_part(o[..],c.body,hash);}if c.root.pack>=0 {jo_key(o[..],"root");aw_part(o[..],c.root,hash);}
+ jo_key(o[..],"curves");jo_arr(o[..]);for k:0..<c.curve_count {aw_name(o[..],r.shapes[c.curves[k]]);}jo_end(o[..]);if c.face.pack>=0 {jo_key(o[..],"face");aw_part(o[..],c.face,hash);}
+ jo_key(o[..],"face_bones");jo_arr(o[..]);for k:0..<c.face_joint_count {aw_name(o[..],r.names[c.face_joints[k]]);}jo_end(o[..]);if c.face_pose.pack>=0 {jo_key(o[..],"face_pose");aw_part(o[..],c.face_pose,hash);}
+ jo_key(o[..],"events");jo_arr(o[..]);for k:0..<c.event_count {e:=c.events[k];jo_obj(o[..]);jo_key(o[..],"at");aw_number(o[..],e.at);jo_key(o[..],"kind");jo_str(o[..],[4]string.["foot-down","foot-up","contact","cast"][e.kind]);jo_key(o[..],"joint");aw_name(o[..],r.names[e.joint]);jo_end(o[..]);}jo_end(o[..]);jo_key(o[..],"source");jo_obj(o[..]);source:[64]u8;receipt:[64]u8;#assert asset_hex(c.source,source[..]) && asset_hex(c.receipt,receipt[..]);jo_key(o[..],"pack");jo_str(o[..],cast(string)source[..]);jo_key(o[..],"receipt");jo_str(o[..],cast(string)receipt[..]);jo_key(o[..],"role");aw_name(o[..],c.role);jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}

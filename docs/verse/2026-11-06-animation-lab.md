@@ -1,7 +1,7 @@
 # Animation Lab
 
-Written 2026-11-06. Status: A0 documents and A1 rig/clip stations are implemented.
-A2–A8 are pending. See the verification record linked below.
+Written 2026-11-06. Status: A0 documents, A1 rig/clip stations and A2 retargeting are implemented.
+A3–A8 are pending. See the verification record linked below.
 
 Animation Lab is an unlisted realm and a set of `openagents labs` commands
 where you take any character's animation apart, change it and put it back
@@ -27,6 +27,7 @@ Draconia, The Guardian").
 | --- | --- | --- |
 | Animation documents (A0) | [Formats](anim-documents-v1.md), `aethyr/anim/*-document.coax` | Six bounded document readers, compiled-DNA admission, lossless private Echo/Slay conversion and shared source adapters; [verification](../verification/animation-lab-a0-2026-11-06/README.md) |
 | Rig and clip stations (A1) | `verse/animlab/`, `/worlds/animation-lab` | Neutral inspection, weights, shapes, scrub/play/step, skeleton ghosts and cached plots; [verification](../verification/animation-lab-a1-2026-11-06/README.md) |
+| Retargeting (A2) | `aethyr/anim/retarget*.coax`, `#retarget`, `labs anim retarget` | Rest-corrected anchor rotations, leg-scaled root motion, private exports and paired views; [verification](../verification/animation-lab-a2-2026-11-06/README.md) |
 | Pose math | `aethyr/anim/pose.coax` | Quaternions, local poses, blending, the joint chain and the skinning palette |
 | Blend shapes | `aethyr/anim/morph.coax`, `morph-gpu.coax` | Sampled curves; sparse morph deltas applied on the GPU before skinning |
 | Face playback | `aethyr/anim/face.coax`, `face-pack.coax` | Plays face clips as morph weights plus face-bone overlays on a body pose; the EFC1 face pack format and its checks |
@@ -52,8 +53,8 @@ Before the Nuke (`git show 0b401561a0^:<path>`):
 - `docs/video-lab/`: typed `cut.v1`, `shot.v1` and `scene.v1` documents and
   the `lab.*` chat tools.
 
-The documents and admission are shared. The remaining milestones build the
-stations, playback, retargeting, imports, scene tools and director on them.
+The documents and admission are shared. The remaining milestones build layers, imports, scene tools and the director
+on them.
 
 ## Principles
 
@@ -356,3 +357,36 @@ an explicit 256 MiB memory declaration for this inspector; other pages keep
 and all eight influences without adding the source groom or texture cost.
 The frame budget is 33.3 ms. Headless phone viewport results use the Mac GPU;
 physical iPhone qualification is an owner action, recorded in the workspace.
+
+A2 uses one rotational anchor per mannequin slot. A canonical joint name,
+matched without case, takes precedence over folded helper aliases. A single
+custom alias is accepted; multiple aliases without a canonical anchor and
+duplicate canonical anchors are refused. The mannequin has 65 slots and
+cannot encode independent rotations for every joint of a larger source rig.
+Unpaired target joints retain local rest and are listed in the report. The
+2° round-trip limit applies to paired anchors; the report includes actual
+world-rotation error for every source joint, including folded helpers.
+Echo has 53 paired anchors. Its other joints do not satisfy that guarantee.
+
+Retargeting carries world-space rotation deltas through the declared source
+and target rest offsets, then solves target local rotations in parent order.
+Only root translation transfers, scaled by the mean of both thigh–calf–foot
+chain lengths. If either chain is missing, scale is one and the report says
+leg scaling was unavailable. Other translations stay at target local rest.
+Exact-name face curves transfer; unknown curves and unpaired events are
+counted and omitted. An independent root track overrides body and face-bone
+translation on the first root joint.
+
+Echo has no authored contact events. A2 infers contact frames from the
+source foot joint before measuring the target: height within 2 cm of that
+foot's clip minimum and vertical speed at most 0.15 m/s. Height error uses
+foot joint anchors relative to each rig's rest-ground height and the leg
+scale. It does not measure sole clearance. The walk/jog residuals are
+reported without a small-error gate; A3 adds contact fix-ups.
+
+The native exporter reads one immutable binary per rig, up to 64 MiB each,
+and emits a compact binary plus admitted rig/clip JSON, a mapping report and
+a hash-linked receipt. It creates a new directory under `~/.openagents/`
+and refuses overwriting an existing output or resolving its parent outside
+that root. The viewer keeps A1's two-library and 64 MiB GPU limits. Two
+large meshes that exceed the combined budget are visibly refused.

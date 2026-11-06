@@ -12,6 +12,7 @@
 #load "labs-rules.coax";
 #load "../../coax/lib/media/media.coax";
 #load "labs-anime.coax";
+#load "labs-anim.coax";
 
 LB_CAPTURE_URL_BYTES :: 49152; // a full 32 KiB take64 document plus page/options
 
@@ -27,12 +28,14 @@ labs_usage :: () {
   print("%\n", "  labs compare A B [OUT.png|OUT.mp4] [--at T]           what differs, and side by side");
   print("%\n", "  labs board FILE.board OUTDIR [--fresh]                every page at each size and theme");
   print("%\n", "  labs anime catalogue | direct WORDS --take FILE | play FILE OUT.png|OUT.mp4 [--at T]");
+  print("%\n", "  labs anim retarget CLIP --to RIG [--out PRIVATE_DIR] [--source-rig FILE]");
   print("%\n", "  labs playtest icecream [--set NAME=VALUE ...] [--seeds N] [--from SEED] [--against FILE.json] | --tunables");
   print("%\n", "                                    URL may be a path (/realms/SLUG), joined to --origin (https://openagents.com)");
   print("%\n", "");
 }
 
 labs_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb == "anim" { return labs_anim(a,r); }
   if verb == "anime" { return labs_anime(a,r,profile); }
   if verb == "shot" { return labs_shot(a, r, profile); }
   if verb == "clip" { return labs_clip(a, r, profile); }
