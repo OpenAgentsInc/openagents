@@ -1,0 +1,6 @@
+coax jobs: the load average is 12.0, at or above 12 ($COAX_JOBS_LOAD); running 1 build worker, not up to 2, until it drops
+coax: note[E0400]: compile-time steps: 19343034 of 20000000 used (96%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    19343034 steps  aethyr/render/tests/package-checks.coax:163:1  #forall 'SPIRV requirements come from framed byte opcodes including adjacent nonfeatures'
+  fix: run coax test --only 'SPIRV requirements come from framed byte opcodes including adjacent nonfeatures' for what inside the check uses the most; then do less work in it, split it, or give it a larger #steps N
+wasm.sh: everglade5e.wasm: 518.7 s: Coax to C 507.5 s (3/4 cached), clang 5.4 s (3/6 cached), link 3.5 s, wasm-opt 2.2 s; 2012780 bytes; report /tmp/room-capacity-12843/.c/everglade5e.timings.json

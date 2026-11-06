@@ -1,0 +1,19 @@
+// Shared local qualification target policy; never a production URL fallback.
+#authority;
+#load "../../lib/net/uri.coax";
+#test "live browser observation runs only on an explicit permitted loopback port" {
+  #assert lb_local("http://127.0.0.1:61252/realms/everglade/?room=pair-latency-1")&&lb_local("http://localhost:61252/");
+  #assert lb_local("http://127.0.0.1:1/")&&lb_local("http://localhost:65535/");
+  #assert lb_local("http://localhost:00001/")&&lb_local("http://localhost:90/");
+  for url:[16]string.["https://openagents.com/","http://127.0.0.1:8830/","http://127.0.0.1:8843/","http://127.0.0.1:8872/","http://127.0.0.1:8876/","http://127.0.0.1:8913/","http://127.0.0.1:0/","http://localhost:65536/","http://127.0.0.1:61252evil/","http://localhost:/","http://localhost:1","http://localhost:000001/","http://localhost:00000000000000000000001/","http://127.0.0.1.evil:12/","http://127.0.0.1:1?x=/",""]{#assert !lb_local(url);}
+}
+lb_local::(url:string)->bool {
+  if !uri_prefix(url,"http://127.0.0.1:")&&!uri_prefix(url,"http://localhost:"){return false;}
+  port:=0;digits:=0;
+  for b:url[17..<url.count]{
+    if b=='/'{return port>0&&port<65536&&port!=8830&&port!=8843&&port!=8872&&port!=8876&&port!=8913;}
+    if !uri_digit(b)||digits==5{return false;}
+    port=port*10+cast(int)(b-'0');digits+=1;
+  }
+  return false;
+}

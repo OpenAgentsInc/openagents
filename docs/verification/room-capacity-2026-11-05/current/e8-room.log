@@ -1,0 +1,28 @@
+room: --dev /tmp/transport-proof.W7bWgZ: the API's stand-in (seat tickets checked and required)
+room: the local world (416 bytes) laid over the rooms
+room: shard 1
+room: listening on 127.0.0.1:61401
+room: vitals: tick p95 0.95 ms, input to ack p95 56 ms, measuring 1.18% of the tick
+room: vitals: tick p95 0.90 ms, input to ack p95 36 ms, measuring 1.11% of the tick
+room: vitals: tick p95 0.81 ms, input to ack p95 36 ms, measuring 1.29% of the tick
+room: vitals: tick p95 0.84 ms, input to ack p95 36 ms, measuring 1.19% of the tick
+room: vitals: tick p95 1.26 ms, input to ack p95 36 ms, measuring 1.45% of the tick
+room: vitals: tick p95 1.51 ms, input to ack p95 36 ms, measuring 1.35% of the tick
+room: 3601 ticks in 60.0 s, 8 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 2789 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 134 abilities 24 town 28 spells 48 people 12 rules 58 write 341 send 179, 0 events with no room in their tick
+room: vitals posts 1 (0 retried, 0 failed), lines applied 8, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0
+room: vitals: tick p95 1.47 ms, input to ack p95 36 ms, measuring 1.39% of the tick
+room: vitals: tick p95 1.62 ms, input to ack p95 36 ms, measuring 1.13% of the tick
+room: vitals: tick p95 1.62 ms, input to ack p95 36 ms, measuring 1.16% of the tick
+room: vitals: tick p95 1.88 ms, input to ack p95 36 ms, measuring 1.00% of the tick
+room: vitals: tick p95 1.88 ms, input to ack p95 36 ms, measuring 1.07% of the tick
+room: vitals: tick p95 2.00 ms, input to ack p95 36 ms, measuring 0.98% of the tick
+room: 3600 ticks in 60.0 s, 8 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 2789 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 183 abilities 500 town 29 spells 110 people 11 rules 152 write 601 send 189, 0 events with no room in their tick
+room: vitals posts 5 (0 retried, 0 failed), lines applied 26, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0
+room: vitals: tick p95 2.07 ms, input to ack p95 36 ms, measuring 0.96% of the tick
+room: vitals: tick p95 1.85 ms, input to ack p95 36 ms, measuring 1.15% of the tick
+room: vitals: tick p95 2.14 ms, input to ack p95 36 ms, measuring 0.97% of the tick
+room: vitals: tick p95 2.03 ms, input to ack p95 36 ms, measuring 0.89% of the tick

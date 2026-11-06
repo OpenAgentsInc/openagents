@@ -1,0 +1,37 @@
+room: --dev /tmp/room-capacity-12843/browser-dev: the API's stand-in (seat tickets checked and required)
+room: the local world (416 bytes) laid over the rooms
+room: shard 1
+room: listening on 127.0.0.1:61251
+room: vitals: tick p95 0.30 ms, input to ack p95 10 ms, measuring 2.55% of the tick
+room: vitals: tick p95 0.57 ms, input to ack p95 34 ms, measuring 3.08% of the tick
+room: vitals: tick p95 0.41 ms, input to ack p95 36 ms, measuring 2.52% of the tick
+room: 3601 ticks in 60.0 s, 15 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 3240 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 30 abilities 6 town 7 spells 3 people 2 rules 7 write 106 send 58, 0 events with no room in their tick
+room: vitals posts 2 (0 retried, 0 failed), lines applied 16, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0
+room: vitals: tick p95 0.39 ms, input to ack p95 36 ms, measuring 2.36% of the tick
+room: vitals: tick p95 0.48 ms, input to ack p95 30 ms, measuring 2.54% of the tick
+room: vitals: tick p95 0.47 ms, input to ack p95 22 ms, measuring 2.54% of the tick
+room: vitals: tick p95 0.39 ms, input to ack p95 22 ms, measuring 2.46% of the tick
+room: vitals: tick p95 1.02 ms, input to ack p95 22 ms, measuring 2.70% of the tick
+room: vitals: tick p95 0.74 ms, input to ack p95 22 ms, measuring 2.59% of the tick
+room: 3600 ticks in 60.0 s, 15 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 8076 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 77 abilities 12 town 15 spells 36 people 5 rules 38 write 345 send 145, 0 events with no room in their tick
+room: vitals posts 6 (0 retried, 0 failed), lines applied 38, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0
+room: vitals: tick p95 0.82 ms, input to ack p95 22 ms, measuring 2.51% of the tick
+room: vitals: tick p95 0.64 ms, input to ack p95 22 ms, measuring 2.73% of the tick
+room: vitals: tick p95 0.80 ms, input to ack p95 22 ms, measuring 2.24% of the tick
+room: vitals: tick p95 1.33 ms, input to ack p95 22 ms, measuring 1.68% of the tick
+room: vitals: tick p95 1.11 ms, input to ack p95 22 ms, measuring 1.65% of the tick
+room: vitals: tick p95 1.03 ms, input to ack p95 22 ms, measuring 1.73% of the tick
+room: 3600 ticks in 60.0 s, 15 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 8076 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 123 abilities 354 town 13 spells 74 people 4 rules 74 write 437 send 143, 0 events with no room in their tick
+room: vitals posts 12 (0 retried, 0 failed), lines applied 99, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0
+room: vitals: tick p95 1.38 ms, input to ack p95 22 ms, measuring 1.62% of the tick
+room: vitals: tick p95 1.31 ms, input to ack p95 22 ms, measuring 1.61% of the tick
+room: 3600 ticks in 60.0 s, 0 players, 0 frames over the rate limits, 0 queue full, 0 slow sockets closed, 8076 bytes the most waiting
+room: everglade tick parts over the minute (ms): move 36 abilities 228 town 6 spells 28 people 2 rules 33 write 95 send 35, 0 events with no room in their tick
+room: vitals posts 16 (0 retried, 0 failed), lines applied 154, already applied 0, stale 0, refused 0, late answers 0, given up 0, evicted unsaved 0, 0 players unsaved now, fenced 0 (0 seats ended)
+room: travel asked 0, sent on 0, full 0, refused 0, arrived 0, called off 0, intents dropped in a cutover 0

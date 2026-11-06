@@ -91,18 +91,113 @@ TCP boundaries. Summaries show extrema of sampled window values, not
 whole-run percentiles. Missing metrics are unknown, including the new input
 age metrics on the older smoke image. Retain failed outcomes alongside passes.
 
+## Current integrated artifacts
+
+The normal all-0.50 native room build **passes**, including its physical
+startup-default check. Product source is frozen at **85cfc9d1b185**, plus
+580e2b853f's read-only `room-observe.coax` / `room-stats.h` instrumentation.
+No gameplay policy changes during measurement. The room suite's **662/662**
+result above applies to this product source and is reused unchanged.
+
+Linux binary SHA-256 **158b40f4e1039284a4670ada82c2aaffca9d541443457fd4fea92db9b3394f63**;
+genuine checked Coax 0.50 **5cc82481bf6db529e919a404134b6d18b02c984f443809af7426767af869af9c**.
+Intel i7-14700K, 28 logical CPUs, 125 GiB reported total RAM, NixOS
+Linux 6.18.49 on coderos-4080. Native compilation uses the standard room
+build's `-O2`, strict floating point, shared Coax math and ordered export
+ownership. All runs are nice 15 on a shared machine, with one Coax worker.
+
+The same six checked portable C/H units link on the Mac with the standard
+room host/world/catalog/math/WS sources and exact build flags. Mac binary
+SHA-256 **90dc184cb1d3baee9cefb416043bda886b2793134bc15aaf24e4e2724be7d10a**;
+startup defaults exact, no forbidden C-library simulation math references.
+This reuses completed producer emissions; it neither skips their checks nor
+claims a new compiler bootstrap. Original compiler receipts retain their
+captured compiler-input scope, preceding later compiler source edits.
+
+The normal current **auto shared-renderer** page also passes, including its
+strict export audit and 1320 carrier checks. Release module **2,012,780 B**,
+SHA-256 **beb074630e69ea6c13481a59abc4a42594bc4177ebfff4fc64cef5b59d6bb744**;
+518.654 s total. Its genuine checked tool compiler is the Mac b5872254…
+image identified above. The actual emitted carrier's 231-source join to
+85cfc9d1b185 and native/Wasm buffer parity are recorded independently in
+the #12868 current-producer receipt. Later SDK-only files outside that
+captured emission are not retroactively claimed as its inputs.
+
+## Current encounter and fleet measurements
+
+Raw current receipts are in [current/](room-capacity-2026-11-05/current/).
+Each uses the same mixed-class fighting recipe, seed 1284301 (next town
+adds one), 160 s of client gameplay, local stand-in persistence and no
+injected network fault. Every requested player is visible in a retained
+report before START NOW. Sampled windows may repeat: these are **maxima of
+window percentiles**, never pooled whole-run quantiles.
+
+| Case | Duration incl. orchestration | Largest window tick p50/p95/p99 ms | Received D Hz | Input→final-ACK p50/p95/p99/max ms |
+| --- | --- | --- | --- | --- |
+| E8, one town / 8 seats | 162.606 s | 1.57 / 2.14 / 2.49 | 30 | 14 / 31 / 31 / 33 |
+| E16, one town / 16 seats | 165.077 s | 2.94 / 4.79 / 7.26 | 30 | 15 / 31 / 32 / 34 |
+| F2, two towns / 32 seats | 165.079 s | 5.34 / 8.41 / 12.78 | 30 | See per-town JSON |
+
+All three pass the existing gameplay consumer. E8 and E16 have zero missing
+or backward ACK samples, malformed entries, missed XP cues, transport frame
+refusals or sampled lost outcomes; all 8 / 16 seats earn XP. Level-two
+counts are 8 / 14; the optional all-level-two assertion was not requested.
+Both see 31 simultaneous live raiders; replicated zone peaks are 4 / 8;
+no player summons are instructed. They hear 143 destruction events each.
+Actual process output peaks at 247,372 / 507,802 B/s. Relevant whole picks
+peak at 91 / 101. Latest deferred rows peak at 233 / 471 and row wait at
+8 / 13 ticks. Expendable cue drops peak at 0.8 / 9.6 per second; these
+remain visible limits, not hidden by the gameplay verdict.
+
+Latest pending-input and socket-output age gauges are zero at these 31
+sample points. That is not a claim of zero queueing between reports: host
+input→queued-ACK p95 reaches 32 ms. Writing p95 peaks at 0.45 / 1.04 ms,
+writing p99 at 0.53 / 2.78 ms, sending p95 at 0.16 / 0.53 ms.
+
+## Actual current browser observations
+
+Apple M5 Max / macOS 26.4, Chrome 156.0.8078.80, actual WebGPU Metal adapter, fallback
+false; headless, muted and fresh owned profiles. Fifteen real mixed-class
+fighting bot sockets share the native Mac town with the browser. Actual
+reports retain 16 seats. The initial desktop run precedes raid START and is
+retained separately as the renderer/session baseline. The phone run and
+`desktop-fight` run occur after START; the final bot receipt passes, sees
+31 live raiders and 8 zones, and all fifteen bots earn XP.
+
+`capacity-browser.coax` retains raw frame rows separately from all 50 actual
+latency observations, checks movement and actual ACK/whole state, then
+closes its own Chrome. The shared loopback target guard is authority-checked:
+**44/44 mutants killed**, no equivalents. Browser dependencies pass 136
+checks. Phone means **390×844, DPR 3, CDP CPU throttle 4** on this Mac; it is
+an explicit CPU/viewport proxy, not measured physical phone hardware.
+
+| Case | Submitted frames / retained rows | Submitted fps | Wasm / encode / CPU p95 ms | Input→GPU completion p50/p95/max ms |
+| --- | --- | --- | --- | --- |
+| Desktop baseline, 960×397 actual canvas | 600 / 600 | 60 | 0.765 / 0.475 / 1.315 | 29.586 / 32.559 / 34.719 |
+| Phone CPU proxy during raid, 390×844 | 600 / 600 | 60 | 3.285 / 2.430 / 5.480 | 58.175 / 69.836 / 486.165 |
+| Desktop during raid, 960×397 | 600 / 600 | 60 | 2.025 / 0.920 / 3.040 | 50.810 / 57.440 / 66.295 |
+
+No skipped submitted frames, page errors or observer missing/refused/expired
+rows in these captures; maximum two GPU submissions pending, zero retained
+staging bytes. The phone maximum includes an initial high-latency sample and
+is retained, not discarded as warmup. Known clock intervals are 50 / 50 / 49
+of 50; uncertainty and the unknown row stay in the raw records. GPU
+completion measures neither physical scanout nor interpolation: the actual
+interpolation delay is separately 100 ms. No 120 Hz claim follows from this
+headless 60 Hz compositor.
+
+Rerun with owned local servers and the matching release page / native image:
+
+```
+coax/web/tool.sh coax/web/room/capacity-browser.coax 'http://127.0.0.1:61252/realms/everglade/?relay=ws://127.0.0.1:61251&room=pair-raid-1284301&roomtrace=1' observation.json frames.json phone
+coax/web/tool.sh apps/aethyrforge-desktop/frame-profile.coax frames.json
+coax/web/tool.sh coax/web/room/latency-summary.coax observation.json
+```
+
 ## Remaining integrated acceptance
 
-Fresh all-0.50 room/world native and normal auto shared-renderer page builds
-are in progress on captured main plus this instrumentation. The Mac world
-emission was stopped before 15 minutes; current emission continues on the
-owned coderos-4080 worktree with genuine source-bound caches and no changed
-compiler gates. This record does not claim those unfinished artifacts passed.
-
-Next: current E8/E16 and 1/2/4/8/16-town fighting curves; controlled
-raider/pet/effect/area/destruction axes; current local/100/250 ms, clock skew
-and host stalls; actual client presentation/frame timing under explicit phone
-CPU constraints; routed multi-process placement/recovery; supported envelope
-and early refusal/proof of the separately proposed 32-player encounter.
-The old fae22 raid record remains historical. The prerequisite fault and
-presentation-drift issues retain their own completed, source-scoped evidence.
+Continuing F4/F8/F16, controlled caster/raider/pet/effect/destruction points,
+current 100/250-ms and stall/skew, routed placement/recovery and the
+supported envelope / separately proposed 32-player target refusal. The old
+fae22 raid record remains historical. The prerequisite fault and drift
+issues retain their own completed, source-scoped evidence.

@@ -1,0 +1,246 @@
+process generation=1793923668183
+capacity startup ready=1
+observation scope=process report window
+out scope=accepted application frames including websocket framing
+transport kernel bytes including upgrade and controls a second=508104
+transport discarded queued bytes a second=0
+transport refused frame bytes a second=0
+transport refused frames a second=0.0
+observation counter overflow=0
+server ack scope=input heard to final D accepted by socket queue
+server queued ack p50 ms=20
+server queued ack p95 ms=22
+server queued ack samples=4738
+shard=1
+players=16
+ticks a second=30.0
+tick p50 ms=0.75
+tick p95 ms=1.02
+tick p99 ms=1.10
+players p50 ms=0.06
+players p95 ms=0.08
+players p99 ms=0.13
+raiders p50 ms=0.04
+raiders p95 ms=0.06
+raiders p99 ms=0.07
+effects p50 ms=0.02
+effects p95 ms=0.18
+effects p99 ms=0.27
+folk p50 ms=0.02
+folk p95 ms=0.02
+folk p99 ms=0.03
+writing p50 ms=0.36
+writing p95 ms=0.44
+writing p99 ms=0.50
+sending p50 ms=0.11
+sending p95 ms=0.15
+sending p99 ms=0.18
+measuring % of tick=2.70
+queue bytes most=0
+queue age ms most=0
+input queue scope=process latest pending simulation inputs at report time
+input queued total=16
+input oldest pending ms=13
+input queued a seat most=1
+input credit drops since start=0
+input unknown clock ages=0
+relevant entities a seat=78.7
+relevant entities most=79
+interest scope=process latest picks
+interest aggregation us=0
+interest seats=16
+interest whole total=1211
+interest whole most=76
+interest health only total=0
+interest health only most=0
+interest blocked total=0
+interest blocked most=0
+interest hidden total=0
+interest hidden most=0
+interest worst|pair-raid-1284301|0|76|0|0|0
+rows sent for their age a second=0.0
+row wait ticks most=10
+rows left for later most=51
+replication scope=process serialized output before relay admission
+rows serialized a second=16964.7
+row text bytes serialized a second=465966
+rows deferred a second=10783.7
+rows latest serialized total=622
+rows latest deferred total=0
+replication worst|pair-raid-1284301|4|40|0
+checkpoint pending=0
+checkpoint flying=0
+checkpoint posts=0
+checkpoint retries=0
+checkpoint failures=0
+checkpoint applied=0
+checkpoint duplicates=0
+checkpoint late receipts=0
+checkpoint capacity refusals=0
+checkpoint stale owner refusals=0
+checkpoint resident=0
+checkpoint accepted=0
+checkpoint capture age ms most=0
+checkpoint receipt age ms most=0
+checkpoint paused rooms=0
+checkpoint finalizing=0
+legacy save pending=0
+legacy save flying=0
+legacy save posts=3
+legacy save retries=0
+legacy save failures=0
+legacy save applied=17
+legacy save duplicates=0
+legacy stale owner refusals=0
+legacy save abandoned=0
+legacy save evicted=0
+owner generation most=0
+owner ticket refusals=0
+checkpoint active loss bound ms=30000
+checkpoint healthy recovery target ms=60000
+capacity draining=0
+capacity native slots=16
+capacity live worlds=1
+capacity unused worlds=15
+capacity seated connections=16
+capacity grace holds=0
+capacity initial gates=0
+capacity scope=native world slots and seat state; API placement caps and reservations are separate
+removal bytes a second=387
+removals waiting a second=0.0
+player info bytes a second=191
+player info waiting a second=0.2
+join pieces bytes a second=0
+join pieces waiting a second=0.0
+cue bytes a second=7979
+cues dropped a second=0.0
+outcome bytes a second=5330
+outcomes lost a second=0.0
+snapshots after a stall a second=0.00
+towns sent again a second=0.00
+snapshots held for a slow page a second=0.0
+input to ack p50 ms=20
+input to ack p95 ms=22
+joins=1
+join burst bytes=8294
+join burst bytes most=8294
+join burst ms=17
+join burst ms most=17
+rejoins tried=0
+rejoins seated=0
+rejoins same seat=0
+old socket frames dropped=0
+refused no room=0
+refused ticket=0
+refused kicked=0
+refused shard=0
+refused full=0
+refused version=0
+refused engine=0
+refused rules=0
+refused content=0
+refused schema=0
+refused elsewhere=0
+build engine=1 rules=1 content=1 wire=4-4 schema=2
+out bytes a second=508091
+out messages a second=482
+in bytes a second=16276
+in messages a second=479
+out ? bytes a second=383
+out ? a second=4
+out D bytes a second=507669
+out D a second=474
+out W bytes a second=4
+out W a second=0
+out j bytes a second=16
+out j a second=3
+out t bytes a second=18
+out t a second=1
+out y bytes a second=2
+out y a second=0
+out D e bytes a second=13215
+out D e a second=512
+out D g bytes a second=1600
+out D g a second=32
+out D n bytes a second=172
+out D n a second=3
+out D o bytes a second=144
+out D o a second=33
+out D v bytes a second=84
+out D v a second=3
+out D w bytes a second=19
+out D w a second=3
+out D x bytes a second=387
+out D x a second=43
+out D s players bytes a second=188716
+out D s players a second=7337
+out D s townsfolk bytes a second=61631
+out D s townsfolk a second=2428
+out D s made bytes a second=232248
+out D s made a second=7200
+out D header bytes a second=9454
+out D header a second=474
+in ? bytes a second=92
+in ? a second=4
+in H bytes a second=3
+in H a second=0
+in I bytes a second=16169
+in I a second=474
+in K bytes a second=1
+in K a second=0
+in P bytes a second=1
+in P a second=0
+in t bytes a second=10
+in t a second=1
+seat|pair-raid-1284301|0|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|0|20|22
+saved|pair-raid-1284301|0|1|0|1793923668183|1|68882|68882|0|1|0|0
+seat|pair-raid-1284301|1|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|1|20|22
+saved|pair-raid-1284301|1|1|0|1793923668183|2|68882|68882|0|2|0|0
+seat|pair-raid-1284301|2|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|2|20|22
+saved|pair-raid-1284301|2|1|0|1793923668183|3|68882|68882|0|3|0|0
+seat|pair-raid-1284301|3|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|3|20|22
+saved|pair-raid-1284301|3|1|0|1793923668183|4|68882|68882|0|4|0|0
+seat|pair-raid-1284301|4|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|4|20|22
+saved|pair-raid-1284301|4|1|0|1793923668183|5|68882|68882|0|5|0|0
+seat|pair-raid-1284301|5|0|0|74|32|32|-1
+queued ack|pair-raid-1284301|5|32|32
+saved|pair-raid-1284301|5|1|0|0|0|-1|-1|0|0|0|0
+seat|pair-raid-1284301|6|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|6|20|22
+saved|pair-raid-1284301|6|1|0|1793923668183|7|68882|68882|0|7|0|0
+seat|pair-raid-1284301|7|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|7|20|22
+saved|pair-raid-1284301|7|1|0|1793923668183|8|68882|68882|0|8|0|0
+seat|pair-raid-1284301|8|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|8|20|22
+saved|pair-raid-1284301|8|1|0|1793923668183|9|68882|68882|0|9|0|0
+seat|pair-raid-1284301|9|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|9|20|22
+saved|pair-raid-1284301|9|1|0|1793923668183|10|68882|68882|0|10|0|0
+seat|pair-raid-1284301|10|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|10|20|22
+saved|pair-raid-1284301|10|1|0|1793923668183|11|68882|68882|0|11|0|0
+seat|pair-raid-1284301|11|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|11|20|22
+saved|pair-raid-1284301|11|1|0|1793923668183|12|58867|58867|0|12|0|0
+seat|pair-raid-1284301|12|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|12|20|22
+saved|pair-raid-1284301|12|1|0|1793923668183|13|58867|58867|0|13|0|0
+seat|pair-raid-1284301|13|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|13|20|22
+saved|pair-raid-1284301|13|1|0|1793923668183|14|58867|58867|0|14|0|0
+seat|pair-raid-1284301|14|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|14|20|22
+saved|pair-raid-1284301|14|1|0|1793923668183|15|58867|58867|0|15|0|0
+seat|pair-raid-1284301|15|0|0|79|20|22|-1
+queued ack|pair-raid-1284301|15|20|22
+saved|pair-raid-1284301|15|1|0|1793923668183|16|58867|58867|0|16|0|0
+report omitted lines=0
+report generation us=65
+observation measured wall share %=0.059
+observation timing scope=timed observer spans plus report; excludes inline serializer input and transport counters

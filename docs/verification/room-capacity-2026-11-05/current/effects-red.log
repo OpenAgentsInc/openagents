@@ -1,0 +1,7 @@
+FAIL #test stress capacity points vary actual casters and raid dial separately from ten connected sockets (0 ms)
+coax/web/room/background-check.coax:127:3: error[E0406]: assertion failed
+    #assert bc_capacity("")==8&&bc_capacity("2")==2&&bc_capacity("4")==4&&bc_capacity("8")==8;
+    ^
+  note: in #test stress capacity points vary actual casters and raid dial separately from ten connected sockets
+1 of 236 checks (--only 'stress capacity'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

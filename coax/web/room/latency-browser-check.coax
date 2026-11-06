@@ -3,16 +3,7 @@
 // owns the local page/room servers; every browser/profile belongs to this run.
 #load "../wasm-chrome.coax";
 #load "../../lib/sys/proc.coax";
-
-#test "live browser observation runs only on an explicit permitted loopback port" {
-  #assert lb_local("http://127.0.0.1:61252/realms/everglade/?room=pair-latency-1")&&lb_local("http://localhost:61252/");
-  for url:[6]string.["https://openagents.com/","http://127.0.0.1:8830/","http://127.0.0.1:8913/","http://127.0.0.1:0/","http://localhost:65536/","http://127.0.0.1:61252evil/"]{#assert !lb_local(url);}
-}
-lb_local::(url:string)->bool {
-  if url.count<19||(url[0..<17]!="http://127.0.0.1:"&&url[0..<17]!="http://localhost:"){return false;}
-  i:=17;port:=0;while i<url.count&&url[i]>='0'&&url[i]<='9'{port=port*10+cast(int)(url[i]-'0');i+=1;if i>22{return false;}}
-  return i>17&&i<url.count&&url[i]=='/'&&port>0&&port<65536&&port!=8830&&port!=8843&&port!=8872&&port!=8876&&port!=8913;
-}
+#load "latency-loopback.coax";
 
 lb_snapshot::(c:[]Cdp,out:[]u8)->int {
   v:=cdp_evaluate(c,"JSON.stringify({scope:'actual-browser-room-observation',sceneReady:globalThis.coaxial?.sceneReady||false,net:[0,12,51,84].map(x=>globalThis.coaxial?.netProbe?.(x)??-1),trace:globalThis.coaxial?.roomTrace?.()??null,adapter:globalThis.coaxial?.gpuAdapterInfo??null,title:document.title,errors:globalThis.__latencyErrors||[]})");
