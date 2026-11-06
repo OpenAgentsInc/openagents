@@ -5904,6 +5904,12 @@ The coincident back-flow helper is suppressed. Ground projection uses tiling
 source moss/soil maps, never a padded UV atlas. Sky, clouds, sun, ripples,
 Fresnel reflection and height haze remain explicit renderer adaptations.
 
+Fixed foliage (kind 14) bakes original silhouette views into world-space crossed
+cards. Camera motion cannot select or rotate branch geometry, including shadow
+geometry. Source images remain unresized with repeated atlas gutters; native
+plant generation/wind/depth remain unrecovered. Play pitch is bounded, and the
+light-space shadow origin snaps to a fixed texel lattice.
+
 The delegated Coax OCL1 gate requires the complete 309-joint/eight-clip profile, ordered
 parents, finite inverse binds, unit quaternions, positive finite scale tracks,
 whole disjoint payloads and the exact total size. Source flags preserve Maya SSC;

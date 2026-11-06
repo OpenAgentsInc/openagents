@@ -1,8 +1,8 @@
 // Exact optional private source identity; no Nintendo payload is in the repository.
 #load "../../aethyr/assets.coax";
 #authority;
-OCARINA_PACK_BYTES :: 652647624;
-OCARINA_PACK_SHA256 :: "9b2d86c244c417ad7189d5f4e9ea9e6fa3a65dec3d5e2b6d5c29a961c98598a6";
+OCARINA_PACK_BYTES :: 598882100;
+OCARINA_PACK_SHA256 :: "56f795206044619cc9abf614f3bf1193117ed27251f4d4caa7c523ab0ccc43ba";
 #test "Ocarina source pack pins every SHA byte and refuses incomplete payloads" {
  b:[33]u8;for k:0..<32 {b[k]=cast(u8)(asset_digit(OCARINA_PACK_SHA256[k*2])*16+asset_digit(OCARINA_PACK_SHA256[k*2+1]));}
  #assert ocarina_pack_accept(b[0..<32],OCARINA_PACK_BYTES);

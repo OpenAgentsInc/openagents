@@ -228,10 +228,10 @@ in the runtime pack. The model journal retains 43 unavailable model paths; cubem
 and hiding-hole helpers are explicitly excluded. This is a scenery reconstruction,
 not the game's story/NPC/effect systems.
 
-Current private pack: **652,647,624 bytes**, SHA-256
-`9b2d86c244c417ad7189d5f4e9ea9e6fa3a65dec3d5e2b6d5c29a961c98598a6`.
+Current private pack: **598,882,100 bytes**, SHA-256
+`56f795206044619cc9abf614f3bf1193117ed27251f4d4caa7c523ab0ccc43ba`.
 The KOC2 catalogue is 65,766,068 bytes; declared high-DPR residency is
-4,237,718,392 bytes against a 4,294,967,296-byte budget.
+3,925,600,224 bytes against a 4,294,967,296-byte budget.
 
 Muted headless Chrome verifies keyboard/run/jump/backflip, all eight clips,
 inspection, pause/frame stepping, material views, blur release and touch movement
@@ -242,8 +242,8 @@ five original run loops: zero planar carrier residual, visible steps between
 claim of original Havok or pixel parity.
 
 Static maps use explicit 496-square derivatives in padded 1536-square pages;
-character layers and original 128-square foliage images retain their existing
-layout. The original full source maps remain private. Shared terrain-array surfaces
+character layers retain their existing layout. Original 128-square foliage
+images use the fixed-card layout below. The original full source maps remain private. Shared terrain-array surfaces
 use an explicit source moss adaptation while TerrainArc blending is unresolved.
 Second-albedo-only props use their bound source second map; inner/fade meshes use
 an explicit dark adaptation and bake-shadow proxy meshes are suppressed. Water and sky use the appearance adaptation described below. Native terrain/material graphs, baked light, full plant
@@ -285,3 +285,41 @@ shader checks pass; KOC2 admission kills all 105 root mutants, pack identity all
 passes controls, all clips/views, and retained device recovery with no source
 refetch or unexpected GPU errors. Pond and upward-sky captures are inspected
 separately, alongside the phone viewport.
+
+## Foliage stability and camera pass
+
+The camera-facing implementation rotated entire branch silhouettes and switched
+source views at camera-yaw boundaries. That made nearby leaves appear to slide,
+turn and pop during walking. The replacement bakes two crossed source-view
+silhouettes in the original placement basis (one for one/two-view recipes).
+Material kind 14 uses ordinary static world vertices in both visible and shadow
+passes; no camera-selected view remains. These are fixed source cards, not a
+recovery of native three-dimensional plant generation, wind or growth.
+
+All 4,253 admitted placements remain; the same 4,867 unmatched placements remain
+omitted. Thirteen exact source recipes use 26 original 128-square images without
+resizing. Two 1536-square albedo/normal pages use 256-square cells with 64-pixel
+edge-repeated gutters. The PNG round-trip checks preserve their assembled bytes.
+Softer two-sided lighting and restrained foliage tint reduce bright yellow-green
+clumps. This pass emits 8,506 polygons, 51,036 vertices and 102,072 indices.
+
+The current catalogue contains 183,503,872 GPU vertex bytes, 9,839,499 indices
+(9,823,770 opaque; 15,729 water), 751 materials and 149 physical texture layers.
+The private pack is 53,765,524 bytes smaller. Regeneration uses `atlas-fixed`
+with `kokiri-foliage-pack.coax` and `kokiri-bundle.coax`.
+
+Play camera pitch is constrained to 0.45–1.85 radians to avoid the extreme
+below-floor orbit on level ground; inspection orbit is unchanged. Camera-volume
+collision is still absent, so nearby foreground rocks can occlude a low orbit.
+The sun-shadow origin snaps to a fixed light-space texel lattice to reduce
+shadow crawling during movement. Source collision and animation payloads stay
+unchanged.
+
+Verification: 461 runtime checks, 162 foliage-assembler checks and 32 shader
+checks pass; all 22 pack-identity mutants are killed. The shader checks hold
+world positions, normals and shadow coordinates invariant over eight camera
+poses. Native original-source movement/jump/clip checks pass. Muted headless
+Chrome at 1280×800 passes controls, seven actual GPU walk/orbit readbacks over
+2.268 m of lateral travel, and retained device recovery without source refetch.
+The walk/orbit images were visually inspected. The 390×844 phone check covers
+the same controls; receipts and capture hashes are recorded in ore.

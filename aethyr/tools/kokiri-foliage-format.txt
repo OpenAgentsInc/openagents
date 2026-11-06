@@ -63,33 +63,40 @@ Tex/Foliage_{LowTree,LowTreeShootLeaf}_Impostor_{Alb,Nrm}.bntx
   RGBA hashes are recorded. Alb alpha contains source coverage (measured
   last LowTree layer0..255); normal alpha in that layer is255.
 
-Approximate source-impostor assembly
+Fixed source-impostor assembly (kokiri.source-impostor.v2)
   kokiri-foliage-pack SOURCE_ROOT BASE_ATLAS_DIR FOLIAGE_TEXTURE_DIR OUTPUT_DIR
   takes only exact recipe-path matches against available original arrays.
-  The current Child scene admits4253/9120 original placements and excludes
-  4867:4618 Ornament placements lack their original texture atlas, and249
-  LowTree placements lack exact full-branch impostors. No invented substitutes.
-  41407 original six-point view polygons yield248442 vertices/496884 indices;
-  the GPU vertex+index streams total17887824 bytes. All original views are
-  emitted; the GPU selects a view by uniformly divided camera yaw. Original
-  mode0/1/2 is retained, but its native angular meaning is not recovered.
-  UVs are inferred from each source record's physical size/center-like values,
-  clamped into its original128pixel image, then transformed into atlas space.
-  These approximations do not recover native view projection, depth, wind,
-  branch growth or dynamic source recoloring. Original RGB is already baked
-  into the impostor albedo; vertex tint defaults to white.
-  OUTPUT_DIR receives final complete scene.materials and scene.textures,
-  all existing static atlas pages,16 standalone foliage pages, foliage.json,
-  foliage.vertices and foliage.indices. Characters retain the first60 names.
-  The source atlas JSON is copied when available. Output can equal the base
-  directory for one append; existing kind10 materials reject a double append.
-  Eight material rows are added (four pages per source array);16 physical
-  layers are added (albedo/normal maps). Added material kind=10, alpha mask=.5.
-  Intermediate vertex stride128: first64 are the custom GPU record, tail64zero.
-  GPU words0..2=anchorXYZ;3=upSNORM10;4..5=UV;6..7=sourceXY*instanceScale;
-  8=global material ID;9=forwardSNORM10;10..11=white RGBA8;
-  12..13=relative view index/count asf32;14=original mode asf32;
-  15=original source array layer asf32. Indices are localu32 with a convex fan.
+  Child admits4253/9120 placements and excludes4867 as before:4618 Ornament
+  entries lack their atlas and249 LowTree entries lack exact whole-branch views.
+  Native growth/wind,depth and angular projection remain unrecovered.
+
+  Geometry uses source view0 and the nearest quarter-turn view when count>2;
+  one/two-view resources use view0 only. Source basis and uniform scale bake
+  the six-point silhouettes into fixed world coordinates. The GPU neither
+  rotates them toward the camera nor changes view with camera yaw. The same
+  geometry casts shadows. This is a crossed-card adaptation, not recovered
+  native three-dimensional plant generation. Original placement resources stay.
+
+  Current output:8506 polygons,51036 vertices,102072 indices;3674592 GPU/index
+  bytes. Thirteen exact recipes use26 original128px source views. Their pixels
+  are copied unchanged into two1536-square pages (albedo/normal),six-by-six
+  256px cells with64px repeated gutters. Source-view/tile mappings are in JSON;
+  final pages round-trip to the assembled RGBA exactly. No source image resizing.
+
+  One material row(kind14,mask.45,roughness.9) and two physical layers are added.
+  OUTPUT_DIR receives complete scene.materials/textures,existing static pages,
+  foliage-fixed-{Alb,Nrm}.png,foliage.json,foliage.vertices/indices. An already
+  appended kind10/14 material refuses accidental double assembly.
+
+  Intermediate stride128: first64 use the compact static GPU layout; tail64zero.
+  Words0..2=baked worldXYZ;3=world normalSNORM10;4..5=UV;6..7=zero;
+  8=global material;9=world tangentSNORM10 with positive handedness;
+  10..11=white RGBA8;12..13=source view/count;14=source mode;15=source layer.
+  Source normals/tangents and source-image UV projection remain adaptations.
+
+  Legacy v1 emitted all41407 views and selected a camera-facing card at runtime.
+  It used248442 vertices,496884 indices,eight materials and16 pages. That live
+  approximation caused branch rotation/view popping and is no longer rendered.
 
 Static texture derivative assembly
   kokiri-atlas-pack MATERIALS TEXTURES PNG_DIR OUTPUT_DIR
@@ -120,7 +127,7 @@ Offline tools:
   kokiri-foliage-texture.coax: array atlas conversion;139 checks pass.
   kokiri-foliage-sharcb.coax: source code/control extraction;70 checks pass.
   kokiri-foliage-pack.coax: explicitly approximate source-impostor assembly;
-  148 closure checks pass.
+  162 closure checks pass.
   kokiri-foliage-native.coax: original material UBO inventory; material
   vertex stages are absent in the inspected fragment-only foliage programs.
   ocarina-texture-core.coax: mechanical helper extraction from the original

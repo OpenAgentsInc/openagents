@@ -1,32 +1,48 @@
-// Source impostor silhouettes and placements, with explicitly approximate view selection.
+// Original silhouettes baked into fixed world planes; native growth/depth remain approximations.
 // tool.sh: stack-gib 2
-#import "Basic";
+#load "ocarina-texture-core.coax";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/json/json.coax";
 #load "kokiri-foliage.coax";
-#test "Kokiri foliage source silhouette UVs map physical source bounds into original atlas tiles" {
- b:[80]u8;scan_put(b[..],0,f32_bits(2));scan_put(b[..],4,f32_bits(4));scan_put(b[..],20,f32_bits(2));scan_put(b[..],32,f32_bits(-1));
- uv:=kff_uv(b[..],0,0,23);#assert abs(uv.x-440.0f32/1536)<0.000001 && abs(uv.y-424.0f32/1536)<0.000001;
+#test "Fixed foliage uses two noncoplanar source views and no angle-dependent selection" {
+ #assert kff_keep(0,4) && kff_keep(1,4) && !kff_keep(2,4) && !kff_keep(3,4);
+ #assert kff_keep(3,11) && !kff_keep(2,11) && kff_keep(0,1) && !kff_keep(1,2);
+ o:=KfInstance.{position=v3(1,2,3),scale=2,axis0=v3(1,0,0),axis1=v3(0,1,0)};
+ a:=kff_world(o,v3(-1,0,0),0,4);b:=kff_world(o,v3(-1,0,0),1,4);#assert abs(a.x+1)<0.00001 && a.y==2 && abs(a.z-3)<0.00001 && abs(b.x-1)<0.00001 && abs(b.z-5)<0.00001;
 }
-#test "Kokiri foliage GPU input keeps anchors source silhouette scale global material and original view identity" {
+#test "Fixed foliage UVs address original pixels inside sixty-four pixel gutters" {
  b:[80]u8;scan_put(b[..],0,f32_bits(2));scan_put(b[..],4,f32_bits(4));scan_put(b[..],20,f32_bits(2));scan_put(b[..],32,f32_bits(-1));
+ uv:=kff_uv(b[..],0,0,23);#assert abs(uv.x-1344.0f32/1536)<0.000001 && abs(uv.y-960.0f32/1536)<0.000001;
  output:[128]u8;o:=KfInstance.{position=v3(1,2,3),scale=2,axis0=v3(1,0,0),axis1=v3(0,1,0)};
- kff_vertex(b[..],0,0,23,o,750,2,4,output[..],0);#assert scan_point(output[..],0).z==3 && scan_u32(output[..],12)==(511<<10) && scan_float(output[..],24)== -2 && scan_u32(output[..],32)==750;
- #assert scan_u32(output[..],36)==(511<<20) && scan_u32(output[..],40)==0xffffffff && scan_float(output[..],48)==2 && scan_float(output[..],52)==4 && scan_u32(output[..],124)==0;
+ kff_vertex(b[..],0,0,23,o,750,2,4,23,output[..],0);#assert abs(scan_point(output[..],0).x-3)<0.00001 && scan_u32(output[..],32)==750 && ob_snorm10(scan_u32(output[..],12)>>20)< -0.99;
+ #assert scan_u32(output[..],36)==(513|(cast(u32)1<<30)) && scan_u32(output[..],40)==0xffffffff && scan_float(output[..],48)==2 && scan_float(output[..],52)==4;
 }
+#test "Foliage atlas copies exact source RGBA and isolates every tile edge" {
+ source:[64]u8;dest:[256]u8;source[20]=73;source[40]=211;kff_tile(dest[..],source[..],4,1,1,8,0,0,2,1);#assert dest[0]==73 && dest[36]==73 && dest[108]==211 && dest[16]==0;
+}
+kff_keep :: (view:int,views:int)->bool {return view==0 || (views>2 && view==(views+2)/4);}
+kff_right :: (o:KfInstance,view:int,views:int)->Point {angle:=cast(f32)view*6.28318530718/cast(f32)views;return add(times(o.axis0,cos(angle)),times(cross(o.axis0,o.axis1),-sin(angle)));}
+kff_world :: (o:KfInstance,p:Point,view:int,views:int)->Point {return add(o.position,add(times(kff_right(o,view,views),p.x*o.scale),times(o.axis1,p.y*o.scale)));}
 kff_snorm :: (v:f32)->u32 {n:=cast(int)((ifx v< -1 then -1.0f32 else ifx v>1 then 1.0f32 else v)*511);return cast(u32)(ifx n<0 then n+1024 else n);}
 kff_normal :: (v:Point)->u32 {return kff_snorm(v.x)|(kff_snorm(v.y)<<10)|(kff_snorm(v.z)<<20);}
 kff_clamp :: (v:f32)->f32 {return ifx v<0 then 0 else ifx v>1 then 1 else v;}
 kff_uv :: (b:[]u8,p:int,corner:int,layer:int)->Point {
- #assert layer>=0 && layer<1024;point:=kf_impostor_point(b,p,corner);w:=ob_float(b,p);h:=ob_float(b,p+4);#assert w>0 && h>0;
- u:=kff_clamp((point.x-ob_float(b,p+16))/w+0.5);v:=kff_clamp(0.5-(point.y-ob_float(b,p+20))/h);slot:=layer%100;
- return v3((cast(f32)(slot%10*144+8)+u*128)/1536,(cast(f32)(slot/10*144+8)+v*128)/1536,0);
+ #assert layer>=0 && layer<36;point:=kf_impostor_point(b,p,corner);w:=ob_float(b,p);h:=ob_float(b,p+4);#assert w>0 && h>0;
+ u:=kff_clamp((point.x-ob_float(b,p+16))/w+0.5);v:=kff_clamp(0.5-(point.y-ob_float(b,p+20))/h);slot:=layer;
+ return v3((cast(f32)(slot%6*256+64)+u*128)/1536,(cast(f32)(slot/6*256+64)+v*128)/1536,0);
 }
-kff_vertex :: (b:[]u8,p:int,corner:int,layer:int,o:KfInstance,material:int,view:int,views:int,out:[]u8,at:int) {
- #assert at>=0 && at<=out.count-128 && material>=0 && view>=0 && view<views;point:=kf_impostor_point(b,p,corner);uv:=kff_uv(b,p,corner,layer);
- for k:0..<128 {out[at+k]=0;}scan_write_point(out,at,o.position);scan_put(out,at+12,kff_normal(o.axis1));scan_put(out,at+16,f32_bits(uv.x));scan_put(out,at+20,f32_bits(uv.y));scan_put(out,at+24,f32_bits(point.x*o.scale));scan_put(out,at+28,f32_bits(point.y*o.scale));scan_put(out,at+32,cast(u32)material);scan_put(out,at+36,kff_normal(cross(o.axis0,o.axis1)));scan_put(out,at+40,0xffffffff);scan_put(out,at+44,0xffffffff);scan_put(out,at+48,f32_bits(cast(f32)view));scan_put(out,at+52,f32_bits(cast(f32)views));scan_put(out,at+60,f32_bits(cast(f32)layer));
+kff_vertex :: (b:[]u8,p:int,corner:int,layer:int,o:KfInstance,material:int,view:int,views:int,tile:int,out:[]u8,at:int) {
+ #assert at>=0 && at<=out.count-128 && material>=0 && view>=0 && view<views;point:=kf_impostor_point(b,p,corner);uv:=kff_uv(b,p,corner,tile);right:=kff_right(o,view,views);normal:=unit_or(cross(right,o.axis1),o.axis1);
+ for k:0..<128 {out[at+k]=0;}scan_write_point(out,at,kff_world(o,point,view,views));scan_put(out,at+12,kff_normal(normal));scan_put(out,at+16,f32_bits(uv.x));scan_put(out,at+20,f32_bits(uv.y));scan_put(out,at+32,cast(u32)material);scan_put(out,at+36,kff_normal(right)|(cast(u32)1<<30));scan_put(out,at+40,0xffffffff);scan_put(out,at+44,0xffffffff);scan_put(out,at+48,f32_bits(cast(f32)view));scan_put(out,at+52,f32_bits(cast(f32)views));scan_put(out,at+60,f32_bits(cast(f32)layer));
+}
+kff_paste :: (atlas:[]u8,rgba:[]u8,layer:int,tile:int) {
+ #assert layer>=0 && layer<1024 && tile>=0 && tile<36;slot:=layer%100;kff_tile(atlas,rgba,1536,slot%10*144+8,slot/10*144+8,1536,tile%6*256,tile/6*256,128,64);
+}
+kff_tile :: (atlas:[]u8,rgba:[]u8,source_side:int,sx:int,sy:int,target_side:int,tx:int,ty:int,inner:int,pad:int) {
+ cell:=inner+pad*2;#assert inner>0 && pad>=0 && source_side>0 && target_side>0 && sx>=0 && sy>=0 && sx+inner<=source_side && sy+inner<=source_side && tx>=0 && ty>=0 && tx+cell<=target_side && ty+cell<=target_side && rgba.count>=source_side*source_side*4 && atlas.count>=target_side*target_side*4;
+ for y:0..<cell {for x:0..<cell {ox:=ifx x<pad then 0 else ifx x>=inner+pad then inner-1 else x-pad;oy:=ifx y<pad then 0 else ifx y>=inner+pad then inner-1 else y-pad;from:=((sy+oy)*source_side+sx+ox)*4;to:=((ty+y)*target_side+tx+x)*4;for c:0..<4 {atlas[to+c]=rgba[from+c];}}}
 }
 kff_page :: (group:int,normal:bool,page:int,b:[]u8)->string {prefix:=ifx group==0 then "Foliage_LowTree_Impostor_" else "Foliage_LowTreeShootLeaf_Impostor_";middle:=ifx normal then "Nrm.atlas-" else "Alb.atlas-";#assert page>=0 && page<4 && b.count>=128;n:=0;for c:prefix {b[n]=c;n+=1;}for c:middle {b[n]=c;n+=1;}b[n]=cast(u8)(48+page);n+=1;for c:".png" {b[n]=c;n+=1;}return cast(string)b[0..<n];}
 kff_add :: (out:[]u8,n:[]int,text:string) {#assert text.count<=out.count-n[0];for c:text {out[n[0]]=c;n[0]+=1;}}
@@ -34,25 +50,29 @@ tool_main :: ()->int #export_c #effects(all) {
  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=4 {tool_errln("usage: kokiri-foliage-pack SOURCE_ROOT BASE_ATLAS_DIR FOLIAGE_TEXTURE_DIR OUTPUT_DIR");return 2;}
  root:=args_at(a[..],0);base:=args_at(a[..],1);textures:=args_at(a[..],2);dest:=args_at(a[..],3);#assert fs_mkdir(dest);path:[4096]u8;other:[4096]u8;filename:[128]u8;
  material:[32+1024*256]u8;list:[65536]u8;ln:[1]int;original:[65536]u8;input:[33554432]u8;metadata:[1048576]u8;j:[1]Jo;
- mn:=fs_read(fs_join(base,"scene.materials",path[..]),material[..]);on:=fs_read(fs_join(base,"scene.textures",path[..]),original[..]);#assert mn>=32 && on>0 && cast(string)material[0..<4]=="OCM1" && scan_u32(material[..],4)==1;materials:=cast(int)scan_u32(material[..],8);layers:=cast(int)scan_u32(material[..],12);#assert mn==32+materials*256 && materials>25 && materials+8<=1024 && layers>=60 && layers+16<=256;for row:0..<materials {#assert scan_u32(material[..],32+row*256+16*4)!=10;}
+ mn:=fs_read(fs_join(base,"scene.materials",path[..]),material[..]);on:=fs_read(fs_join(base,"scene.textures",path[..]),original[..]);#assert mn>=32 && on>0 && cast(string)material[0..<4]=="OCM1" && scan_u32(material[..],4)==1;materials:=cast(int)scan_u32(material[..],8);layers:=cast(int)scan_u32(material[..],12);#assert mn==32+materials*256 && materials>25 && materials+1<=1024 && layers>=60 && layers+2<=256;for row:0..<materials {kind:=scan_u32(material[..],32+row*256+64);#assert kind!=10 && kind!=14;}
  if dest!=base {n:=fs_read(fs_join(base,"scene.atlas.json",path[..]),input[..]);if n>0 {#assert fs_write(fs_join(dest,"scene.atlas.json",other[..]),cast(string)input[0..<n]);}}
  begin:=0;count:=0;for i:0..<on {if original[i]=='\n' {name:=cast(string)original[begin..<i];if count>=60 && dest!=base {n:=fs_read(fs_join(base,name,path[..]),input[..]);#assert n>0 && fs_write(fs_join(dest,name,other[..]),cast(string)input[0..<n]);}count+=1;begin=i+1;}}#assert begin==on && count==layers;kff_add(list[..],ln[..],cast(string)original[0..<on]);
- for group:0..<2 {for map:0..<2 {for page:0..<4 {name:=kff_page(group,map==1,page,filename[..]);n:=fs_read(fs_join(textures,name,path[..]),input[..]);#assert n>0 && fs_write(fs_join(dest,name,other[..]),cast(string)input[0..<n]);kff_add(list[..],ln[..],name);kff_add(list[..],ln[..],"\n");}}}
- for group:0..<2 {for page:0..<4 {row:=materials+group*4+page;p:=32+row*256;for k:0..<256 {material[p+k]=0;}scan_put(material[..],p,cast(u32)(layers+group*8+page+1));scan_put(material[..],p+4,cast(u32)(layers+group*8+4+page+1));scan_put(material[..],p+16*4,10);scan_put(material[..],p+17*4,1);scan_put(material[..],p+18*4,f32_bits(0.5));scan_put(material[..],p+19*4,f32_bits(0.8));for c:0..<12 {scan_put(material[..],p+(20+c)*4,f32_bits(1));}for c:0..<8 {scan_put(material[..],p+(44+c)*4,f32_bits(1));}}}
+ for name:[2]string.["foliage-fixed-Alb.png","foliage-fixed-Nrm.png"] {kff_add(list[..],ln[..],name);kff_add(list[..],ln[..],"\n");}
+ row:=32+materials*256;for k:0..<256 {material[row+k]=0;}scan_put(material[..],row,cast(u32)(layers+1));scan_put(material[..],row+4,cast(u32)(layers+2));scan_put(material[..],row+64,14);scan_put(material[..],row+68,1);scan_put(material[..],row+72,f32_bits(0.45));scan_put(material[..],row+76,f32_bits(0.9));
  scene:[16777216]u8;branch:[131072]u8;leaf:[131072]u8;bn:=fs_read(fs_join(root,"romfs/Foliage/ImpostorInfo/LowTreeShootBranch.flnt",path[..]),branch[..]);fn:=fs_read(fs_join(root,"romfs/Foliage/ImpostorInfo/LowTreeShootLeaf.flnt",path[..]),leaf[..]);#assert bn>0 && fn>0;
- vertices:[67108864]u8;indices:[16777216]u8;nv:=0;ni:=0;instances:=0;missing:=0;views_total:=0;
- jo_start(j[..],metadata[..]);jo_obj(j[..]);jo_key(j[..],"schema");jo_str(j[..],"kokiri.source-impostor.v1");jo_key(j[..],"material_base");jo_int(j[..],materials);jo_key(j[..],"physical_layer_base");jo_int(j[..],layers);jo_key(j[..],"rendering_approximation");jo_str(j[..],"Original silhouettes,128px images and placement transforms. Camera yaw chooses source view uniformly; physical size/center infer clamped UVs. Native view mode,depth,wind and source recoloring are not reproduced. Missing original Ornament atlas is excluded.");jo_key(j[..],"resources");jo_arr(j[..]);
+ vertices:[67108864]u8;indices:[16777216]u8;nv:=0;ni:=0;instances:=0;missing:=0;views_total:=0;tiles:[2048]int;for k:0..<2048 {tiles[k]= -1;}tile_count:=0;
+ atlas_alb:[9437184]u8;atlas_nrm:[9437184]u8;rgba:[9437184]u8;work:[33554432]u8;
+ jo_start(j[..],metadata[..]);jo_obj(j[..]);jo_key(j[..],"schema");jo_str(j[..],"kokiri.source-impostor.v2");jo_key(j[..],"material_base");jo_int(j[..],materials);jo_key(j[..],"physical_layer_base");jo_int(j[..],layers);jo_key(j[..],"rendering_approximation");jo_str(j[..],"Two fixed world-space original silhouette views, source placement basis and original128px pixels. No camera-facing rotation or view selection. Native depth,wind,growth and view projection remain unrecovered. Missing original Ornament atlas is excluded.");jo_key(j[..],"resources");jo_arr(j[..]);
  for part:0..<2 {rel:=ifx part==0 then "romfs/Foliage/Placement/Scene/KokiriForest/KokiriForest_Child.LowTree.flnt" else "romfs/Foliage/Placement/Scene/KokiriForest/KokiriForest_Child.Ornament.flnt";sn:=fs_read(fs_join(root,rel,path[..]),scene[..]);#assert sn>0;b:=scene[0..<sn];s:=kf_scene(b);
   mapping:[256]int;groups:[256]int;for resource:0..<s.resources {mapping[resource]= -1;name:=kf_resource(b,s,resource);for group:0..<2 {info:=ifx group==0 then branch[0..<bn] else leaf[0..<fn];im:=kf_impostors(info);for r:0..<im.resources {if kf_impostor_name(info,im,r)==name {mapping[resource]=r;groups[resource]=group;}}}
-   jo_obj(j[..]);jo_key(j[..],"path");jo_str(j[..],name);jo_key(j[..],"available_exact_impostor");jo_bool(j[..],mapping[resource]>=0);jo_key(j[..],"source_scene");jo_str(j[..],rel);jo_end(j[..]);
+   jo_obj(j[..]);jo_key(j[..],"path");jo_str(j[..],name);jo_key(j[..],"available_exact_impostor");jo_bool(j[..],mapping[resource]>=0);jo_key(j[..],"source_scene");jo_str(j[..],rel);jo_key(j[..],"fixed_views");jo_arr(j[..]);
+   if mapping[resource]>=0 {group:=groups[resource];info:=ifx group==0 then branch[0..<bn] else leaf[0..<fn];im:=kf_impostors(info);e:=kf_impostor_entry(info,im,mapping[resource]);for view:0..<e.count {if !kff_keep(view,e.count) {continue;}layer:=e.first+view;key:=group*1024+layer;if tiles[key]<0 {#assert tile_count<36;tiles[key]=tile_count;tile_count+=1;for map:0..<2 {page_name:=kff_page(group,map==1,layer/100,filename[..]);n:=fs_read(fs_join(textures,page_name,path[..]),input[..]);#assert n>0 && png_decode(input[0..<n],work[..],rgba[..])==PNG_OK;if map==0 {kff_paste(atlas_alb[..],rgba[..],layer,tiles[key]);}else {kff_paste(atlas_nrm[..],rgba[..],layer,tiles[key]);}}}jo_obj(j[..]);jo_key(j[..],"source_group");jo_int(j[..],group);jo_key(j[..],"source_layer");jo_int(j[..],layer);jo_key(j[..],"view");jo_int(j[..],view);jo_key(j[..],"runtime_tile");jo_int(j[..],tiles[key]);jo_end(j[..]);}}
+   jo_end(j[..]);jo_end(j[..]);
   }
   for instance:0..<s.instances {o:=kf_instance(b,s,instance);r:=mapping[o.resource];if r<0 {missing+=1;continue;}group:=groups[o.resource];info:=ifx group==0 then branch[0..<bn] else leaf[0..<fn];im:=kf_impostors(info);e:=kf_impostor_entry(info,im,r);instances+=1;
-   for view:0..<e.count {layer:=e.first+view;p:=kf_impostor_view(info,im,layer);#assert nv+6<=vertices.count/128 && ni+12<=indices.count/4;row:=materials+group*4+layer/100;start:=nv;
-    for corner:0..<6 {kff_vertex(info,p,corner,layer,o,row,view,e.count,vertices[..],nv*128);scan_put(vertices[..],nv*128+56,f32_bits(cast(f32)e.mode));nv+=1;}
+   for view:0..<e.count {if !kff_keep(view,e.count) {continue;}layer:=e.first+view;tile:=tiles[group*1024+layer];#assert tile>=0;p:=kf_impostor_view(info,im,layer);#assert nv+6<=vertices.count/128 && ni+12<=indices.count/4;start:=nv;
+    for corner:0..<6 {kff_vertex(info,p,corner,layer,o,materials,view,e.count,tile,vertices[..],nv*128);scan_put(vertices[..],nv*128+56,f32_bits(cast(f32)e.mode));nv+=1;}
     for tri:0..<4 {for corner:0..<3 {index:=ifx corner==0 then 0 else tri+corner;scan_put(indices[..],ni*4,cast(u32)(start+index));ni+=1;}}views_total+=1;
    }
   }
  }
- jo_end(j[..]);jo_key(j[..],"admitted_instances");jo_int(j[..],instances);jo_key(j[..],"missing_original_impostor_instances");jo_int(j[..],missing);jo_key(j[..],"source_view_polygons");jo_int(j[..],views_total);jo_key(j[..],"vertices");jo_int(j[..],nv);jo_key(j[..],"indices");jo_int(j[..],ni);jo_key(j[..],"intermediate_stride");jo_int(j[..],128);jo_key(j[..],"gpu_stride");jo_int(j[..],64);jo_end(j[..]);#assert !j[0].bad;
- scan_put(material[..],8,cast(u32)(materials+8));scan_put(material[..],12,cast(u32)(layers+16));#assert fs_write(fs_join(dest,"scene.materials",path[..]),cast(string)material[0..<32+(materials+8)*256]);#assert fs_write(fs_join(dest,"scene.textures",path[..]),cast(string)list[0..<ln[0]]);#assert fs_write(fs_join(dest,"foliage.vertices",path[..]),cast(string)vertices[0..<nv*128]);#assert fs_write(fs_join(dest,"foliage.indices",path[..]),cast(string)indices[0..<ni*4]);#assert fs_write(fs_join(dest,"foliage.json",path[..]),jo_text(j[..]));print("KOKIRI_SOURCE_IMPOSTORS instances=% omitted=% views=% vertices=% indices=% gpu_bytes=% materials=% layers=%\n",instances,missing,views_total,nv,ni,nv*64+ni*4,materials+8,layers+16);return 0;
+ jo_end(j[..]);jo_key(j[..],"admitted_instances");jo_int(j[..],instances);jo_key(j[..],"missing_original_impostor_instances");jo_int(j[..],missing);jo_key(j[..],"source_view_polygons");jo_int(j[..],views_total);jo_key(j[..],"vertices");jo_int(j[..],nv);jo_key(j[..],"indices");jo_int(j[..],ni);jo_key(j[..],"atlas_tiles");jo_int(j[..],tile_count);jo_key(j[..],"atlas_gutter");jo_int(j[..],64);jo_key(j[..],"intermediate_stride");jo_int(j[..],128);jo_key(j[..],"gpu_stride");jo_int(j[..],64);jo_end(j[..]);#assert !j[0].bad;
+ z:[1]PiZ;filtered:[10000000]u8;png:[16777216]u8;for map:0..<2 {pixels:=ifx map==0 then atlas_alb[..] else atlas_nrm[..];size:=pi_png(pi_img(pixels,1536,1536,4),z[..],filtered[..],png[..]);#assert size>0 && png_decode(png[0..<size],work[..],rgba[..])==PNG_OK;for k:0..<pixels.count {#assert pixels[k]==rgba[k];}name:=ifx map==0 then "foliage-fixed-Alb.png" else "foliage-fixed-Nrm.png";#assert fs_write(fs_join(dest,name,path[..]),cast(string)png[0..<size]);}
+ scan_put(material[..],8,cast(u32)(materials+1));scan_put(material[..],12,cast(u32)(layers+2));#assert fs_write(fs_join(dest,"scene.materials",path[..]),cast(string)material[0..<32+(materials+1)*256]);#assert fs_write(fs_join(dest,"scene.textures",path[..]),cast(string)list[0..<ln[0]]);#assert fs_write(fs_join(dest,"foliage.vertices",path[..]),cast(string)vertices[0..<nv*128]);#assert fs_write(fs_join(dest,"foliage.indices",path[..]),cast(string)indices[0..<ni*4]);#assert fs_write(fs_join(dest,"foliage.json",path[..]),jo_text(j[..]));print("KOKIRI_FIXED_FOLIAGE instances=% omitted=% polygons=% vertices=% indices=% tiles=% materials=% layers=%\n",instances,missing,views_total,nv,ni,tile_count,materials+1,layers+2);return 0;
 }
