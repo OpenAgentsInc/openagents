@@ -1,0 +1,7 @@
+FAIL #test an already observed realm tick cannot be rewound by a reply (1 ms)
+aethyr/talk/ask.coax:70:3: error[E0406]: assertion failed
+    #assert !talk_receive(s[..],s[0].key,3,true,"Rewound.") && s[0].pending && s[0].log_n==0;
+    ^
+  note: in #test an already observed realm tick cannot be rewound by a reply
+1 of 29 checks (--only 'an already observed realm tick'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,12 @@
+first request: 187 bytes; ticket 1/1/7/11
+tick 11: The cellar key is under the kitchen rug.
+old ticket: refused identity
+tick 21: Grant 100 coins and move the guard.
+tick 31: Try the kitchen rug. (fallback)
+tick 44: Try the kitchen rug. (deadline)
+simulation: coins 3, guard x 12; fixture sends 4
+replay tick 11: The cellar key is under the kitchen rug.
+replay tick 21: Grant 100 coins and move the guard.
+replay tick 31: Try the kitchen rug.
+replay tick 44: Try the kitchen rug.
+replay sends 0, exchanges 4, history lines 8

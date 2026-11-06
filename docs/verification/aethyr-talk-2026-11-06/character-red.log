@@ -1,0 +1,7 @@
+FAIL #test a talking character needs its own identity and an authored fallback (0 ms)
+aethyr/talk/character.coax:28:16: error[E0406]: assertion failed
+    c.id.value=0;#assert talk_character_check(c)==TalkCharacterStatus.identity;
+                 ^
+  note: in #test a talking character needs its own identity and an authored fallback
+1 of 23 checks (--only 'a talking character'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

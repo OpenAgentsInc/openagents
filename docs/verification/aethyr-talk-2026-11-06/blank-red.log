@@ -1,0 +1,7 @@
+FAIL #test required dialogue cannot be a blank line but its original whitespace is preserved (0 ms)
+aethyr/talk/character.coax:67:3: error[E0406]: assertion failed
+    #assert !talk_text_ok(" ",1,1) && !talk_text_ok("\t\r\n",1,3);
+    ^
+  note: in #test required dialogue cannot be a blank line but its original whitespace is preserved
+1 of 25 checks (--only 'required dialogue cannot'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

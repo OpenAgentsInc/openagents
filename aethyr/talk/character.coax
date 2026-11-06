@@ -1,0 +1,94 @@
+// Bounded authored dialogue. Text is display data, never a simulation command.
+#module "aethyr.talk.character";
+#authority;
+#load "../ids.coax";
+#load "../../coax/lib/nostr/json.coax";
+
+// book:begin character
+TALK_NAME_BYTES :: 64;
+TALK_ROLE_BYTES :: 256;
+TALK_KNOWLEDGE_BYTES :: 1200;
+TALK_LINE_BYTES :: 600;
+TALK_QUESTION_BYTES :: 512;
+TALK_WORLD_BYTES :: 96;
+TalkCharacter :: struct {
+  id: EntityId;
+  name: string;
+  role: string;
+  knowledge: string;
+  greeting: string;
+  fallback: string;
+}
+TalkCharacterStatus :: enum u8 { ok; identity; name; role; knowledge; greeting; fallback; }
+// book:end character
+
+#test "a talking character needs its own identity and an authored fallback" {
+  c:=TalkCharacter.{id=EntityId.{value=7},name="Mara",role="Innkeeper",knowledge="The key is under the kitchen rug.",greeting="Welcome back.",fallback="Try the kitchen rug."};
+  #assert talk_character_check(c)==TalkCharacterStatus.ok;
+  c.id.value=0;#assert talk_character_check(c)==TalkCharacterStatus.identity;
+  c.id.value= -1;#assert talk_character_check(c)==TalkCharacterStatus.identity;
+  c.id.value=9223372036854775807;#assert talk_character_check(c)==TalkCharacterStatus.ok;
+  c.fallback="";#assert talk_character_check(c)==TalkCharacterStatus.fallback;
+}
+#test "dialogue field limits count UTF8 bytes and reject malformed text without clipping" {
+  #assert talk_text_ok("",0,0) && !talk_text_ok("",1,1);
+  #assert talk_text_ok("a",1,1) && !talk_text_ok("aa",1,1);
+  #assert talk_text_ok("é",1,2) && !talk_text_ok("é",1,1);
+  #assert talk_text_ok("🗝",1,4) && !talk_text_ok("🗝",1,3);
+  #assert talk_text_ok("two\nlines\tand\rreturns",1,40);
+  for bytes:[9][4]u8.[[4]u8.[0,0,0,0],[4]u8.[0xC0,0x80,0,0],[4]u8.[0xE0,0x80,0x80,0],[4]u8.[0xED,0xA0,0x80,0],[4]u8.[0xF4,0x90,0x80,0x80],[4]u8.[0xF5,0x80,0x80,0x80],[4]u8.[0xC2,0x20,0,0],[4]u8.[0x80,0,0,0],[4]u8.[0x1B,0,0,0]] {
+    b:=bytes;#assert !talk_text_ok(cast(string)b[..],0,4);
+  }
+  short:=[2]u8.[0xE2,0x82];#assert !talk_text_ok(cast(string)short[..],1,4);
+  #assert !talk_text_ok("a",-1,4) && !talk_text_ok("a",2,1);
+}
+#test "every character field admits its exact limit and refuses the next byte" {
+  bytes:[1201]u8;for k:0..<bytes.count {bytes[k]='x';}
+  c:=TalkCharacter.{id=EntityId.{value=1},name="Mara",role="Innkeeper",greeting="Hello.",fallback="Please try again."};
+  c.name=cast(string)bytes[0..<64];#assert talk_character_check(c)==TalkCharacterStatus.ok;
+  c.name=cast(string)bytes[0..<65];#assert talk_character_check(c)==TalkCharacterStatus.name;
+  c.name="";#assert talk_character_check(c)==TalkCharacterStatus.name;c.name="Mara";
+  c.role=cast(string)bytes[0..<256];#assert talk_character_check(c)==TalkCharacterStatus.ok;
+  c.role=cast(string)bytes[0..<257];#assert talk_character_check(c)==TalkCharacterStatus.role;
+  c.role="";#assert talk_character_check(c)==TalkCharacterStatus.role;c.role="Innkeeper";
+  c.knowledge=cast(string)bytes[0..<1200];#assert talk_character_check(c)==TalkCharacterStatus.ok;
+  c.knowledge=cast(string)bytes[..];#assert talk_character_check(c)==TalkCharacterStatus.knowledge;c.knowledge="";
+  c.greeting=cast(string)bytes[0..<600];#assert talk_character_check(c)==TalkCharacterStatus.ok;
+  c.greeting=cast(string)bytes[0..<601];#assert talk_character_check(c)==TalkCharacterStatus.greeting;
+  c.greeting="";#assert talk_character_check(c)==TalkCharacterStatus.greeting;c.greeting="Hello.";
+  c.fallback=cast(string)bytes[0..<600];#assert talk_character_check(c)==TalkCharacterStatus.ok;
+  c.fallback=cast(string)bytes[0..<601];#assert talk_character_check(c)==TalkCharacterStatus.fallback;
+}
+#test "a one byte authored line or name is a complete value" {
+  c:=TalkCharacter.{id=EntityId.{value=1},name="M",role="R",greeting="?",fallback="!"};
+  #assert talk_character_check(c)==TalkCharacterStatus.ok;
+}
+#test "required dialogue cannot be a blank line but its original whitespace is preserved" {
+  #assert !talk_text_ok(" ",1,1) && !talk_text_ok("\t\r\n",1,3);
+  #assert talk_text_ok(" ",0,1) && talk_text_ok(" x ",1,3);
+  c:=TalkCharacter.{id=EntityId.{value=1},name="M",role="R",greeting="Hi",fallback=" 	"};
+  #assert talk_character_check(c)==TalkCharacterStatus.fallback;
+}
+
+// book:begin admission
+talk_text_ok :: (text:string,least:int,most:int)->bool #effects(all) {
+  if least<0 || text.count<least || text.count>most {return false;}
+  at:=0;content:=least==0;
+  while at<text.count {
+    c:=text[at];
+    if c<32 && c!=9 && c!=10 && c!=13 {return false;}
+    if c>32 {content=true;}
+    n:=json_utf8(text,at);if n==0 {return false;}at+=n;
+  }
+  return content;
+}
+talk_character_check :: (c:TalkCharacter)->TalkCharacterStatus #effects(all) {
+  if c.id.value<=0 {return TalkCharacterStatus.identity;}
+  if !talk_text_ok(c.name,1,TALK_NAME_BYTES) {return TalkCharacterStatus.name;}
+  if !talk_text_ok(c.role,1,TALK_ROLE_BYTES) {return TalkCharacterStatus.role;}
+  if !talk_text_ok(c.knowledge,0,TALK_KNOWLEDGE_BYTES) {return TalkCharacterStatus.knowledge;}
+  if !talk_text_ok(c.greeting,1,TALK_LINE_BYTES) {return TalkCharacterStatus.greeting;}
+  if !talk_text_ok(c.fallback,1,TALK_LINE_BYTES) {return TalkCharacterStatus.fallback;}
+  return TalkCharacterStatus.ok;
+}
+// book:end admission

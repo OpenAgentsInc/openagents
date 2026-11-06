@@ -1,0 +1,57 @@
+{
+  "date_chicago": "2026-11-06",
+  "profile": "Darwin arm64 native CPU, Coax 0.52.0, Apple clang 21.0.0",
+  "sources_sha256": {
+    "coax/bin/coax": "23dfc150fa0d21dd199b2da382b9c2dd0762e8183e3f576657fe1341d327117e",
+    "aethyr/talk/character.coax": "90d31a4fe95631d7b183924071b7858854b388b6d5177e105eef024d45438b02",
+    "aethyr/talk/ask.coax": "b33886add247e67cddd02874c321686965c85e6b638106862652c723b8dc6152",
+    "aethyr/talk/wire.coax": "dad6e4163e35fc425f240df4a42febaf6a12c29f6b9b2399fe0ef0e1ec946b26",
+    "aethyr/examples/talk-and-replay.coax": "a487d5687536dad38425433bd79baf8fa1ae230a54145372c027882c7fd303a9",
+    "aethyr/examples/talk-refuses-empty-question.coax": "069d802d7bd4710fdcf8b2c38399633b76bf4f049f915ae7838cd93079d440df",
+    "aethyr/fixtures/talk-and-replay.out": "42197a0e2b214f1855eb94f030520b6e21c1b69a95f9fb607bd47d270ee525b9",
+    "aethyr/fixtures/talk-refuses-empty-question.out": "dbaff189f042e8117270ba3bfc96dff1b67475132f48bcdc3b01fea6ef710921"
+  },
+  "mutation": {
+    "scope": "root-only; dependency checks retained",
+    "character": 55,
+    "ask": 366,
+    "wire": 97,
+    "survivors": 0
+  },
+  "examples": [
+    {
+      "example": "talk-and-replay",
+      "mode": "debug",
+      "exit_code": 0,
+      "stdout": "exact fixture match",
+      "stderr_bytes": 0
+    },
+    {
+      "example": "talk-and-replay",
+      "mode": "release",
+      "exit_code": 0,
+      "stdout": "exact fixture match",
+      "stderr_bytes": 0
+    },
+    {
+      "example": "talk-refuses-empty-question",
+      "mode": "debug",
+      "exit_code": 2,
+      "stdout": "exact fixture match",
+      "stderr_bytes": 0
+    },
+    {
+      "example": "talk-refuses-empty-question",
+      "mode": "release",
+      "exit_code": 2,
+      "stdout": "exact fixture match",
+      "stderr_bytes": 0
+    }
+  ],
+  "adopted_by": [],
+  "limitations": [
+    "No realm adoption",
+    "No hosted model, socket or database exercised",
+    "No browser, Wasm, voice or durable event integration qualification"
+  ]
+}

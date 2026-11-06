@@ -1,0 +1,12 @@
+// book:begin example
+#load "../talk/ask.coax";
+#import "Basic";
+exit :: (code:s32) #foreign #effects(foreign);
+main :: () #effects(all) {
+  c:=TalkCharacter.{id=EntityId.{value=1},name="Mara",role="Innkeeper",greeting="Welcome.",fallback="Try the kitchen rug."};
+  s:[1]TalkSession;if !talk_open(s[..],c,11) {exit(1);return;}
+  start:=talk_begin(s[..],c," \t",10,5);sends:=ifx start==TalkStart.send then 1 else 0;
+  print("refused %; fixture sends %; pending %; exchanges %\n",s[0].error,sends,s[0].pending,s[0].log_n);
+  exit(cast(s32)(ifx start==TalkStart.refused && s[0].error==TalkError.question && sends==0 then 2 else 1));
+}
+// book:end example

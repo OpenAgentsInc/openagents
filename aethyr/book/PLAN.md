@@ -51,8 +51,8 @@ consolidates the existing Coax shader and host paths in `verse/gpu/`.
 
 ## Completion milestones
 
-The registry currently has 14 implemented chapters (1–11 and 65–67),
-32 partly implemented chapters (12–16, 51–56, 64, 68, 69, 72, 75, 76, 80, 81, 83, 86–90, 93, 94, 96 and 98–101), and 55 design drafts. These counts
+The registry currently has 14 implemented chapters, 52 partly implemented
+chapters and 35 design drafts. These counts
 describe teaching profiles, not a percentage of the engine completed. Existing
 realm code can already provide a feature whose shared Aethyr module is a draft.
 

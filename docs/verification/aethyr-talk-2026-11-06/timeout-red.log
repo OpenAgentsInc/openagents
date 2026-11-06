@@ -1,0 +1,7 @@
+FAIL #test the deadline chooses the same fallback before or after a late callback (2 ms)
+aethyr/talk/ask.coax:45:17: error[E0406]: assertion failed
+    key:=a[0].key;#assert talk_tick(a[..],14) && !a[0].pending;
+                  ^
+  note: in #test the deadline chooses the same fallback before or after a late callback
+1 of 27 checks (--only 'the deadline chooses'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

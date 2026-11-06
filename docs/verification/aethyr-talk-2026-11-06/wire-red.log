@@ -1,0 +1,7 @@
+FAIL #test the minimal character question is the independently written 99 byte API body (0 ms)
+aethyr/talk/wire.coax:15:3: error[E0406]: assertion failed
+    #assert n==99 && cast(string)out[0..<n]==expected;
+    ^
+  note: in #test the minimal character question is the independently written 99 byte API body
+1 of 110 checks (--only 'the minimal character question'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

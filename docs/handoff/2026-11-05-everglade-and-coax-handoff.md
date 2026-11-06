@@ -122,7 +122,11 @@ Compiler:
 - The order of work is recorded in
   `coax/audits/2026-11-05-mmorpg-language-and-compiler.md`.
 
-Books: #12610 stays open and paused. Approved books work is #12947 and the runnable Coax section in #12948.
+Books: #12610 remains open. On November 6 the owner requested the next logical
+chapter after reviewing its comments: Aethyr 77, following the latest 75/76
+deliveries. That bounded chapter work is authorized; this does not resume the
+entire book epic. Earlier approved work is #12947 and the runnable Coax section
+in #12948.
 
 ## Open issues and who owns them
 
@@ -149,7 +153,7 @@ Books: #12610 stays open and paused. Approved books work is #12947 and the runna
 | #12954, #12955 | Closed through `b2e866b1c3`: in-memory transactions and persisted/published compatibility. Transaction/ledger/compatibility gates kill 51/254/306 mutants, zero survivors. Third-target and ledger refusals restore state in evaluator and native development/release. Ten independent compatibility compositions pass; the actual release-reference regression now refuses unknown production identity before comparison. The [independent audit](../verification/compat-independent-audit-2026-11-06/README.md) and [final delivery](../verification/coax-checked-state-2026-11-06/README.md) retain the evidence. No production deploy or crash atomicity is claimed. |
 | #12959 | Completed: the [Physics Lab](../../aethyr/lab/README.md) runs all six seeded scenes on Aethyr, pinned Rapier 0.36.1 and Jolt 5.6.0 from one command on coderos-4080. Every Aethyr repeat matches all sampled state bytes; all six headless captures are saved. The [results](../verse/physics-lab-2026-11-06.md) retain the stack collapse, settling gaps and timing differences. References stay in an ignored lab cache; no product, book or Psionic adoption is claimed. |
 | #12962 | Concurrent Echo facial-animation work is in `oa-echo-slay-face`; reconcile its current delivery before taking it. |
-| #12610 | The book epic, paused by the owner. |
+| #12610 | Owner requested the next logical chapter on November 6: Aethyr 77 now has a bounded native conversation profile, exact debug/release examples and 518 root mutants killed. [Chapter](../../aethyr/book/ch077-people-who-talk-back.md), [qualification](../verification/aethyr-talk-2026-11-06/README.md). The epic stays open; live realm/server, persistent-memory and voice integrations remain. |
 | #12864–#12867 | Excluded; left for Codex. |
 
 ## #12940 verification (2026-11-06, 01:52 Chicago)

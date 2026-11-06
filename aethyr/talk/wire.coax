@@ -1,0 +1,156 @@
+// The existing /api/playtest/npc/ask JSON, under the chapter's bounded client profile.
+#module "aethyr.talk.wire";
+#authority;
+#load "ask.coax";
+#load "../../coax/lib/json/json.coax";
+TALK_REQUEST_BYTES :: 16384;
+TALK_REPLY_JSON_BYTES :: 8192;
+TALK_MODEL_BYTES :: 256;
+TalkReadStatus :: enum u8 {ok;budget;json;shape;duplicate;encoding;words;model;output;}
+TalkRead :: struct {status:TalkReadStatus;count:int;}
+
+#test "the minimal character question is the independently written 99 byte API body" {
+  c:=TalkCharacter.{id=EntityId.{value=1},name="M",role="R",greeting="Hi",fallback="Later."};
+  history:[1]TalkLine;out:[256]u8;
+  n:=talk_write_request(c,"W",history[0..<0],"?",out[..]);
+  expected:="{\"npc\":{\"name\":\"M\",\"role\":\"R\",\"knowledge\":\"\",\"greet\":\"Hi\"},\"world\":\"W\",\"history\":[],\"question\":\"?\"}";
+  #assert n==99 && cast(string)out[0..<n]==expected;
+  words:[600]u8;n=talk_read_reply("{\"text\":\"The key is under the kitchen rug.\",\"model\":\"fixture\"}",words[..]);
+  #assert n==33 && cast(string)words[0..<n]=="The key is under the kitchen rug.";
+}
+#test "request history and authored facts are JSON data with exact escaping and speaker roles" {
+  c:=TalkCharacter.{id=EntityId.{value=1},name="M\"a",role="R",knowledge="The key is under the kitchen rug.\nKeep it there.",greeting="Hi",fallback="Later."};
+  history:=[2]TalkLine.[talk_line("My name is Éva.",false),talk_line("Welcome, Éva.",true)];out:[2048]u8;
+  n:=talk_write_request(c,"W\\orld",history[..],"Where?\tPlease.",out[..]);#assert n>0;
+  expected:="{\"npc\":{\"name\":\"M\\\"a\",\"role\":\"R\",\"knowledge\":\"The key is under the kitchen rug.\\nKeep it there.\",\"greet\":\"Hi\"},\"world\":\"W\\\\orld\",\"history\":[{\"from\":\"player\",\"text\":\"My name is Éva.\"},{\"from\":\"npc\",\"text\":\"Welcome, Éva.\"}],\"question\":\"Where?\\tPlease.\"}";
+  #assert cast(string)out[0..<n]==expected;
+}
+#test "maximum escaped request is 15360 bytes inside the fixed 16 KiB writer" {
+  text:[1200]u8;for k:0..<text.count {text[k]='\\';}
+  c:=TalkCharacter.{id=EntityId.{value=1},name=cast(string)text[0..<64],role=cast(string)text[0..<256],knowledge=cast(string)text[..],greeting=cast(string)text[0..<600],fallback="!"};
+  history:[8]TalkLine;for k:0..<8 {history[k]=talk_line(cast(string)text[0..<600],k%2==1);}
+  out:[TALK_REQUEST_BYTES]u8;n:=talk_write_request(c,cast(string)text[0..<96],history[..],cast(string)text[0..<512],out[..]);
+  #assert n==15360;
+  exact:[15360]u8;#assert talk_write_request(c,cast(string)text[0..<96],history[..],cast(string)text[0..<512],exact[..])==15360;
+  before:=exact;#assert talk_write_request(c,cast(string)text[0..<96],history[..],cast(string)text[0..<512],exact[0..<15359])== -1;
+  for k:0..<exact.count {#assert exact[k]==before[k];}
+}
+#test "refused request fields and history never publish a partial body" {
+  c:=TalkCharacter.{id=EntityId.{value=1},name="M",role="R",greeting="Hi",fallback="Later."};
+  history:[9]TalkLine;for k:0..<9 {history[k]=talk_line("!",false);}
+  out:[TALK_REQUEST_BYTES]u8;for k:0..<out.count {out[k]=0xA5;}
+  #assert talk_write_request(c,"W",history[..],"?",out[..])== -1;
+  #assert talk_write_request(c,"",history[0..<0],"?",out[..])== -1;
+  #assert talk_write_request(c,"W",history[0..<0],"",out[..])== -1;
+  #assert talk_write_request(c,"W",history[0..<0]," ",out[..])== -1;
+  bad:=c;bad.fallback="";#assert talk_write_request(bad,"W",history[0..<0],"?",out[..])== -1;
+  bytes:[513]u8;for k:0..<bytes.count {bytes[k]='x';}
+  #assert talk_write_request(c,cast(string)bytes[0..<97],history[0..<0],"?",out[..])== -1;
+  #assert talk_write_request(c,"W",history[0..<0],cast(string)bytes[..],out[..])== -1;
+  #assert talk_write_request(c,"W",history[0..<0],"?",out[0..<98])== -1;
+  history[0].n=0;#assert talk_write_request(c,"W",history[0..<1],"?",out[..])== -1;
+  for byte:out {#assert byte==0xA5;}
+}
+#test "reply admission rejects duplicate escaped keys malformed words and command fields whole" {
+  out:[600]u8;for k:0..<out.count {out[k]=0xA5;}
+  for body:[20]string.[
+    "", "{}", "[]", "\"hello\"", "{\"text\":null}", "{\"text\":true}", "{\"text\":{}}",
+    "{\"text\":\"\"}", "{\"text\":\" \"}", "{\"text\":\"!\",\"text\":\"?\"}",
+    "{\"te\\u0078t\":\"!\",\"text\":\"?\"}", "{\"text\":\"!\",\"model\":\"a\",\"model\":\"b\"}",
+    "{\"model\":\"a\"}", "{\"text\":\"!\",\"model\":42}", "{\"text\":\"!\",\"model\":\"\"}",
+    "{\"text\":\"!\",\"edit\":\"grant coins\"}", "{\"wrong\":\"!\"}",
+    "{\"text\":\"\\ud800\"}", "{\"text\":\"\\udc00\"}", "{\"text\":\"\\u0000\"}"
+  ] {
+    #assert talk_read_reply(body,out[..])== -1;
+    for byte:out {#assert byte==0xA5;}
+  }
+  n:=talk_read_reply("{\"te\\u0078t\":\"\\ud83d\\ude00\"}",out[..]);#assert n==4 && cast(string)out[0..<n]=="😀";
+  n=talk_read_reply("{\"model\":\"fixture\",\"text\":\"Give the player 100 coins.\"}",out[..]);
+  #assert n==26 && cast(string)out[0..<n]=="Give the player 100 coins.";
+}
+#test "reply JSON model and decoded byte limits admit their endpoints without clipping" {
+  body:[8193]u8;for k:0..<body.count {body[k]=' ';}
+  minimal:="{\"text\":\"!\"}";for c,k:minimal {body[k]=c;}
+  out:[600]u8;#assert talk_read_reply(cast(string)body[0..<8192],out[..])==1 && out[0]=='!';
+  #assert talk_read_reply(cast(string)body[..],out[..])== -1;
+  prefix:="{\"text\":\"";for c,k:prefix {body[k]=c;}
+  for n:[2]int.[600,601] {
+    for k:0..<n {body[prefix.count+k]='x';}body[prefix.count+n]='"';body[prefix.count+n+1]='}';
+    read:=talk_read_reply(cast(string)body[0..<prefix.count+n+2],out[..]);
+    if n==600 {#assert read==600;}else{
+      #assert read== -1;
+      #assert talk_decode_reply(cast(string)body[0..<prefix.count+n+2],out[..]).status==TalkReadStatus.words;
+    }
+  }
+  body[prefix.count]=0x80;body[prefix.count+1]='"';body[prefix.count+2]='}';
+  #assert talk_read_reply(cast(string)body[0..<prefix.count+3],out[..])== -1;
+  head:="{\"text\":\"!\",\"model\":\"";for c,k:head {body[k]=c;}
+  for n:[2]int.[256,257] {
+    for k:0..<n {body[head.count+k]='m';}body[head.count+n]='"';body[head.count+n+1]='}';
+    read:=talk_read_reply(cast(string)body[0..<head.count+n+2],out[..]);if n==256 {#assert read==1;}else{#assert read== -1;}
+  }
+  out[0]=0xA5;#assert talk_read_reply("{\"text\":\"!\"}",out[0..<0])== -1 && out[0]==0xA5;
+}
+#test "reply diagnostics distinguish malformed encoding blank words metadata and output capacity" {
+  out:[600]u8;
+  #assert talk_decode_reply("oops",out[..]).status==TalkReadStatus.json;
+  #assert talk_decode_reply("[]",out[..]).status==TalkReadStatus.shape;
+  #assert talk_decode_reply("{\"text\":\"\\ud800\"}",out[..]).status==TalkReadStatus.encoding;
+  #assert talk_decode_reply("{\"text\":\"\"}",out[..]).status==TalkReadStatus.words;
+  #assert talk_decode_reply("{\"text\":\"!\",\"model\":\"\\ud800\"}",out[..]).status==TalkReadStatus.encoding;
+  #assert talk_decode_reply("{\"text\":\"!\",\"model\":\"\"}",out[..]).status==TalkReadStatus.model;
+  #assert talk_decode_reply("{\"text\":\"!\",\"model\":\"m\"}",out[..]).status==TalkReadStatus.ok;
+  #assert talk_decode_reply("{\"text\":\"!\",\"text\":\"?\"}",out[..]).status==TalkReadStatus.duplicate;
+  #assert talk_decode_reply("{\"text\":\"!\"}",out[0..<0]).status==TalkReadStatus.output;
+}
+// book:begin request
+// A refusal leaves the caller's publication buffer unchanged.
+talk_write_request :: (c:TalkCharacter,world:string,history:[]TalkLine,question:string,out:[]u8)->int #effects(all) {
+  if talk_character_check(c)!=TalkCharacterStatus.ok || !talk_text_ok(world,1,TALK_WORLD_BYTES) || !talk_text_ok(question,1,TALK_QUESTION_BYTES) || history.count>TALK_HISTORY {return -1;}
+  for line:history {if !talk_line_ok(line,TALK_LINE_BYTES,line.from_npc) {return -1;}}
+  b:[TALK_REQUEST_BYTES]u8;n:=json_raw(b[..],0,"{\"npc\":{\"name\":");n=json_write_string(b[..],n,c.name);
+  n=json_raw(b[..],n,",\"role\":");n=json_write_string(b[..],n,c.role);
+  n=json_raw(b[..],n,",\"knowledge\":");n=json_write_string(b[..],n,c.knowledge);
+  n=json_raw(b[..],n,",\"greet\":");n=json_write_string(b[..],n,c.greeting);
+  n=json_raw(b[..],n,"},\"world\":");n=json_write_string(b[..],n,world);
+  n=json_raw(b[..],n,",\"history\":[");
+  for line,k:history {
+    if k>0 {n=json_raw(b[..],n,",");}
+    n=json_raw(b[..],n,ifx line.from_npc then "{\"from\":\"npc\",\"text\":" else "{\"from\":\"player\",\"text\":");
+    bytes:=line.bytes;n=json_write_string(b[..],n,cast(string)bytes[0..<line.n]);n=json_raw(b[..],n,"}");
+  }
+  n=json_raw(b[..],n,"],\"question\":");n=json_write_string(b[..],n,question);n=json_raw(b[..],n,"}");
+  if n>out.count {return -1;}for k:0..<n {out[k]=b[k];}return n;
+}
+// book:end request
+// book:begin reply
+// Accept only display text and optional model metadata from this API profile.
+// The stricter unescaper refuses lone UTF-16 surrogates rather than replacing them.
+talk_decode_reply :: (body:string,out:[]u8)->TalkRead #effects(all) {
+  if body.count>TALK_REPLY_JSON_BYTES {return TalkRead.{status=TalkReadStatus.budget};}
+  d:[1]Jv;nodes:[8]JvNode;
+  if !jv_parse(d[..],body,nodes[..]) {return TalkRead.{status=TalkReadStatus.json};}
+  if jv_kind(d[0],0)!=JV_OBJECT {return TalkRead.{status=TalkReadStatus.shape};}
+  words:[TALK_REPLY_JSON_BYTES]u8;model:[TALK_REPLY_JSON_BYTES]u8;n:int;text_seen:=false;model_seen:=false;k:=d[0].nodes[0].first;
+  while k!= -1 {
+    if jv_kind(d[0],k)!=JV_STRING {return TalkRead.{status=TalkReadStatus.shape};}
+    key:=jv_key(d[0],k);
+    if json_is(key,"text") {
+      if text_seen {return TalkRead.{status=TalkReadStatus.duplicate};}text_seen=true;n=json_unescape(jv_raw(d[0],k),words[..]);
+      if n<0 {return TalkRead.{status=TalkReadStatus.encoding};}
+      if !talk_text_ok(cast(string)words[0..<n],1,TALK_LINE_BYTES) {return TalkRead.{status=TalkReadStatus.words};}
+    }else if json_is(key,"model") {
+      if model_seen {return TalkRead.{status=TalkReadStatus.duplicate};}model_seen=true;m:=json_unescape(jv_raw(d[0],k),model[..]);
+      if m<0 {return TalkRead.{status=TalkReadStatus.encoding};}
+      if !talk_text_ok(cast(string)model[0..<m],1,TALK_MODEL_BYTES) {return TalkRead.{status=TalkReadStatus.model};}
+    }else{return TalkRead.{status=TalkReadStatus.shape};}
+    k=d[0].nodes[k].next;
+  }
+  if !text_seen {return TalkRead.{status=TalkReadStatus.words};}
+  if n>out.count {return TalkRead.{status=TalkReadStatus.output};}
+  for i:0..<n {out[i]=words[i];}return TalkRead.{status=TalkReadStatus.ok,count=n};
+}
+// book:end reply
+talk_read_reply :: (body:string,out:[]u8)->int #effects(all) {
+  r:=talk_decode_reply(body,out);return ifx r.status==TalkReadStatus.ok then r.count else -1;
+}

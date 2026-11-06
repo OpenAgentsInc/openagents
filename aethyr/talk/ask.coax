@@ -1,0 +1,342 @@
+// Conversation state is owned text and typed request identities. It has no game-state pointer.
+#module "aethyr.talk.ask";
+#authority;
+#load "character.coax";
+
+// book:begin session
+TALK_HISTORY :: 8;
+TALK_EXCHANGES :: 8;
+TALK_SERIAL_LIMIT :: 1000000;
+TalkLine :: struct {bytes:[TALK_LINE_BYTES]u8;n:int;from_npc:bool;}
+TalkKey :: struct {epoch:int;request:int;character:EntityId;player:int;}
+TalkExchange :: struct {key:TalkKey;asked:int;deadline:int;applied:int;question:TalkLine;answer:TalkLine;fallback:bool;}
+TalkError :: enum u8 {none;closed;character;player;question;busy;full;exhausted;clock;identity;record;missed_tick;mode;}
+TalkStart :: enum u8 {refused;send;replay_wait;}
+TalkSession :: struct {
+  open:bool;replaying:bool;failed:bool;
+  epoch:int #counter;serial:int #counter;refused:int #counter;
+  character:EntityId;player:int;
+  pending:bool;key:TalkKey;asked:int;deadline:int;now:int;
+  question:[1]TalkLine;fallback:[1]TalkLine;answer:[1]TalkLine;
+  history:[TALK_HISTORY]TalkLine;history_n:int;
+  log:[TALK_EXCHANGES]TalkExchange;log_n:int;cursor:int;
+  error:TalkError;
+}
+// book:end session
+
+#test "a failed model answers from the authored line and keeps the question and reply" {
+  c:=TalkCharacter.{id=EntityId.{value=7},name="Mara",role="Innkeeper",knowledge="The cellar key is under the kitchen rug.",greeting="Welcome.",fallback="Try the kitchen rug."};
+  s:[1]TalkSession;
+  #assert talk_open(s[..],c,11);
+  #assert talk_begin(s[..],c,"Where is the cellar key?",10,5)==TalkStart.send;
+  key:=s[0].key;#assert key.epoch==1 && key.request==1 && key.character.value==7 && key.player==11;
+  #assert talk_receive(s[..],key,11,false,"");
+  #assert !s[0].pending && s[0].log_n==1 && s[0].history_n==2 && s[0].log[0].fallback;
+  #assert talk_line_text(s[0].answer[..])=="Try the kitchen rug.";
+  #assert talk_line_text(s[0].history[0..<1])=="Where is the cellar key?";
+  #assert !s[0].history[0].from_npc && s[0].history[1].from_npc;
+  #assert s[0].log[0].asked==10 && s[0].log[0].applied==11;
+}
+#test "the deadline chooses the same fallback before or after a late callback" {
+  c:=TalkCharacter.{id=EntityId.{value=1},name="M",role="R",greeting="Hi",fallback="Later."};
+  a:[1]TalkSession;b:[1]TalkSession;#assert talk_open(a[..],c,1) && talk_open(b[..],c,1);
+  #assert talk_begin(a[..],c,"Key?",10,4)==TalkStart.send && talk_begin(b[..],c,"Key?",10,4)==TalkStart.send;
+  #assert !talk_tick(a[..],13) && a[0].pending;
+  key:=a[0].key;#assert talk_tick(a[..],14) && !a[0].pending;
+  #assert !talk_receive(a[..],key,14,true,"Too late.") && a[0].log_n==1;
+  #assert talk_receive(b[..],b[0].key,14,true,"Too late.") && b[0].log_n==1;
+  #assert talk_line_text(a[0].answer[..])=="Later." && talk_line_text(b[0].answer[..])=="Later.";
+  #assert a[0].log[0].applied==14 && b[0].log[0].applied==14 && a[0].log[0].fallback && b[0].log[0].fallback;
+}
+#test "each request identity field fences replies and another question cannot replace the pending one" {
+  c:=TalkCharacter.{id=EntityId.{value=7},name="M",role="R",greeting="Hi",fallback="Later."};s:[1]TalkSession;
+  #assert talk_open(s[..],c,11) && talk_begin(s[..],c,"Key?",1,10)==TalkStart.send;
+  key:=s[0].key;
+  for field:0..<4 {
+    wrong:=key;if field==0 {wrong.epoch+=1;}if field==1 {wrong.request+=1;}if field==2 {wrong.character.value+=1;}if field==3 {wrong.player+=1;}
+    #assert !talk_receive(s[..],wrong,2,true,"Wrong conversation.") && s[0].pending && s[0].log_n==0 && s[0].history_n==0;
+  }
+  #assert talk_begin(s[..],c,"Replace it?",2,10)==TalkStart.refused && s[0].error==TalkError.busy;
+  #assert talk_receive(s[..],key,2,true,"The key is under the kitchen rug.");
+  #assert !talk_receive(s[..],key,3,true,"Duplicate.") && s[0].log_n==1;
+  #assert talk_line_text(s[0].question[..])=="Key?" && s[0].refused==6;
+  #assert talk_open(s[..],c,11) && talk_begin(s[..],c,"Next visit?",4,10)==TalkStart.send;
+  #assert s[0].key.epoch==2 && s[0].key.request==1 && !talk_receive(s[..],key,5,true,"Retired owner.");
+}
+#test "an already observed realm tick cannot be rewound by a reply" {
+  c:=TalkCharacter.{id=EntityId.{value=1},name="M",role="R",greeting="Hi",fallback="Later."};s:[1]TalkSession;
+  #assert talk_open(s[..],c,1) && talk_begin(s[..],c,"Key?",1,10)==TalkStart.send;
+  #assert !talk_tick(s[..],4) && s[0].pending;
+  #assert !talk_receive(s[..],s[0].key,3,true,"Rewound.") && s[0].pending && s[0].log_n==0;
+  #assert talk_receive(s[..],s[0].key,4,true,"Present.");
+  #assert talk_begin(s[..],c,"Earlier?",3,10)==TalkStart.refused && s[0].error==TalkError.clock;
+}
+#test "replay publishes the recorded words on their ticks without asking the model" {
+  c:=TalkCharacter.{id=EntityId.{value=7},name="Mara",role="Innkeeper",greeting="Welcome.",fallback="Try the kitchen rug."};
+  live:[1]TalkSession;play:[1]TalkSession;#assert talk_open(live[..],c,11);
+  #assert talk_begin(live[..],c,"Key?",10,5)==TalkStart.send;
+  #assert talk_receive(live[..],live[0].key,11,true,"The cellar key is under the kitchen rug.");
+  #assert talk_begin(live[..],c,"Again?",20,5)==TalkStart.send && talk_tick(live[..],25);
+  #assert talk_replay(play[..],c,11,live[0].log[0..<2]);
+  #assert talk_begin(play[..],c,"Key?",10,5)==TalkStart.replay_wait;
+  #assert play[0].key.epoch==1 && play[0].key.request==1 && play[0].key.character.value==7 && play[0].key.player==11;
+  #assert play[0].serial==1 && play[0].asked==10 && play[0].now==10 && play[0].deadline==15;
+  #assert talk_line_text(play[0].question[..])=="Key?";
+  #assert !talk_receive(play[..],play[0].key,10,true,"An unwanted remote answer.");
+  #assert !talk_tick(play[..],10) && play[0].pending;
+  #assert talk_tick(play[..],11) && talk_line_text(play[0].answer[..])=="The cellar key is under the kitchen rug.";
+  #assert talk_begin(play[..],c,"Again?",20,5)==TalkStart.replay_wait;
+  #assert !talk_tick(play[..],24) && talk_tick(play[..],25);
+  #assert talk_line_text(play[0].answer[..])=="Try the kitchen rug." && play[0].cursor==2 && play[0].log_n==2;
+  #assert talk_begin(play[..],c,"Beyond the record?",30,5)==TalkStart.refused && play[0].error==TalkError.exhausted;
+  #assert talk_replay(live[..],c,11,live[0].log[0..<2]); // the source may alias the destination
+  #assert talk_begin(live[..],c,"Changed question",10,5)==TalkStart.refused && live[0].cursor==0;
+  #assert talk_begin(live[..],c,"Kev?",10,5)==TalkStart.refused && live[0].cursor==0;
+  #assert talk_begin(live[..],c,"Key?",10,6)==TalkStart.refused && live[0].cursor==0;
+  #assert talk_begin(live[..],c,"Key?",10,5)==TalkStart.replay_wait;
+  #assert live[0].error==TalkError.none;
+  #assert !talk_tick(live[..],12) && live[0].failed && live[0].error==TalkError.missed_tick;
+  #assert !talk_tick(live[..],13) && live[0].failed;
+  #assert talk_begin(live[..],c,"Again?",20,5)==TalkStart.refused && live[0].error==TalkError.record;
+  #assert talk_begin(live[..],c,"Key?",10,5)==TalkStart.refused && live[0].error==TalkError.record;
+}
+#test "question clock identity and serial boundaries refuse before opening another request" {
+  c:=TalkCharacter.{id=EntityId.{value=1},name="M",role="R",greeting="Hi",fallback="Later."};s:[1]TalkSession;
+  #assert talk_begin(s[..],c,"?",0,1)==TalkStart.refused && s[0].error==TalkError.closed;
+  #assert !talk_open(s[..],c,0) && s[0].error==TalkError.player;
+  #assert !talk_open(s[..],c,-1) && s[0].error==TalkError.player;
+  bad:=c;bad.fallback="";#assert !talk_open(s[..],bad,1) && s[0].error==TalkError.character;
+  s[0].epoch= -1;#assert !talk_open(s[..],c,1) && s[0].error==TalkError.exhausted;
+  s[0].epoch=TALK_SERIAL_LIMIT-1;#assert talk_open(s[..],c,1) && s[0].epoch==TALK_SERIAL_LIMIT;
+  #assert !talk_open(s[..],c,1) && s[0].error==TalkError.exhausted;
+  s[0].epoch=0;#assert talk_open(s[..],c,1);
+  #assert talk_begin(s[..],bad,"?",0,1)==TalkStart.refused && s[0].error==TalkError.character;
+  bad=c;bad.id.value=2;#assert talk_begin(s[..],bad,"?",0,1)==TalkStart.refused;
+  #assert talk_begin(s[..],c,"",0,1)==TalkStart.refused && s[0].error==TalkError.question;
+  q:[513]u8;for k:0..<q.count {q[k]='q';}
+  #assert talk_begin(s[..],c,cast(string)q[..],0,1)==TalkStart.refused && !s[0].pending && s[0].serial==0;
+  broken:=[1]u8.[0x80];#assert talk_begin(s[..],c,cast(string)broken[..],0,1)==TalkStart.refused;
+  #assert talk_begin(s[..],c,"?",-1,1)==TalkStart.refused && s[0].error==TalkError.clock;
+  #assert talk_begin(s[..],c,"?",0,0)==TalkStart.refused;
+  #assert talk_begin(s[..],c,"?",0,TALK_SERIAL_LIMIT+1)==TalkStart.refused;
+  #assert talk_begin(s[..],c,"?",TALK_SERIAL_LIMIT,1)==TalkStart.refused;
+  s[0].serial=TALK_SERIAL_LIMIT-1;
+  #assert talk_begin(s[..],c,cast(string)q[0..<512],0,1)==TalkStart.send && s[0].serial==TALK_SERIAL_LIMIT;
+  #assert talk_receive(s[..],s[0].key,0,true,"!");
+  #assert talk_begin(s[..],c,"?",0,1)==TalkStart.refused && s[0].error==TalkError.exhausted;
+  s[0].refused=9223372036854775807;#assert !talk_open(s[..],c,0) && s[0].refused==9223372036854775807;
+  #assert talk_open(s[..],c,1) && talk_begin(s[..],c,"?",0,TALK_SERIAL_LIMIT)==TalkStart.send;
+  #assert !talk_receive(s[..],s[0].key,-1,true,"Past.") && s[0].pending;
+  #assert !talk_receive(s[..],s[0].key,TALK_SERIAL_LIMIT+1,true,"Future.") && s[0].pending;
+  #assert !talk_tick(s[..],TALK_SERIAL_LIMIT+1) && s[0].pending;
+  #assert talk_receive(s[..],s[0].key,TALK_SERIAL_LIMIT,true,"At the fence.") && s[0].log[0].fallback;
+  #assert talk_open(s[..],c,1) && talk_begin(s[..],c,"?",TALK_SERIAL_LIMIT-1,1)==TalkStart.send;
+  #assert talk_tick(s[..],TALK_SERIAL_LIMIT) && !talk_tick(s[..],TALK_SERIAL_LIMIT);
+}
+#test "a bounded log keeps the last four exchanges in memory and refuses a ninth whole" {
+  c:=TalkCharacter.{id=EntityId.{value=1},name="M",role="R",greeting="Hi",fallback="Later."};s:[1]TalkSession;
+  #assert talk_open(s[..],c,1);
+  questions:=[8]string.["A","B","C","D","E","F","G","H"];
+  answers:=[8]string.["1","2","3","4","5","6","7","8"];
+  for k:0..<8 {
+    #assert talk_begin(s[..],c,questions[k],k*2,2)==TalkStart.send;
+    #assert talk_receive(s[..],s[0].key,k*2+1,true,answers[k]);
+    #assert s[0].log_n==k+1 && s[0].log[k].key.request==k+1 && !s[0].log[k].fallback;
+  }
+  #assert s[0].history_n==8 && talk_line_text(s[0].history[0..<1])=="E" && talk_line_text(s[0].history[6..<7])=="H";
+  #assert talk_line_text(s[0].history[7..<8])=="8" && s[0].history[7].from_npc;
+  #assert talk_begin(s[..],c,"I",16,2)==TalkStart.refused && s[0].error==TalkError.full;
+  #assert s[0].serial==8 && s[0].log_n==8 && s[0].history_n==8 && !s[0].pending;
+  #assert talk_replay(s[..],c,1,s[0].log[..]) && s[0].log_n==8;
+  #assert talk_begin(s[..],c,"A",0,2)==TalkStart.replay_wait && talk_tick(s[..],1);
+}
+#test "malformed empty or oversized model words use a complete fallback and never a prefix" {
+  c:=TalkCharacter.{id=EntityId.{value=1},name="M",role="R",greeting="Hi",fallback="Later."};
+  words:[601]u8;for k:0..<words.count {words[k]='x';}
+  for n:[3]int.[0,600,601] {
+    s:[1]TalkSession;#assert talk_open(s[..],c,1) && talk_begin(s[..],c,"?",0,2)==TalkStart.send;
+    #assert talk_receive(s[..],s[0].key,1,true,cast(string)words[0..<n]);
+    #assert s[0].log[0].fallback==(n!=600);
+    if n==600 {#assert s[0].answer[0].n==600;}else{#assert talk_line_text(s[0].answer[..])=="Later.";}
+  }
+  bad:=[1]u8.[0x80];s:[1]TalkSession;
+  #assert talk_open(s[..],c,1) && talk_begin(s[..],c,"?",0,2)==TalkStart.send;
+  #assert talk_receive(s[..],s[0].key,1,true,cast(string)bad[..]) && s[0].log[0].fallback;
+  #assert talk_open(s[..],c,1) && talk_line_text(s[0].answer[..])=="";
+}
+#test "record admission refuses each malformed field without replacing a live pending conversation" {
+  c:=TalkCharacter.{id=EntityId.{value=7},name="M",role="R",greeting="Hi",fallback="Later."};source:[1]TalkSession;
+  #assert talk_open(source[..],c,11);
+  for k:0..<2 {#assert talk_begin(source[..],c,"?",k*4,3)==TalkStart.send && talk_receive(source[..],source[0].key,k*4+1,true,"!");}
+  s:[1]TalkSession;#assert talk_open(s[..],c,11) && talk_begin(s[..],c,"Stay pending",0,20)==TalkStart.send;
+  for bad:0..<24 {
+    records:=[2]TalkExchange.[source[0].log[0],source[0].log[1]];
+    if bad==0 {records[0].key.epoch=0;}if bad==1 {records[0].key.epoch=TALK_SERIAL_LIMIT+1;}
+    if bad==2 {records[1].key.epoch+=1;}if bad==3 {records[0].key.request=0;}if bad==4 {records[0].key.character.value=8;}
+    if bad==5 {records[0].key.player=12;}if bad==6 {records[0].asked= -1;}if bad==7 {records[0].deadline=records[0].asked;}
+    if bad==8 {records[0].deadline=TALK_SERIAL_LIMIT+1;}if bad==9 {records[0].applied= -1;}if bad==10 {records[0].applied=TALK_SERIAL_LIMIT+1;}
+    if bad==11 {records[1].asked=0;}if bad==12 {records[0].question.n=0;}if bad==13 {records[0].question.n=513;}
+    if bad==14 {records[0].question.from_npc=true;}if bad==15 {records[0].answer.from_npc=false;}
+    if bad==16 {records[0].answer.n=601;}if bad==17 {records[0].answer.bytes[0]=0x80;}
+    if bad==18 {records[0].answer.bytes[1]=1;}if bad==19 {records[0].question.bytes[599]=1;}
+    if bad==20 {records[0].fallback=true;}if bad==21 {records[0].applied=records[0].deadline;}
+    if bad==22 {records[0].question.bytes[0]=0x80;}if bad==23 {records[0].answer.n=0;}
+    #assert !talk_replay(s[..],c,11,records[..]) && s[0].pending && !s[0].replaying && s[0].epoch==1 && s[0].log_n==0;
+    #assert talk_line_text(s[0].question[..])=="Stay pending";
+  }
+  #assert !talk_replay(s[..],c,11,source[0].log[0..<0]);
+  records:[9]TalkExchange;#assert !talk_replay(s[..],c,11,records[..]);
+  #assert !talk_replay(s[..],c,0,source[0].log[0..<2]) && s[0].error==TalkError.player;
+  bad:=c;bad.name="";#assert !talk_replay(s[..],bad,11,source[0].log[0..<2]);
+  s[0].epoch=TALK_SERIAL_LIMIT;#assert !talk_replay(s[..],c,11,source[0].log[0..<2]) && s[0].pending;
+  line:=talk_line("!",true);#assert !talk_line_ok(line,0,true) && !talk_line_ok(line,601,true);
+  source[0].log[0].key.epoch=TALK_SERIAL_LIMIT;source[0].log[1].key.epoch=TALK_SERIAL_LIMIT;
+  s[0].epoch=0;#assert talk_replay(s[..],c,11,source[0].log[0..<2]);
+}
+#test "observable clock and fallback snapshots belong to the accepted request" {
+  c:=TalkCharacter.{id=EntityId.{value=1},name="M",role="R",greeting="Hi",fallback="First."};s:[1]TalkSession;
+  #assert talk_open(s[..],c,1);c.fallback="Second.";
+  #assert talk_begin(s[..],c,"?",10,5)==TalkStart.send && s[0].now==10 && s[0].error==TalkError.none;
+  #assert !talk_receive(s[..],s[0].key,9,true,"Past.") && s[0].pending;
+  c.fallback="Third.";#assert talk_receive(s[..],s[0].key,11,false,"");
+  #assert talk_line_text(s[0].answer[..])=="Second." && s[0].now==11;
+  #assert talk_begin(s[..],c,"?",10,5)==TalkStart.refused && s[0].error==TalkError.clock;
+  #assert talk_begin(s[..],c,"?",11,5)==TalkStart.send && s[0].error==TalkError.none;
+  before:=s[0].refused;#assert !talk_tick(s[..],11) && s[0].refused==before;
+  #assert talk_receive(s[..],s[0].key,12,true,"Present.");
+  #assert !talk_tick(s[..],11) && s[0].error==TalkError.clock;
+}
+#test "record admission accepts exact endpoints and rejects otherwise valid one-past values" {
+  c:=TalkCharacter.{id=EntityId.{value=1},name="M",role="R",greeting="Hi",fallback="Later."};s:[1]TalkSession;
+  r:=TalkExchange.{key=TalkKey.{epoch=1,request=1,character=c.id,player=1},asked=0,deadline=1,applied=0,question=talk_line("?",false),answer=talk_line("!",true)};
+  one:=[1]TalkExchange.[r];#assert talk_replay(s[..],c,1,one[..]);
+  one[0].key.epoch=0;#assert !talk_replay(s[..],c,1,one[..]);
+  one[0].key.epoch=TALK_SERIAL_LIMIT+1;#assert !talk_replay(s[..],c,1,one[..]);
+  one[0]=r;one[0].fallback=true;one[0].answer=talk_line(c.fallback,true);one[0].deadline=0;
+  #assert !talk_replay(s[..],c,1,one[..]);
+  one[0].asked=TALK_SERIAL_LIMIT-1;one[0].deadline=TALK_SERIAL_LIMIT;one[0].applied=TALK_SERIAL_LIMIT;
+  #assert talk_replay(s[..],c,1,one[..]);
+  one[0].applied=TALK_SERIAL_LIMIT+1;#assert !talk_replay(s[..],c,1,one[..]);
+  two:=[2]TalkExchange.[r,r];two[1].key.request=2;
+  #assert talk_replay(s[..],c,1,two[..]); // an answer and next question may share a tick
+  bytes:[600]u8;for k:0..<bytes.count {bytes[k]='x';}
+  one[0]=r;one[0].question=talk_line(cast(string)bytes[0..<512],false);one[0].answer=talk_line(cast(string)bytes[..],true);
+  #assert talk_replay(s[..],c,1,one[..]);
+  #assert talk_begin(s[..],c,cast(string)bytes[0..<512],0,1)==TalkStart.replay_wait && talk_tick(s[..],0);
+  #assert talk_line_text(s[0].answer[..]).count==600;
+  one[0].question.bytes[512]='x';one[0].question.n=513;#assert !talk_replay(s[..],c,1,one[..]);
+  nine:[9]TalkExchange;for k:0..<9 {nine[k]=r;nine[k].key.request=k+1;}
+  #assert !talk_replay(s[..],c,1,nine[..]);
+  line:=talk_line("!",true);#assert talk_line_ok(line,1,true);
+}
+
+talk_no :: (s:[]TalkSession,error:TalkError)->bool #effects(all) {
+  s[0].refused=add_sat(s[0].refused,1);s[0].error=error;return false;
+}
+talk_line :: (text:string,npc:bool)->TalkLine #effects(all) {
+  line:=TalkLine.{n=text.count,from_npc=npc};for c,k:text {line.bytes[k]=c;}return line;
+}
+talk_line_text :: (line:[]TalkLine)->string #effects(all) {
+  // A view of a constructed or admitted line; external records go through
+  // talk_line_ok before this accessor can see them. Empty display is valid.
+  return cast(string)line[0].bytes[0..<line[0].n];
+}
+talk_same_key :: (a:TalkKey,b:TalkKey)->bool #effects(all) {
+  return a.epoch==b.epoch && a.request==b.request && a.character.value==b.character.value && a.player==b.player;
+}
+talk_open :: (s:[]TalkSession,c:TalkCharacter,player:int)->bool #effects(all) {
+  if talk_character_check(c)!=TalkCharacterStatus.ok {return talk_no(s,TalkError.character);}
+  if player<=0 {return talk_no(s,TalkError.player);}
+  if s[0].epoch<0 || s[0].epoch>=TALK_SERIAL_LIMIT {return talk_no(s,TalkError.exhausted);}
+  epoch:=add_sat(s[0].epoch,1);refused:=s[0].refused;
+  s[0]=TalkSession.{open=true,epoch=epoch,refused=refused,character=c.id,player=player};
+  return true;
+}
+talk_begin :: (s:[]TalkSession,c:TalkCharacter,question:string,tick:int,timeout:int)->TalkStart #effects(all) {
+  error:=TalkError.none;
+  if !s[0].open {error=TalkError.closed;}
+  else if s[0].failed {error=TalkError.record;}
+  else if talk_character_check(c)!=TalkCharacterStatus.ok || c.id.value!=s[0].character.value {error=TalkError.character;}
+  else if !talk_text_ok(question,1,TALK_QUESTION_BYTES) {error=TalkError.question;}
+  else if s[0].pending {error=TalkError.busy;}
+  else if tick<s[0].now || timeout<1 || tick>TALK_SERIAL_LIMIT-timeout {error=TalkError.clock;}
+  if error!=TalkError.none {_:=talk_no(s,error);return TalkStart.refused;}
+  if s[0].replaying {
+    if s[0].cursor>=s[0].log_n {_:=talk_no(s,TalkError.exhausted);return TalkStart.refused;}
+    r:=s[0].log[s[0].cursor];
+    if tick!=r.asked || tick+timeout!=r.deadline || !talk_line_eq_text(r.question,question) {_:=talk_no(s,TalkError.record);return TalkStart.refused;}
+    s[0].key=r.key;s[0].serial=r.key.request;s[0].question[0]=r.question;
+    s[0].asked=tick;s[0].now=tick;s[0].deadline=r.deadline;s[0].pending=true;s[0].error=TalkError.none;
+    return TalkStart.replay_wait;
+  }
+  if s[0].log_n>=TALK_EXCHANGES {_:=talk_no(s,TalkError.full);return TalkStart.refused;}
+  if s[0].serial>=TALK_SERIAL_LIMIT {_:=talk_no(s,TalkError.exhausted);return TalkStart.refused;}
+  s[0].serial=add_sat(s[0].serial,1);
+  s[0].key=TalkKey.{epoch=s[0].epoch,request=s[0].serial,character=s[0].character,player=s[0].player};
+  s[0].question[0]=talk_line(question,false);s[0].fallback[0]=talk_line(c.fallback,true);
+  s[0].asked=tick;s[0].now=tick;s[0].deadline=tick+timeout;s[0].pending=true;s[0].error=TalkError.none;
+  return TalkStart.send;
+}
+talk_present :: (s:[]TalkSession,answer:TalkLine) #effects(all) {
+  if s[0].history_n==TALK_HISTORY {
+    for k:2..<TALK_HISTORY {s[0].history[k-2]=s[0].history[k];}s[0].history_n-=2;
+  }
+  at:=s[0].history_n;s[0].history[at]=s[0].question[0];s[0].history[at+1]=answer;s[0].history_n+=2;
+  s[0].answer[0]=answer;s[0].pending=false;
+}
+talk_finish :: (s:[]TalkSession,answer:TalkLine,tick:int,fallback:bool) #effects(all) {
+  s[0].log[s[0].log_n]=TalkExchange.{key=s[0].key,asked=s[0].asked,deadline=s[0].deadline,applied=tick,question=s[0].question[0],answer=answer,fallback=fallback};
+  s[0].log_n+=1;talk_present(s,answer);
+}
+talk_receive :: (s:[]TalkSession,key:TalkKey,tick:int,ok:bool,text:string)->bool #effects(all) {
+  if s[0].replaying {return talk_no(s,TalkError.mode);}
+  if !s[0].pending || !talk_same_key(s[0].key,key) {return talk_no(s,TalkError.identity);}
+  if tick<s[0].now || tick>TALK_SERIAL_LIMIT {return talk_no(s,TalkError.clock);}
+  s[0].now=tick;
+  fallback:=tick>=s[0].deadline || !ok || !talk_text_ok(text,1,TALK_LINE_BYTES);
+  answer:=s[0].fallback[0];if !fallback {answer=talk_line(text,true);}
+  talk_finish(s,answer,tick,fallback);return true;
+}
+talk_tick :: (s:[]TalkSession,tick:int)->bool #effects(all) {
+  if tick<s[0].now || tick>TALK_SERIAL_LIMIT {return talk_no(s,TalkError.clock);}
+  s[0].now=tick;
+  if !s[0].pending {return false;}
+  if s[0].failed {return false;}
+  if s[0].replaying {
+    r:=s[0].log[s[0].cursor];
+    if tick<r.applied {return false;}
+    if tick>r.applied {s[0].failed=true;return talk_no(s,TalkError.missed_tick);}
+    talk_present(s,r.answer);s[0].cursor+=1;return true;
+  }
+  if tick<s[0].deadline {return false;}
+  talk_finish(s,s[0].fallback[0],tick,true);return true;
+}
+talk_line_eq_text :: (line:TalkLine,text:string)->bool #effects(all) {
+  if line.n!=text.count {return false;}for c,k:text {if line.bytes[k]!=c {return false;}}return true;
+}
+talk_line_ok :: (line:TalkLine,most:int,npc:bool)->bool #effects(all) {
+  if most<1 || most>TALK_LINE_BYTES || line.n<1 || line.n>most || line.from_npc!=npc {return false;}
+  bytes:=line.bytes;if !talk_text_ok(cast(string)bytes[0..<line.n],1,most) {return false;}
+  for k:line.n..<TALK_LINE_BYTES {if line.bytes[k]!=0 {return false;}}return true;
+}
+talk_log_ok :: (c:TalkCharacter,player:int,records:[]TalkExchange)->bool #effects(all) {
+  if records.count<1 || records.count>TALK_EXCHANGES {return false;}
+  epoch:=records[0].key.epoch;
+  for r,k:records {
+    if r.key.epoch<1 || r.key.epoch>TALK_SERIAL_LIMIT || r.key.epoch!=epoch || r.key.request!=k+1 || r.key.character.value!=c.id.value || r.key.player!=player {return false;}
+    if r.asked<0 || r.deadline<=r.asked || r.deadline>TALK_SERIAL_LIMIT || r.applied<r.asked || r.applied>TALK_SERIAL_LIMIT {return false;}
+    if k>0 && r.asked<records[k-1].applied {return false;}
+    if !talk_line_ok(r.question,TALK_QUESTION_BYTES,false) || !talk_line_ok(r.answer,TALK_LINE_BYTES,true) {return false;}
+    if r.fallback {if !talk_line_eq_text(r.answer,c.fallback) {return false;}}
+    else if r.applied>=r.deadline {return false;}
+  }
+  return true;
+}
+talk_replay :: (s:[]TalkSession,c:TalkCharacter,player:int,records:[]TalkExchange)->bool #effects(all) {
+  if talk_character_check(c)!=TalkCharacterStatus.ok {return talk_no(s,TalkError.character);}
+  if player<=0 {return talk_no(s,TalkError.player);}
+  if !talk_log_ok(c,player,records) {return talk_no(s,TalkError.record);}
+  saved:[TALK_EXCHANGES]TalkExchange;n:=records.count;for k:0..<n {saved[k]=records[k];}
+  if !talk_open(s,c,player) {return false;}
+  s[0].replaying=true;s[0].log_n=n;for k:0..<n {s[0].log[k]=saved[k];}return true;
+}

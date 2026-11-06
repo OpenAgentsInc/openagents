@@ -1,0 +1,7 @@
+FAIL #test a failed model answers from the authored line and keeps the question and reply (0 ms)
+aethyr/talk/ask.coax:30:3: error[E0406]: assertion failed
+    #assert talk_open(s[..],c,11);
+    ^
+  note: in #test a failed model answers from the authored line and keeps the question and reply
+1 of 25 checks (--only 'a failed model'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

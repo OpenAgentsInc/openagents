@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-12610-ch077/psionic/tests/book.py", line 420, in <module>
+    main()
+    ~~~~^^
+  File "/Users/christopherdavid/work/openagents-12610-ch077/psionic/tests/book.py", line 414, in main
+    examples = check(args.book)
+  File "/Users/christopherdavid/work/openagents-12610-ch077/psionic/tests/book.py", line 111, in check
+    assert not errors, "reviewed capability claims: " + "; ".join(errors)
+           ^^^^^^^^^^
+AssertionError: reviewed capability claims: coax.generics.current: evidence changed; review coax/tests/generics.py; coax.targets.current: evidence changed; review coax/tests/semantic_profiles.py; coax.targets.current: evidence changed; review coax/tests/reflection.py; coax.modules.current: evidence changed; review coax/tests/modules.py; psionic.language.current: evidence changed; review coax/tests/quantity.py; psionic.language.current: evidence changed; review coax/tests/quantity_derived.py; psionic.language.current: evidence changed; review coax/tests/spatial.py; coax.ids.current: evidence changed; review coax/tests/nominal-ids.py

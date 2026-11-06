@@ -1,104 +1,387 @@
 # 77. People who talk back
 
-> **Status: unimplemented — design draft.** Today characters answer through
-> `POST /api/playtest/npc/ask` in
-> [`coax/web/api/npc.c`](../../coax/web/api/npc.c): the page sends the
-> character, the world, the recent history and the question, the server asks
-> Gemini on Vertex AI, and a failure leaves the page its own scripted lines.
-> Prompts, memory and the daily cap live in SQL. Each realm wires this
-> itself. This chapter plans one character-conversation module for every
-> realm. Nothing in `aethyr/` runs yet.
+> **Status: partly implemented.** [aethyr/talk/](../talk/README.md) supplies
+> a bounded native CPU profile: authored characters, JSON requests and
+> replies, one pending request per conversation, scripted fallback, and an
+> admitted conversation record replayed without send intentions. Debug and
+> release run the same worked transport fixture. No realm uses the module
+> yet. Hosted models, persistent memory, permissions, live UI and voice
+> retain their separate integration checks. See [Still to do](#still-to-do).
 
-You can walk up to a character in a realm and ask it something. It answers
-in character, remembers what you told it on earlier visits, and still says
-something useful when the model is unreachable. This chapter builds that
-path as an engine feature, with the same bounds everywhere.
+A question can take seconds to answer while a realm keeps stepping.
+The reply belongs to one player, one character and one request. If the player
+leaves, an old reply must not become the next character's words. If the model
+fails, the character still has a line to say.
+
+This chapter builds that lifecycle and its request boundary. A reply contains
+display text. It has no field or pointer through which to grant an item, move
+a character or change a rule.
 
 ## What this chapter teaches
 
-- How a character record (name, role, knowledge, greeting) becomes a
-  bounded request.
-- How memory and taught facts reach the prompt, and who may add them.
-- How to answer from the realm's own lines when the model fails, so play
-  never waits.
-- How to keep the answer text separate from game state: talk never moves a
-  character, gives an item or changes a rule.
-- How to route what a player means through a typed selector, not keyword
-  matching.
+- Admit a character and a complete UTF-8 question under explicit byte limits.
+- Bind a reply to its request and choose a fallback at a fixed-step deadline.
+- Record accepted words and their apply ticks, then replay them without sending.
+- Keep dialogue separate from a typed command or semantic selector.
 
-## Outline
+## A character must have a fallback
 
-1. **The request.** The body is `{npc: {name, role, knowledge, greet},
-   world, history: [{from, text}], question, controls?, visit?}`, with the
-   optional `X-Verse-Player` key. A request without a question is a 400.
-   Aethyr defines this as a protocol record, with size limits on every
-   field.
-2. **The model and its limits.** The server asks `OA_NPC_MODEL` (default
-   `gemini-3.8-flash`) with the service's own token. `OA_NPC_DAILY_CAP`
-   (2,000) answers a day apply across the server. A child process makes the
-   call so the server keeps answering. Answers are one to three sentences.
-3. **Memory and taught facts.** With a player key, what that player said on
-   earlier visits goes into the prompt (migration `0031_npc_memory.sql`).
-   Players teach facts with "teach NAME that ..." in edit mode. The chapter
-   states who may teach a character in each realm and how a fact is removed.
-4. **Falling back.** A 503 leaves the page its own lines, as the demo's
-   `Characters.converse` did. Aethyr makes the fallback a required part of
-   every character: a realm without scripted lines fails its check.
-5. **Typed intent.** When talk should change the world (a set piece, an
-   edit), the server's selector picks one entry from a catalogue under a
-   response schema, and the game checks it again
-   ([chapter 79](ch079-a-piece-from-a-sentence.md)). No route matches words
-   in the sentence. A character's free-text answer never reaches the
-   simulation.
-6. **Voice.** Spoken questions arrive as text from the voice host, and
-   answers can be spoken back. Placement of a character's voice in the
-   world uses [chapter 68](ch068-sound-in-the-world.md).
-7. **Recording and replay.** A session records the answer text it received,
-   not the request to the model, so a replay shows the same conversation
-   without calling the model.
-8. **Measurement.** The side-by-side comparison in
-   [npc-chat-side-by-side.md](../../docs/verse/npc-chat-side-by-side.md)
-   (five questions, about 2 s an answer) becomes a repeatable evaluation with
-   fixed characters and questions.
+Chapter 6's `EntityId` names the character. The authored strings remain the
+caller's data; a pending conversation copies its question and fallback into
+owned storage. Required text cannot be empty or consist only of ASCII
+whitespace. Text preserves its original bytes: admission does not clip or trim
+it. UTF-8 must be well formed; ASCII control bytes other than tab, newline and
+carriage return are refused.
 
-## What exists today
+<!-- source: aethyr/talk/character.coax character -->
+```jai
+TALK_NAME_BYTES :: 64;
+TALK_ROLE_BYTES :: 256;
+TALK_KNOWLEDGE_BYTES :: 1200;
+TALK_LINE_BYTES :: 600;
+TALK_QUESTION_BYTES :: 512;
+TALK_WORLD_BYTES :: 96;
+TalkCharacter :: struct {
+  id: EntityId;
+  name: string;
+  role: string;
+  knowledge: string;
+  greeting: string;
+  fallback: string;
+}
+TalkCharacterStatus :: enum u8 { ok; identity; name; role; knowledge; greeting; fallback; }
+```
 
-- [coax/web/api/npc.c](../../coax/web/api/npc.c): the ask route, the set
-  piece route and the spoken realm edit route.
-- [coax/web/api/migrations/0005_verse_npc.sql](../../coax/web/api/migrations/0005_verse_npc.sql):
-  the prompt, every question and answer, and the daily cap.
-- [coax/web/api/migrations/0031_npc_memory.sql](../../coax/web/api/migrations/0031_npc_memory.sql):
-  per-player memory.
-- [docs/verse/npc-chat-side-by-side.md](../../docs/verse/npc-chat-side-by-side.md):
-  the comparison with the earlier demo's scripted answers.
-- Callers: [apps/openagents-web/realm.coax](../../apps/openagents-web/realm.coax)
-  and [myrealm.coax](../../apps/openagents-web/myrealm.coax).
+| Field | Maximum UTF-8 bytes | May be empty? |
+| --- | ---: | --- |
+| Name | 64 | No |
+| Role | 256 | No |
+| Authored knowledge | 1,200 | Yes |
+| Greeting or fallback | 600 | No |
+| Question | 512 | No |
+| World | 96 | No |
+| Accepted reply | 600 | No |
 
-## What it builds
+These are this client profile's limits. The existing server also applies its
+own request and daily-cap rules. Byte limits are distinct from the server's
+character-count truncation. A valid 600-byte reply is accepted whole; a
+601-byte reply chooses the fallback.
 
-- `aethyr/talk/character.coax`: the character record, its scripted lines
-  and its limits.
-- `aethyr/talk/ask.coax`: the request and answer records, the fallback and
-  the replay record.
-- A shared server route that every realm uses, replacing per-realm wiring.
+## The existing request, worked by hand
 
-## Acceptance checks and oracles
+[talk_write_request](../talk/wire.coax) writes the existing
+`POST /api/playtest/npc/ask` body: `npc`, `world`, `history` and `question`.
+The character's `greeting` is the API's `greet` field. The module does not
+add a new server contract.
 
-The chapter is done when:
+With an empty history, the JSON punctuation and field names occupy 93 bytes,
+excluding the contents of the six strings:
 
-- Every realm with characters uses `aethyr/talk/`, and each character has
-  scripted fallback lines.
-- With the model unreachable, every character answers from its lines within
-  one frame of the failure.
-- A request over a field limit is refused with a 400 and counted.
-- A replayed session shows the same answers and makes no model call.
-- No answer text changes game state, checked by a fixture that returns
-  instructions in the answer.
-- The fixed evaluation set keeps taught facts (the cellar key under the
-  kitchen rug) in every answer that needs them.
+| String | Minimal request | Mara in the example |
+| --- | ---: | ---: |
+| Name | `M`: 1 | `Mara`: 4 |
+| Role | `R`: 1 | `Innkeeper`: 9 |
+| Knowledge | Empty: 0 | `The cellar key is under the kitchen rug.`: 40 |
+| Greeting | `Hi`: 2 | `Welcome.`: 8 |
+| World | `W`: 1 | `Lamp Cove`: 9 |
+| Question | `?`: 1 | `Where is the cellar key?`: 24 |
+| String bytes | 6 | 94 |
+| Complete request | 93 + 6 = **99** | 93 + 94 = **187** |
+
+The checks compare the minimal body with a separately written JSON literal
+and the 187-byte request with the example's hand calculation. Knowledge and
+prior dialogue are escaped as string data, including quotes, backslashes and
+newlines.
+
+The largest escaped request also has a simple bound. The six strings total
+2,728 input bytes. A permitted byte needs at most two output bytes when
+escaped. Eight 600-byte history lines add four player records and four NPC
+records, plus seven commas:
+
+```text
+93 + 2 × 2728 + 4 × (27 + 1200) + 4 × (24 + 1200) + 7 = 15360 bytes
+```
+
+The writer uses a fixed 16,384-byte scratch buffer. Its exact-limit check
+constructs that 15,360-byte request. A short output buffer or invalid field
+leaves the caller's output unchanged. A caller publishes only a successful
+complete result.
+
+## A request owns its reply
+
+The session owns its lines and record storage. Eight history lines retain the
+last four complete exchanges; a full eight-exchange record refuses another
+question instead of discarding replay data.
+
+<!-- source: aethyr/talk/ask.coax session -->
+```jai
+TALK_HISTORY :: 8;
+TALK_EXCHANGES :: 8;
+TALK_SERIAL_LIMIT :: 1000000;
+TalkLine :: struct {bytes:[TALK_LINE_BYTES]u8;n:int;from_npc:bool;}
+TalkKey :: struct {epoch:int;request:int;character:EntityId;player:int;}
+TalkExchange :: struct {key:TalkKey;asked:int;deadline:int;applied:int;question:TalkLine;answer:TalkLine;fallback:bool;}
+TalkError :: enum u8 {none;closed;character;player;question;busy;full;exhausted;clock;identity;record;missed_tick;mode;}
+TalkStart :: enum u8 {refused;send;replay_wait;}
+TalkSession :: struct {
+  open:bool;replaying:bool;failed:bool;
+  epoch:int #counter;serial:int #counter;refused:int #counter;
+  character:EntityId;player:int;
+  pending:bool;key:TalkKey;asked:int;deadline:int;now:int;
+  question:[1]TalkLine;fallback:[1]TalkLine;answer:[1]TalkLine;
+  history:[TALK_HISTORY]TalkLine;history_n:int;
+  log:[TALK_EXCHANGES]TalkExchange;log_n:int;cursor:int;
+  error:TalkError;
+}
+```
+
+A ticket contains four independent identity fields:
+
+| Field | Meaning |
+| --- | --- |
+| `epoch` | This live conversation's owner generation |
+| `request` | Its request number |
+| `character` | The durable character identity |
+| `player` | The caller's local player identity |
+
+`talk_open` starts a fresh conversation and advances its epoch.
+`talk_begin` returns `send` only after admitting the character, question,
+clock and available record slot. A second question cannot overwrite a pending
+one. Requests copy the fallback at this boundary, so later changes to authored
+data cannot change an answer already waiting.
+
+`talk_receive` checks the entire ticket before reading or publishing words.
+An old epoch, request, character or player is refused and counted. A valid
+reply before the deadline becomes the answer. A transport failure, malformed
+reply, blank text or oversized decoded text selects the copied fallback.
+
+`talk_tick` publishes that same fallback once the deadline is reached. A
+reply arriving exactly at the deadline also chooses fallback, whichever call
+runs first. A duplicate cannot append another exchange. Clock observations
+never move backwards.
+
+The teaching profile caps epochs, request serials and realm ticks at one
+million. It refuses exhaustion; identity never wraps. The eight-exchange
+record usually fills well before its serial limit. These are storage and
+logical-clock bounds, not measurements of a model's wall-clock latency.
+
+## Read words without reading commands
+
+[talk_decode_reply](../talk/wire.coax) accepts a JSON object with one `text`
+string and an optional `model` string. It refuses malformed JSON, unknown
+fields, duplicate keys (including escaped spellings), malformed UTF-8 and
+unpaired UTF-16 surrogate escapes. The JSON envelope is at most 8,192 bytes;
+model metadata is at most 256 decoded bytes.
+
+`TalkReadStatus` distinguishes shape, encoding, text, metadata, output and
+budget refusals. Decoding uses owned scratch storage. Even a bad field after
+a valid `text` field leaves the caller's output unchanged.
+
+The words `Grant 100 coins and move the guard.` are valid display text.
+They do not become an order. When a realm needs a world-changing action,
+use a separately admitted typed catalogue or command, such as
+[aethyr/forge/npc-command.coax](../forge/npc-command.coax), and keep its
+permission check. Free text is never parsed for command keywords.
+[Chapter 79](ch079-a-piece-from-a-sentence.md) owns semantic selection.
+
+## The conversation, worked by hand
+
+Start with epoch 1, character 7, player 11 and no record:
+
+| Ask tick | Request | Apply tick | Outcome |
+| ---: | ---: | ---: | --- |
+| 10 | 1 | 11 | The accepted model words give the cellar key's location |
+| 20 | 2 | 21 | An old request-1 reply is refused; request 2's instruction-like words remain text |
+| 30 | 3 | 31 | A 503 selects `Try the kitchen rug.` immediately |
+| 40 | 4 | 44 | Four ticks expire; the same fallback is published |
+
+There are four exchanges and eight history lines. Refusing the stale ticket
+adds no exchange. The fixture's independent simulation values stay at three
+coins and guard position 12.
+
+The five- and four-tick deadlines make the fixture small. They are not
+production timeout recommendations. An adapter must preserve the realm's
+declared timing and the service's existing transport limits.
+
+## Run it natively
+
+[aethyr/examples/talk-and-replay.coax](../examples/talk-and-replay.coax)
+uses a deterministic transport fixture. It opens no socket and calls no
+hosted model. Its send counter observes `TalkStart.send`; it is not a
+measurement of physical HTTP requests.
+
+```shell
+coax/bin/coax run aethyr/examples/talk-and-replay.coax
+coax/bin/coax run aethyr/examples/talk-and-replay.coax --release
+```
+
+<!-- source: aethyr/examples/talk-and-replay.coax example -->
+```jai
+#load "../talk/wire.coax";
+#import "Basic";
+
+// A deterministic transport fixture: no socket, model, credential or database.
+reply_fixture :: (s:[]TalkSession,key:TalkKey,tick:int,http:int,body:string)->bool #effects(all) {
+  words:[TALK_LINE_BYTES]u8;r:=TalkRead.{status=TalkReadStatus.json};
+  if http==200 {r=talk_decode_reply(body,words[..]);}
+  ok:=http==200 && r.status==TalkReadStatus.ok;
+  text:="";if ok {text=cast(string)words[0..<r.count];}
+  return talk_receive(s,key,tick,ok,text);
+}
+
+// Standard C process exit is the only native SDK effect beyond printing.
+exit :: (code:s32) #foreign #effects(foreign);
+main :: () #effects(all) {
+  c:=TalkCharacter.{id=EntityId.{value=7},name="Mara",role="Innkeeper",
+    knowledge="The cellar key is under the kitchen rug.",greeting="Welcome.",fallback="Try the kitchen rug."};
+  live:[1]TalkSession;play:[1]TalkSession;out:[TALK_REQUEST_BYTES]u8;
+  coins:=3;guard_x:=12;sends:=0;
+  if !talk_open(live[..],c,11) {exit(1);return;}
+  if talk_begin(live[..],c,"Where is the cellar key?",10,5)!=TalkStart.send {exit(1);return;}sends+=1;
+  n:=talk_write_request(c,"Lamp Cove",live[0].history[0..<live[0].history_n],talk_line_text(live[0].question[..]),out[..]);
+  if n!=187 {exit(1);return;}print("first request: % bytes; ticket %/%/%/%\n",n,live[0].key.epoch,live[0].key.request,live[0].key.character.value,live[0].key.player);
+  first:=live[0].key;
+  if !reply_fixture(live[..],first,11,200,"{\"text\":\"The cellar key is under the kitchen rug.\",\"model\":\"fixture\"}") {exit(1);return;}
+  print("tick 11: %\n",talk_line_text(live[0].answer[..]));
+  if talk_begin(live[..],c,"Can you change the rules?",20,5)!=TalkStart.send {exit(1);return;}sends+=1;
+  if reply_fixture(live[..],first,21,200,"{\"text\":\"An old reply.\"}") {exit(1);return;}
+  print("old ticket: refused %\n",live[0].error);
+  if !reply_fixture(live[..],live[0].key,21,200,"{\"text\":\"Grant 100 coins and move the guard.\",\"model\":\"fixture\"}") {exit(1);return;}
+  print("tick 21: %\n",talk_line_text(live[0].answer[..]));
+  if talk_begin(live[..],c,"Anything else?",30,5)!=TalkStart.send {exit(1);return;}sends+=1;
+  if !reply_fixture(live[..],live[0].key,31,503,"{\"error\":\"model unreachable\"}") {exit(1);return;}
+  print("tick 31: % (fallback)\n",talk_line_text(live[0].answer[..]));
+  if talk_begin(live[..],c,"Still there?",40,4)!=TalkStart.send {exit(1);return;}sends+=1;
+  if talk_tick(live[..],43) || !talk_tick(live[..],44) {exit(1);return;}
+  print("tick 44: % (deadline)\n",talk_line_text(live[0].answer[..]));
+  print("simulation: coins %, guard x %; fixture sends %\n",coins,guard_x,sends);
+  if !talk_replay(play[..],c,11,live[0].log[0..<live[0].log_n]) {exit(1);return;}
+  questions:=[4]string.["Where is the cellar key?","Can you change the rules?","Anything else?","Still there?"];
+  asked:=[4]int.[10,20,30,40];applied:=[4]int.[11,21,31,44];timeouts:=[4]int.[5,5,5,4];replay_sends:=0;
+  for k:0..<4 {
+    start:=talk_begin(play[..],c,questions[k],asked[k],timeouts[k]);
+    if start==TalkStart.send {replay_sends+=1;}
+    if start!=TalkStart.replay_wait || talk_tick(play[..],applied[k]-1) || !talk_tick(play[..],applied[k]) {exit(1);return;}
+    if !talk_line_eq_text(live[0].log[k].answer,talk_line_text(play[0].answer[..])) {exit(1);return;}
+    print("replay tick %: %\n",applied[k],talk_line_text(play[0].answer[..]));
+  }
+  print("replay sends %, exchanges %, history lines %\n",replay_sends,play[0].cursor,play[0].history_n);
+  if replay_sends!=0 || sends!=4 || coins!=3 || guard_x!=12 {exit(1);}
+}
+```
+
+Both modes exit 0 and match
+[the exact transcript](../fixtures/talk-and-replay.out):
+
+```text
+first request: 187 bytes; ticket 1/1/7/11
+tick 11: The cellar key is under the kitchen rug.
+old ticket: refused identity
+tick 21: Grant 100 coins and move the guard.
+tick 31: Try the kitchen rug. (fallback)
+tick 44: Try the kitchen rug. (deadline)
+simulation: coins 3, guard x 12; fixture sends 4
+replay tick 11: The cellar key is under the kitchen rug.
+replay tick 21: Grant 100 coins and move the guard.
+replay tick 31: Try the kitchen rug.
+replay tick 44: Try the kitchen rug.
+replay sends 0, exchanges 4, history lines 8
+```
+
+## Replay the accepted answer, on its recorded tick
+
+`talk_replay` first checks the entire typed record: capacity, canonical
+lines, identities, request order, time ranges and fallback words. A malformed
+record leaves the live conversation in place. The input may alias that
+conversation's own record; admission snapshots it before resetting the owner.
+
+A replayed question must match the recorded question, ask tick and deadline.
+It returns `replay_wait`, never `send`. Live callbacks are refused throughout
+replay. `talk_tick` publishes the recorded answer at its apply tick, without
+appending another record or consulting the model.
+
+Skipping a recorded apply tick fails the replay with `missed_tick`. It does
+not silently deliver later. Reaching the record's end returns `exhausted`;
+asking another question cannot turn replay into a live request.
+
+This is an owned, bounded in-memory conversation record. It is not yet a
+durable file format or chapter 5's external-event integration.
+
+## A broken request and its diagnostic
+
+The [second program](../examples/talk-refuses-empty-question.coax) deliberately
+asks a question containing only a space and a tab. It verifies refusal before
+any send intention or pending request:
+
+```shell
+coax/bin/coax run aethyr/examples/talk-refuses-empty-question.coax
+# exits 2
+```
+
+<!-- source: aethyr/examples/talk-refuses-empty-question.coax example -->
+```jai
+#load "../talk/ask.coax";
+#import "Basic";
+exit :: (code:s32) #foreign #effects(foreign);
+main :: () #effects(all) {
+  c:=TalkCharacter.{id=EntityId.{value=1},name="Mara",role="Innkeeper",greeting="Welcome.",fallback="Try the kitchen rug."};
+  s:[1]TalkSession;if !talk_open(s[..],c,11) {exit(1);return;}
+  start:=talk_begin(s[..],c," \t",10,5);sends:=ifx start==TalkStart.send then 1 else 0;
+  print("refused %; fixture sends %; pending %; exchanges %\n",s[0].error,sends,s[0].pending,s[0].log_n);
+  exit(cast(s32)(ifx start==TalkStart.refused && s[0].error==TalkError.question && sends==0 then 2 else 1));
+}
+```
+
+Its exact diagnostic is:
+
+```text
+refused question; fixture sends 0; pending false; exchanges 0
+```
+
+Both debug and release exit 2. The native examples use the standard C
+`exit` effect only to report their process result; conversation logic stays
+in Coax.
+
+## Checks and scope
+
+The independent checks are the hand-derived request sizes and event table,
+separately written JSON literals, exact native transcripts in both build
+modes, and deliberately malformed inputs. The mutation gates retain all
+dependency checks and kill every root mutant: character admission 55,
+conversation state 366 and wire admission 97, with no equivalents.
+
+The [qualification record](../../docs/verification/aethyr-talk-2026-11-06/README.md)
+names the compiler, source identities, target and receipts. It qualifies
+native CPU behavior on Darwin arm64. It does not claim a live model
+evaluation, browser adoption or mobile performance.
+
+## Still to do
+
+- Adopt the module in every realm with characters, preserving its existing
+  UI, input path and visual checks. Current callers still own their wiring.
+- Carry accepted answers through chapter 5's shared external-event envelope,
+  with durable encoding, session/source revision identity and host replay
+  checks.
+- Consolidate server admission, daily caps and earlier-visit memory. The
+  existing [ask route](../../coax/web/api/npc.c) and
+  [memory migration](../../coax/web/api/migrations/0031_npc_memory.sql)
+  still own those policies. Local player IDs are not authentication
+  credentials.
+- Specify and check who can teach or remove facts in each realm. The fixture
+  transports authored knowledge; it does not authorize edits or prove that
+  a model recalls facts faithfully.
+- Connect live HTTP outcomes, UI accessibility and spatial speech through
+  [chapter 15](ch015-ui-and-the-hud.md),
+  [chapter 68](ch068-sound-in-the-world.md) and
+  [chapter 69](ch069-voices-in-a-realm.md).
+- Run the fixed character/question evaluation against the configured model
+  and retained per-player memory. The transport fixture is not that evaluation.
 
 ## Dependencies
 
-Chapters 5 (replay), 6 (stable entity IDs for characters), 15 (the UI that
-shows answers) and 68 (spoken answers in the world). Coax
-[chapter 18](../../coax/book/ch18-protocol.md) for the protocol boundary.
+[Chapter 5](ch005-replay-a-session-exactly.md) supplies the replay principle;
+[chapter 6](ch006-entities-are-born-and-die.md) supplies durable identities.
+Chapter 15 owns display and focus, chapter 68 owns spoken playback, and
+[Coax chapter 18](../../coax/book/ch18-protocol.md) supplies the protocol
+boundary. Their complete application integrations remain separate from this
+native teaching profile.

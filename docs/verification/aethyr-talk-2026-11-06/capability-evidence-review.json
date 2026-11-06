@@ -1,0 +1,61 @@
+{
+  "commit_reviewed": "f14974e547",
+  "evidence": [
+    {
+      "claim": "coax.generics.current",
+      "path": "coax/tests/generics.py",
+      "previous_sha256": "f7f087799dae7da5f46e7ff528ebc444cc2435a315cdf2805e5aa11a9b5a91f5",
+      "sha256": "502e56bb953e5ac5bcf8b65547db0dcb368c1adfbcd7380e289196f82abc9bcd",
+      "review": "Only explicit #effects(all) annotations on generated Coax procedures; fixtures, assertions and claim scope unchanged."
+    },
+    {
+      "claim": "coax.targets.current",
+      "path": "coax/tests/semantic_profiles.py",
+      "previous_sha256": "8c6afd83dbbea7c11c613aa92190457c763ef7331bccd4930e6d137710cfd5ea",
+      "sha256": "03821801b6a633057d23932a78e983f697949b7ddc534f560ab0162890daf396",
+      "review": "Only explicit #effects(all) annotations on generated Coax procedures; fixtures, assertions and claim scope unchanged."
+    },
+    {
+      "claim": "coax.targets.current",
+      "path": "coax/tests/reflection.py",
+      "previous_sha256": "ba0c7eea02924baaee6f20cd09e3aa8dea8951313d61053ef9bc0c92ab6510b1",
+      "sha256": "3a3ad49bb573b5dcfb375f6f3deb89bcd69904e3418c4c04cf9bc0810571bbc6",
+      "review": "Only explicit #effects(all) annotations on generated Coax procedures; fixtures, assertions and claim scope unchanged."
+    },
+    {
+      "claim": "coax.modules.current",
+      "path": "coax/tests/modules.py",
+      "previous_sha256": "f2a22f7df235985e8b403c31e17df63613f78da767a610c64ed3279b2f4f2c82",
+      "sha256": "8c96c63b101a7f6c290d0f77ccd322da7c1da6ca724677b0424fde8eda211b67",
+      "review": "Only explicit #effects(all) annotations on generated Coax procedures; fixtures, assertions and claim scope unchanged."
+    },
+    {
+      "claim": "psionic.language.current",
+      "path": "coax/tests/quantity.py",
+      "previous_sha256": "eb0b3b4b671f9cb707e48e4c140c1ee81e69255cb8737fda44d355969c0fae9b",
+      "sha256": "3119fecbe8bc524c9719f0f047d67704b54d807c231db380f680bbff2d4d5dc0",
+      "review": "Only explicit #effects(all) annotations on generated Coax procedures; fixtures, assertions and claim scope unchanged."
+    },
+    {
+      "claim": "psionic.language.current",
+      "path": "coax/tests/quantity_derived.py",
+      "previous_sha256": "8dc911767db5ba5beecaef64be4e8018a06a2d106a3828bd88c0eea6d2923389",
+      "sha256": "d5239b49f1fa4eb73f7541cd6ab4622fb72128464f4159a16640125a39183277",
+      "review": "Only explicit #effects(all) annotations on generated Coax procedures; fixtures, assertions and claim scope unchanged."
+    },
+    {
+      "claim": "psionic.language.current",
+      "path": "coax/tests/spatial.py",
+      "previous_sha256": "3d5f290f3e2a94ebd8f01288d01d897466a0e23c3f38e7dfcb5dc7d38fb7ee25",
+      "sha256": "0ccad09814866d22ee61d1c82e4313612b39ade99232e2ca288c34315429fe1f",
+      "review": "Only explicit #effects(all) annotations on generated Coax procedures; fixtures, assertions and claim scope unchanged."
+    },
+    {
+      "claim": "coax.ids.current",
+      "path": "coax/tests/nominal-ids.py",
+      "previous_sha256": "a078ff43ac364b1e5f180d058d5807c053f10f6190fb2454f93125fd1241a68f",
+      "sha256": "d399282052401c65dfe833bf0cb4980e6eeb49905d54232a503675f09c3ff767",
+      "review": "Only explicit #effects(all) annotations on generated Coax procedures; fixtures, assertions and claim scope unchanged."
+    }
+  ]
+}
