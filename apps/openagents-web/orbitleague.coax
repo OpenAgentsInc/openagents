@@ -2615,6 +2615,37 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
   return n;
 }
 
+#test "Orbit observations expose accepted snapshot state without changing it" {
+  s:[1]OrbitLeague;s[0].room_authority=true;s[0].room_tick=19;s[0].room_generation=SeatGeneration.{value=7};s[0].room_ack=11;s[0].room_seq=13;
+  s[0].seat=0;s[0].bodies[1].pos=d3(1.25,2.5,-3.75);s[0].room_present[0]=true;
+  #assert game_probe(s[..],0)==1 && game_probe(s[..],1)==19 && game_probe(s[..],2)==7;
+  #assert game_probe(s[..],3)==11 && game_probe(s[..],4)==13 && game_probe(s[..],111)==1250;
+  #assert game_probe(s[..],112)==2500 && game_probe(s[..],113)== -3750;
+  #assert game_probe(s[..],110)==1 && game_probe(s[..],120)==0 && game_probe(s[..],-1)==-1;
+}
+// Read-only scalar observations, shared by page diagnostics and headless qualification.
+game_probe :: (s:[]OrbitLeague,field:int)->int #export_c {
+  if field==0 {return ifx s[0].room_authority then 1 else 0;}
+  if field==1 {return s[0].room_tick;}if field==2 {return s[0].room_generation.value;}
+  if field==3 {return s[0].room_ack;}if field==4 {return s[0].room_seq;}
+  if field==5 {return s[0].seat;}if field==6 {return s[0].phase;}
+  if field==7 {return s[0].score[0];}if field==8 {return s[0].score[1];}
+  if field>=100 && field<150 {
+    row:=(field-100)/10;part:=(field-100)%10;
+    if part==0 {
+      if row==0 {return ifx s[0].room_tick>=0 then 1 else 0;}
+      for c:0..<ROOM_PLAYERS {
+        slot:=ifx c==s[0].seat then YOU else ifx c%2==s[0].seat%2 then MATE else ifx c<2 then BOT else RIVAL;
+        if slot==row {return ifx s[0].room_present[c] then 1 else 0;}
+      }
+      return 0;
+    }
+    if part==1 {return cast(int)(s[0].bodies[row].pos.x*1000);}
+    if part==2 {return cast(int)(s[0].bodies[row].pos.y*1000);}
+    if part==3 {return cast(int)(s[0].bodies[row].pos.z*1000);}
+  }
+  return -1;
+}
 coaxial_orbitleague_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
 coaxial_orbitleague_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
 coaxial_orbitleague_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }

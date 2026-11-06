@@ -1,0 +1,40 @@
+// A common observation of a realm's selected contract and caller-owned running state.
+// Unknown counters remain -1; observations never admit commands or acknowledge persistence.
+#module "aethyr.net.diagnostics";
+#authority;
+#load "session.coax";
+NetObservation :: struct {
+  valid:bool;profile:NetRealm;ready:bool;tick:int;seats:int;
+  accepted:int=-1;refused:int=-1;frames:int=-1;
+}
+#test "network observations retain selected profiles, readiness and explicit unknown counters" {
+  p:=NetRealm.{beat=NetProfile.{hz=30,substeps=1,trust=NET_TRUST_AUTHORITY,durable=NET_DURABLE_RECEIPTS,fair=NET_FAIR_EARNED},
+    collision=NET_COLLIDE_CAPSULE,fields=4,public_fields=3,owner_fields=15,party_fields=4};
+  o:=net_observe(p,true,true,9,2,17,3,11);#assert o.valid && o.ready;
+  expected:=[15]int.[1,30,1,1,1,1,1,9,2,17,3,11,3,15,4];
+  for i:0..<15 {#assert net_observation_metric(o,i)==expected[i];}
+  #assert net_observation_metric(o,-1)==-1 && net_observation_metric(o,15)==-1;
+  o=net_observe(p,false,true,0,0,-1,-1,-1);#assert o.valid && !o.ready && net_observation_metric(o,9)==-1;
+  #assert net_observation_metric(o,0)==0;
+  o=net_observe(p,true,false,0,0,0,0,0);#assert o.valid && !o.ready;
+  #assert !net_observe(NetRealm.{},true,true,0,0,0,0,0).valid;
+  #assert !net_observe(p,true,true,-1,0,0,0,0).valid && !net_observe(p,true,true,0,-1,0,0,0).valid;
+  #assert !net_observe(p,true,true,0,0,-2,0,0).valid && !net_observe(p,true,true,0,0,0,-2,0).valid;
+  #assert !net_observe(p,true,true,0,0,0,0,-2).valid;
+  #assert net_observation_metric(NetObservation.{},0)==-1;
+}
+net_observe :: (p:NetRealm,initialized:bool,live:bool,tick:int,seats:int,accepted:int,refused:int,frames:int)->NetObservation {
+  if !net_realm_ok(p) || tick<0 || seats<0 || accepted< -1 || refused< -1 || frames< -1 {return NetObservation.{};}
+  return NetObservation.{valid=true,profile=p,ready=net_world_steps(initialized,live,false),tick=tick,seats=seats,accepted=accepted,refused=refused,frames=frames};
+}
+net_observation_metric :: (o:NetObservation,metric:int)->int {
+  if !o.valid {return -1;}
+  if metric==0 {return ifx o.ready then 1 else 0;}
+  if metric==1 {return o.profile.beat.hz;}if metric==2 {return o.profile.beat.substeps;}
+  if metric==3 {return o.profile.beat.trust;}if metric==4 {return o.profile.collision;}
+  if metric==5 {return o.profile.beat.durable;}if metric==6 {return o.profile.beat.fair;}
+  if metric==7 {return o.tick;}if metric==8 {return o.seats;}
+  if metric==9 {return o.accepted;}if metric==10 {return o.refused;}if metric==11 {return o.frames;}
+  if metric==12 {return o.profile.public_fields;}if metric==13 {return o.profile.owner_fields;}if metric==14 {return o.profile.party_fields;}
+  return -1;
+}

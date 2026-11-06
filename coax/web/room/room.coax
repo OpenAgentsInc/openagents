@@ -26,6 +26,7 @@
 #load "../../../aethyr/net/realm.coax";
 #load "../../../aethyr/net/command.coax";
 #load "../../../aethyr/net/session.coax";
+#load "../../../aethyr/net/diagnostics.coax";
 #load "../../../aethyr/session/party.coax";   // a party's rules: who shows to whom (#12852, #12845)
 #load "room-interest.coax";   // who may receive what, each tick (#12789)
 #load "room-input-policy.coax";
@@ -125,9 +126,9 @@ RmServer :: struct {
 rm_init :: (v: [] RmServer) #export_c {
   for i: 0..<CONNS { v[0].conns[i] = RmConn.{}; }
   for r: 0..<RELAYS { v[0].relays[r].live = false; }
-  for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].initialized=false;v[0].eg[k].relay = -1; }
+  for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
   v[0].q_head = 0; v[0].q_n = 0;
-  for r: 0..<ROOMS { v[0].rooms[r].live = false;v[0].rooms[r].auth[0].enabled=false;v[0].rooms[r].auth[0].initialized=false;v[0].rooms[r].s[0] = OrbitLeague.{}; }
+  for r: 0..<ROOMS { v[0].rooms[r].live = false; v[0].rooms[r].s[0] = OrbitLeague.{}; }
 }
 // book:end server-start
 
@@ -338,6 +339,52 @@ rm_realm :: (realm:int)->NetRealm {
   }
   return NetRealm.{};
 }
+// ABI observations use the realm's own room index. -1 means unavailable, including counters
+// that a realm does not maintain. No observation changes admission, timing or durability.
+rm_net_observation :: (v:[]RmServer,realm:int,room:int,metric:int)->int #export_c {
+  if realm==RM_REALM_EVERGLADE {
+    if room<0 || room>=EG_ROOMS || !v[0].eg[room].live {return -1;}
+    seats:=0;for s:0..<EG_SEATS {if v[0].eg[room].seat[s].live {seats+=1;}}
+    return net_observation_metric(net_observe(rm_realm(realm),v[0].eg[room].initialized,
+      v[0].eg[room].live,v[0].eg[room].tick,seats,-1,-1,-1),metric);
+  }
+  if realm==RM_REALM_ORBIT_AUTH {
+    if room<0 || room>=ROOMS || !v[0].rooms[room].live || !v[0].rooms[room].auth[0].enabled {return -1;}
+    active:[CARS]bool;human:[CARS]bool;seats:=rm_orbit_active(v,room,active[..],human[..]);
+    for q:0..<v[0].rooms[room].quick {if !human[q] {seats+=1;}}
+    a:=v[0].rooms[room].auth[..];
+    return net_observation_metric(net_observe(rm_realm(realm),a[0].initialized,v[0].rooms[room].live,
+      v[0].rooms[room].tick,seats,a[0].accepted,a[0].refused,a[0].snapshots),metric);
+  }
+  return -1;
+}
+
+#test "network diagnostics expose each running realm's selected contract without inventing counters" {
+  v:[1]RmServer;rm_init(v[..]);
+  #assert rm_join(v[..],0,"GET /api/room/orbit-league-v2/observed HTTP/1.1\r\n\r\n")>=0;
+  r:=v[0].conns[0].room;rm_heard(v[..],0,"H 2 1 1 1");
+  #assert rm_net_observation(v[..],RM_REALM_ORBIT_AUTH,r,0)==1;
+  #assert rm_net_observation(v[..],RM_REALM_ORBIT_AUTH,r,1)==60;
+  #assert rm_net_observation(v[..],RM_REALM_ORBIT_AUTH,r,4)==NET_COLLIDE_VEHICLE;
+  #assert rm_net_observation(v[..],RM_REALM_ORBIT_AUTH,r,5)==NET_DURABLE_NONE;
+  #assert rm_net_observation(v[..],RM_REALM_ORBIT_AUTH,r,8)==1;
+  #assert rm_net_observation(v[..],RM_REALM_ORBIT_AUTH,r,9)==0;
+  rm_heard(v[..],0,"I 1 0 0 0 0 0 0");rm_tick(v[..]);
+  #assert rm_net_observation(v[..],RM_REALM_ORBIT_AUTH,r,9)==1;
+  #assert rm_join(v[..],1,"GET /api/room/relay/everglade/observed HTTP/1.1\r\n\r\n")>=0;
+  k:=eg_room_at(v[..],v[0].conns[1].relay);
+  #assert k>=0 && rm_net_observation(v[..],RM_REALM_EVERGLADE,k,0)==1;
+  #assert rm_net_observation(v[..],RM_REALM_EVERGLADE,k,1)==30;
+  #assert rm_net_observation(v[..],RM_REALM_EVERGLADE,k,4)==NET_COLLIDE_CAPSULE;
+  #assert rm_net_observation(v[..],RM_REALM_EVERGLADE,k,5)==NET_DURABLE_RECEIPTS;
+  #assert rm_net_observation(v[..],RM_REALM_EVERGLADE,k,9)==-1;
+  v[0].eg[k].initialized=false;
+  #assert rm_net_observation(v[..],RM_REALM_EVERGLADE,k,0)==0;
+  #assert rm_net_observation(v[..],RM_REALM_ORBIT_AUTH,-1,0)==-1;
+  #assert rm_net_observation(v[..],RM_REALM_EVERGLADE,EG_ROOMS,0)==-1;
+  #assert rm_net_observation(v[..],-1,0,0)==-1;
+}
+
 // The host, on beat number `beat`: whether realm steps on it.
 rm_realm_due :: (v: [] RmServer, realm: int, beat: int) -> bool #export_c { return net_due(rm_profile(realm), beat); }
 
