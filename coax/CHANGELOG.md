@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.51.2 — Phase Storage Accounting — 2026-11-05
 
-Commit: pending
+Commit: [`eae6049b87d31768a341397296a9a085c9db14ab`](https://github.com/OpenAgentsInc/openagents/commit/eae6049b87d31768a341397296a9a085c9db14ab)
 
 - Measure storage peaks against the limits that govern each evaluation
   phase. Clear earlier transient peaks and holder snapshots when entering
