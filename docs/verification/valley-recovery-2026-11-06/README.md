@@ -110,6 +110,14 @@ their checks, authority coverage and resource limits remain enabled.
 [Tools-check](tools-check-052.log) reports no new tool without a reason.
 All owned browsers and servers close after these observations.
 
+After rebasing onto `440c9101c0` and the concurrent host's separate shadow-list
+support, the [actual loader oracle](loader-rebased.log) passes all nine cases.
+The [rebased drift run](host-drift-rebased.log) also passes local, 100 ms and
+250 ms gameplay and raid profiles. The native room, worker and SRD page inputs
+are unchanged, so their passing build and budget results above are retained.
+This run completed November 6 at approximately 07:22 Chicago time. Its own
+room and proxy processes exited; no production service was used.
+
 Reproduce from a fresh worktree with the private pack installed:
 
 ```sh
