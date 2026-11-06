@@ -5,6 +5,7 @@
 //   coax/web/tool.sh everglade-drift [--profiles local,100,250] [--bots 3] [--port 8960] [--no-raid] [--forest-only] [--offline worker|native] [--out DIR]
 // --forest-only: rehearse a real tree fire with two pages in the same native room (#12940), as a
 // separate bounded command so a new forest check need not repeat an unchanged gameplay/raid result.
+// --input-only: check the synthetic key's DOM target against the accessibility event guard.
 // --offline: the offline page on the room server's local host (worker, the default: ?offline=worker,
 // #12784), or the native local room (native). The page's own offline game is gone (#12882).
 // Before it: coax/web/room/build.sh (the room server, coax/web/room/bin/room) and the page
@@ -183,7 +184,9 @@ dr_way :: (pr: DrProbe, a: [] DrPage, b: [] DrPage, window: int, t0: int, t1: in
 
 // The session's script: each step's name, then its keys. Both pages get each at once.
 dr_key_js :: (q: [] Buf, down: bool, key: string, code: string, vk: int, shift: bool) {
-  bput(q, "dispatchEvent(new KeyboardEvent('"); bput(q, ifx down then "keydown" else "keyup");
+  // Real key events target a Node. Window is not a valid argument to the accessibility root's
+  // contains(), and its listener throws before forwarding a synthetic Window event to the game.
+  bput(q, "(document.querySelector('canvas') || document.body).dispatchEvent(new KeyboardEvent('"); bput(q, ifx down then "keydown" else "keyup");
   bput(q, "', {key: '"); bput(q, key); bput(q, "', code: '"); bput(q, code); bput(q, "', keyCode: "); bint(q, vk);
   bput(q, ifx shift then ", shiftKey: true" else ""); bput(q, ", bubbles: true}))");
 }
@@ -195,6 +198,21 @@ dr_press :: (c: [] Cdp, down: bool, key: string, code: string, vk: int, shift: b
 dr_int :: (c: [] Cdp, js: string, fallback: int) -> int {
   v := cdp_evaluate(c, js);
   return ifx v >= 0 then jv_int(cdp_doc(c), v, fallback) else fallback;
+}
+// Exercise the browser's event target and the accessibility guard together. This catches the
+// Window target failure even when two motionless pages would otherwise compare equal.
+dr_input_check :: () -> bool {
+  c: [1] Cdp; ok := false;
+  if !cdp_launch(c[..], 128, 128, "coax-drift-input-") { return false; }
+  setup := dr_int(c[..], "(() => { const root=document.createElement('div'), canvas=document.createElement('canvas'); document.body.append(root,canvas); globalThis.__drInput={errors:0,forwarded:0}; addEventListener('error',e=>{__drInput.errors++;e.preventDefault();}); addEventListener('keydown',e=>{if(root.contains(e.target))return;__drInput.forwarded++;}); dispatchEvent(new KeyboardEvent('keydown',{key:'d',bubbles:true})); return __drInput.errors===1 && __drInput.forwarded===0 ? 1 : 0; })()", 0);
+  if setup == 1 {
+    q: [1] Buf; dr_key_js(q[..], true, "d", "KeyD", 68, false);
+    bput(q[..], "; __drInput.errors===1 && __drInput.forwarded===1 ? 1 : 0");
+    ok = dr_int(c[..], btext(q[..]), 0) == 1;
+  }
+  cdp_close(c[..]);
+  print("drift input event target: %\n", ifx ok then "holds" else "fails");
+  return ok;
 }
 dr_str :: (c: [] Cdp, js: string, out: [] u8) -> string {
   v := cdp_evaluate(c, js);
@@ -456,12 +474,40 @@ dr_local :: (a: [] DrPage, b: [] DrPage) {
   }
 }
 
+#test "movement coverage rejects idle recordings and measures only the requested interval" {
+  p: [1] DrPage; p[0].n = 3;
+  p[0].rows[C_T] = 0; p[0].rows[DR_COLS + C_T] = 1000; p[0].rows[2 * DR_COLS + C_T] = 2000;
+  #assert dr_movement(p[..], 0, 2000) == 0;
+  p[0].rows[DR_COLS + C_X] = 4000; p[0].rows[DR_COLS + C_Z] = 3000;
+  p[0].rows[2 * DR_COLS + C_X] = 4000; p[0].rows[2 * DR_COLS + C_Z] = 3000;
+  #assert dr_movement(p[..], 0, 2000) == 5000;
+  #assert dr_movement(p[..], 1000, 2000) == 0;
+  #assert dr_movement(p[..], 3000, 4000) == 0;
+}
+dr_movement :: (p: [] DrPage, t0: int, t1: int) -> int {
+  first := -1; most := 0;
+  for r: 0..<p[0].n {
+    t := dr_at(p, r, C_T); if t < t0 || t > t1 { continue; }
+    if first < 0 { first = r; }
+    d := dr_diff(DR_PLACE, dr_at(p, r, C_X), dr_at(p, first, C_X), dr_at(p, r, C_Z), dr_at(p, first, C_Z));
+    if d > most { most = d; }
+  }
+  return most;
+}
+
 // Every probe of the paired session, offline (a) against the room (b) and back.
 dr_compare :: (a: [] DrPage, b: [] DrPage, rtt: int, rep: [] DrReport, worker: bool) {
   window := 250 + rtt;
   dr_local(a, b);
   t0 := dr_mark_t(a, "start"); t1 := dr_mark_t(a, "end");
   if t0 < 0 || t1 < 0 { t0 = 0; t1 = 1 << 50; }
+  // Comparing two idle pages can agree perfectly while no key reached either game.
+  // The crate/strafe/walk steps must move both players before the scripted hold.
+  {
+    ma := dr_movement(a, t0, dr_mark_t(a, "held")); mb := dr_movement(b, dr_mark_t(b, "start"), dr_mark_t(b, "held"));
+    v := DrVerdict.{drifted = ma < 3000 || mb < 3000, mine = ma, other = mb, by = 3000};
+    dr_add(rep, "movement inputs took effect (mm)", v);
+  }
   probes := [16] DrProbe.[
     DrProbe.{name = "position (in your heading, since the step)", col = C_LX, how = DR_PLACE, tol = 350},
     DrProbe.{name = "camera heading", col = C_YAW, how = DR_ANGLE, tol = 200},
@@ -739,11 +785,19 @@ dr_forest :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport) -> bool {
   burnt_a := -1; burnt_b := -1; hash_a := -1; hash_b := -1;
   if cdp_launch(a[..], 1280, 800, "coax-forest-a-") {
     if cdp_launch(b[..], 1280, 800, "coax-forest-b-") {
-      if dr_open(a[..], btext(url[..]), run.script) && dr_open(b[..], btext(url[..]), run.script) && dr_ready(a[..], true) && dr_ready(b[..], true) {
-        for p: 0..<2 { c := ifx p == 0 then a[..] else b[..]; _ := dr_press(c, true, "Escape", "Escape", 27, false); _ = dr_press(c, false, "Escape", "Escape", 27, false); }
-        // Leave the spawn's road for the woods using the same movement inputs as a player.
-        _ := dr_press(a[..], true, "d", "KeyD", 68, false); proc_sleep(3000); _ = dr_press(a[..], false, "d", "KeyD", 68, false);
-        next_cast := proc_now_ms(); deadline := next_cast + 180000; quiet := 0; near := true;
+      if dr_open(a[..], btext(url[..]), run.script) && dr_ready(a[..], true) {
+        marked := dr_int(a[..], "__dr.mark('start')", 0);
+        _ := dr_press(a[..], true, "Escape", "Escape", 27, false); _ = dr_press(a[..], false, "Escape", "Escape", 27, false);
+        proc_sleep(1500);
+        before_x := dr_int(a[..], "__dr.fr[__dr.fr.length-1][2]", -999999);
+        before_z := dr_int(a[..], "__dr.fr[__dr.fr.length-1][4]", -999999);
+        // Move the caster before the observer arrives at the same spawn.
+        _ = dr_press(a[..], true, "d", "KeyD", 68, false); proc_sleep(3000); _ = dr_press(a[..], false, "d", "KeyD", 68, false);
+        print("  forest %: caster moved from %, % to %, % mm\n", profile, before_x, before_z,
+          dr_int(a[..], "__dr.fr[__dr.fr.length-1][2]", -999999), dr_int(a[..], "__dr.fr[__dr.fr.length-1][4]", -999999));
+        if dr_open(b[..], btext(url[..]), run.script) && dr_ready(b[..], true) {
+        _ = dr_press(b[..], true, "Escape", "Escape", 27, false); _ = dr_press(b[..], false, "Escape", "Escape", 27, false); proc_sleep(1500);
+        next_cast := proc_now_ms(); deadline := next_cast + 180000; quiet := 0; near := true; misses := 0;
         while proc_now_ms() < deadline {
           burning_a := dr_int(a[..], "__dr.probe(9001)", -1); burning_b := dr_int(b[..], "__dr.probe(9001)", -1);
           burnt_a = dr_int(a[..], "__dr.probe(9002)", -1); burnt_b = dr_int(b[..], "__dr.probe(9002)", -1);
@@ -755,7 +809,7 @@ dr_forest :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport) -> bool {
             if !near { _ = dr_press(a[..], true, "d", "KeyD", 68, false); proc_sleep(3000); _ = dr_press(a[..], false, "d", "KeyD", 68, false); near = true; }
             tree := dr_int(a[..], "__dr.probe(9000)", -1);
             print("  forest %: Produce Flame at tree %\n", profile, tree);
-            if tree < 0 { near = false; }
+            if tree < 0 { near = false; misses += 1; if misses >= 3 { break; } } else { misses = 0; }
             next_cast = proc_now_ms() + 6500;
           }
           settled := fire_a && fire_b && burnt_a > 0 && burnt_a == burnt_b && burning_a == 0 && burning_b == 0
@@ -771,6 +825,9 @@ dr_forest :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport) -> bool {
         for p: 0..<2 {
           path: [1] Buf; bput(path[..], run.dir); bput(path[..], "/shot-forest-"); bput(path[..], profile); bput(path[..], ifx p == 0 then "-caster.png" else "-observer.png");
           n := cdp_screenshot(ifx p == 0 then a[..] else b[..], png[..]); if n > 0 { _ = fs_write(btext(path[..]), cast(string) png[0..<n]); }
+          details: [16384] u8; path[0].n = 0; bput(path[..], run.dir); bput(path[..], "/forest-"); bput(path[..], profile); bput(path[..], ifx p == 0 then "-caster.json" else "-observer.json");
+          _ = fs_write(btext(path[..]), dr_str(ifx p == 0 then a[..] else b[..], "JSON.stringify({first:__dr.fr[0],last:__dr.fr[__dr.fr.length-1],keys:__dr.keys,texts:__dr.texts.slice(-12),seq:__dr.probe(15),net:__dr.probe(0),seat:__dr.probe(1)})", details[..]));
+        }
         }
       }
       cdp_close(b[..]);
@@ -911,6 +968,7 @@ dr_write_rows :: (path: string, p: [] DrPage) {
 tool_main :: () -> int #export_c {
   a: [1] Args;
   ok := args_load(a[..]);
+  if args_has(a[..], "--input-only") { return ifx dr_input_check() then 0 else 1; }
   profiles := args_value(a[..], "--profiles", "local,100,250");
   bots := args_whole(args_value(a[..], "--bots", "3"));
   port := args_whole(args_value(a[..], "--port", "8960"));

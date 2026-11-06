@@ -2295,7 +2295,7 @@ eg_test_town_tick :: (v: [] RmServer, k: int, box: [] EgInbox, towns: [] EgTestT
   rm_heard(v[..], 0, "H 5 ranger.0.0.0 druid 0 A"); rm_heard(v[..], 1, "H 5 ranger.0.0.0 druid 0 B");
   #assert EG_SLOT_ABS == 61 && EG_SLOT_DOORS == 255 && EG_SLOT_TREE + WIRE_TREES <= WIRE_SLOTS && IM_ENTS >= WIRE_SLOTS;
   b := [16] f32.[7, -80, 2, -15, 1, 1, -0.2, 0.6, 1.5, 0.25, 0.5, 0.1, 1, 1, 3.4, 40];
-  rm_eg_tree(v[..], k, 1, b[..]); im_block(v[0].eg[k].im[..], 0, 1, true);
+  rm_eg_tree(v[..], k, 1, b[..]); im_block(v[0].eg[k].im[..], SeatId.{value = 0}, SeatId.{value = 1}, true);
   eg_test_tick(v[..], k); eg_test_drain(v[..], box[..]);
   for c: 0..<2 {
     w := eg_test_ent(box[..], c, 1162001);
