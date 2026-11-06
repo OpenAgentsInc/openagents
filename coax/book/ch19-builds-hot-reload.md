@@ -208,7 +208,8 @@ headers and Metal source before Xcode compiles the platform shell. Read the
 script in the current checkout for its complete module list; that list grows
 as engine modules move into Aethyr.
 
-The generator verifies the compiler against the current source fingerprint.
+The generator rebuilds when compiler inputs are newer and checks release
+metadata before generation.
 A checked build can come from the compiler cache or a verified published
 build; otherwise `coax/build.sh` bootstraps it. Xcode's iOS SDK environment
 must not turn that host compiler into an iOS executable. The script selects

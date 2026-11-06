@@ -597,7 +597,7 @@ query_sweep :: (c: Colliders, from: WorldPoint, r: f32, by: WorldPoint) -> Query
   #assert !query_clear(cc, world_point(0, 0.5, 0.5), world_point(1, 0, 0), 5).clear && query_clear(cc, world_point(0, 0.5, 0.5), world_point(1, 0, 0), 2).clear;
 }
 
-// Measured up to 18,509,243 steps per slice; 26 million keeps over 25% headroom (#12950).
+// Explicit slice budgets keep headroom for the independent marching oracles (#12950).
 #forall "rays: the first hit is where marching by containment first finds a collider (1 of 3)" seed: 0..<16 #steps 26000000 { oracle_rays(seed); }
 #forall "rays: the first hit is where marching by containment first finds a collider (2 of 3)" seed: 16..<32 #steps 26000000 { oracle_rays(seed); }
 #forall "rays: the first hit is where marching by containment first finds a collider (3 of 3)" seed: 32..<48 #steps 26000000 { oracle_rays(seed); }

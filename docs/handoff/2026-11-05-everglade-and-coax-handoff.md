@@ -153,14 +153,20 @@ pass both modes. Chapter 41 adds a checked traversal-budget example.
 The Wasm cache oracle passes cold/warm reuse, changed inputs, split parts and
 uncached byte parity. Small actual Wasm builds, phase/declaration reports,
 split output, a traversal refusal and a near-limit note were recorded while
-writing chapter 41. These observations use checked compiler fingerprint
-`037278f2a55d`; no new whole-app performance claim is made. Tools-check and
+writing chapter 41. The initial measurements use checked compiler fingerprint `037278f2a55d`.
+After rebasing onto the concurrent compiler fix, the full Coax suite and
+all 96 Aethyr runs pass with `b8802e5b501a`; the latter uses a fresh
+`COAX_CHECK_CACHE` so a reused verdict cannot hide a diagnostic. No new
+whole-app performance claim is made. Tools-check and
 whitespace checks pass. No deployment or owner action is needed.
 
 Two prerequisites were filed and resolved: #12949 (reviewed evidence hashes;
 concurrent `c8319bb8ac` also refreshes them) and #12950 (authority-check
 headroom). Commit `80ec7cabbc` records the review and explicit budgets.
-Property domains and assertions are unchanged. `aethyr/book/examples.json`
+A subsequent cold-cache run also exposed near-limit checks in forge/doc.coax
+and scatter-hosts.coax; both now have explicit measured headroom. Property
+domains and assertions are unchanged. #12951 tracks the separate cache
+diagnostic-parity bug that a warm pass initially masked. `aethyr/book/examples.json`
 keeps its existing 48 programs: the rewritten overviews link to existing
 implementation chapters rather than inventing duplicate examples.
 

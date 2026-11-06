@@ -69,7 +69,8 @@ scatter_case :: (k: int) -> int #export_c {
   return -1;
 }
 
-#test "every case draws, and the split window is the whole" {
+// Measured 18,509,243 steps; keep headroom below near-limit reporting (#12950).
+#test "every case draws, and the split window is the whole" #steps 26000000 {
   for k: 0..<SH_CASES { #assert scatter_case(k) >= 0; }
   out: [1] Placed;
   #assert sh_digest(out[..], -1) == -1 && sh_digest(out[..], 0) == 2166136261;

@@ -369,7 +369,8 @@ forge_doc_reads :: (from: string, to: string) -> bool {
 FORGE_SH :: "\"version\": 1,";
 
 // Each bound the reader keeps, at its edge and one past it.
-#test "every bound holds at its edge and refuses one past it" {
+// Measured 16,293,710 steps; keep headroom below near-limit reporting (#12950).
+#test "every bound holds at its edge and refuses one past it" #steps 24000000 {
   #assert forge_doc_reads("\"rev\": 4,", "\"rev\": 1,") && forge_doc_reads("\"rev\": 4,", "\"rev\": 999999999,") && !forge_doc_reads("\"rev\": 4,", "\"rev\": 1000000000,");
   #assert !forge_doc_reads("\"version\": 1", "\"version\": 1000000000") && !forge_doc_reads("\"rev\": 4,", "\"rev\": -4,");
   #assert forge_doc_reads("\"forked_from\": null", "\"forked_from\": {\"rev\": 1, \"slug\": \"a\"}");
