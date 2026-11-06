@@ -1,0 +1,32 @@
+// Explicit integer-field rows. Codecs serialize only this admitted delta mask.
+#module "aethyr.net.row";
+#authority;
+NET_ROW_FIELDS :: 23;
+NetRowDelta :: struct {ok:bool;mask:int;}
+
+#test "rows: a recipient mask withholds changing private fields, including on a fresh absolute row" {
+  base:=[4]s32.[0,0,0,0];now:=[4]s32.[1,123,555,-4];
+  d:=net_row_delta(4,2,base[..],now[..]);#assert d.ok && d.mask==2;
+  d=net_row_delta(4,0,base[..],now[..]);#assert d.ok && d.mask==0;
+  d=net_row_delta(4,15,base[..],now[..]);#assert d.ok && d.mask==15;
+  d=net_row_delta(4,15,now[..],now[..]);#assert d.ok && d.mask==0;
+  #assert !net_row_delta(4,16,base[..],now[..]).ok && !net_row_delta(4,-1,base[..],now[..]).ok;
+  #assert !net_row_delta(4,2,base[0..<3],now[..]).ok && !net_row_delta(4,2,base[..],now[0..<3]).ok;
+  #assert !net_row_delta(3,2,base[..],now[..]).ok;
+  #assert !net_row_delta(0,0,base[0..<0],now[0..<0]).ok;
+  #assert net_row_delta(1,1,base[0..<1],now[0..<1]).mask==1;
+  wide:[24]s32;#assert !net_row_delta(24,0,wide[..],wide[..]).ok;
+}
+#forall "rows: every selected field changes independently and no unselected field enters the delta" f:0..<23 {
+  a:[23]s32;b:[23]s32;b[f]=-100;
+  d:=net_row_delta(23,1<<f,a[..],b[..]);#assert d.ok && d.mask==(1<<f);
+  d=net_row_delta(23,((1<<23)-1)^(1<<f),a[..],b[..]);#assert d.ok && d.mask==0;
+}
+
+net_row_delta :: (fields:int,allowed:int,base:[]s32,now:[]s32)->NetRowDelta {
+  if fields<1 || fields>NET_ROW_FIELDS || base.count!=fields || now.count!=fields { return NetRowDelta.{}; }
+  if allowed<0 || allowed>=(1<<fields) { return NetRowDelta.{}; }
+  mask:=0;
+  for q:0..<fields { if (allowed & (1<<q))!=0 && base[q]!=now[q] { mask=mask | (1<<q); } }
+  return NetRowDelta.{ok=true,mask=mask};
+}

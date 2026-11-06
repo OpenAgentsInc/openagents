@@ -1,0 +1,95 @@
+// Replication lifecycle over one caller-owned entity/recipient pair (#12845).
+// Codecs and priority queues consume these decisions; they never infer receipt from a send.
+#module "aethyr.net.replication";
+#authority;
+#load "command.coax";
+
+NetReplica :: struct {
+  held:int; base:int; sent:int; last:int;
+  gone:int; gone_t:int; gone2:int; gone2_t:int;
+  priority:f32; since:int;
+}
+
+#test "replication: a replacement retains both owed removals before its next row" {
+  s:=NetReplica.{held=8,base=3,sent=15,last=3,priority=2,since=2};
+  s=net_replica_observe(s,8,true,4,32);
+  #assert s.held==8 && s.base==3 && s.sent==15 && s.priority==2 && s.since==2;
+  s=net_replica_observe(s,9,true,4,32);
+  #assert s.held==0 && s.base==0 && s.sent==0 && s.priority==0 && s.gone==8 && s.gone_t==0;
+  #assert !net_replica_ready(s);
+  s.gone_t=4;#assert net_replica_ready(s);
+  s=net_replica_sent(s,9,5,32);
+  #assert s.held==9 && s.last==5 && s.sent==32 && s.gone==8 && s.gone_t==4 && s.since==0;
+  s=net_replica_observe(s,10,true,6,32);
+  #assert s.gone2==8 && s.gone2_t==4 && s.gone==9 && s.gone_t==0 && !net_replica_ready(s);
+  s.gone_t=6;#assert !net_replica_ready(s);
+  s=net_replica_ack(s,4,32);#assert s.gone2==0 && s.gone2_t==0 && s.gone==9 && net_replica_ready(s);
+  s=net_replica_ack(s,6,32);#assert s.gone==0 && s.gone_t==0;
+}
+#test "replication: receipts advance only rows actually sent in the acknowledged whole tick" {
+  s:=NetReplica.{held=7,base=2,sent=(1<<3),gone=8,gone_t=4,gone2=9,gone2_t=5};
+  a:=net_replica_ack(s,3,32);#assert a.base==3 && a.gone==8 && a.gone2==9;
+  a=net_replica_ack(s,2,32);#assert a.base==2;
+  a=net_replica_ack(s,4,32);#assert a.base==2 && a.gone==0 && a.gone_t==0 && a.gone2==9;
+  a=net_replica_ack(s,5,32);#assert a.gone2==0 && a.gone2_t==0 && a.gone==8;
+  #assert net_replica_ack_allowed(3,2,3,32) && !net_replica_ack_allowed(2,2,3,32);
+  #assert !net_replica_ack_allowed(4,2,3,32) && net_replica_ack_allowed(1,0,32,32);
+  #assert !net_replica_ack_allowed(1,0,33,32);
+  // A ring position is cleared before reuse; it cannot acknowledge a row from a ring ago.
+  a=net_replica_observe(NetReplica.{held=7,sent=(1<<1)},7,true,33,32);#assert a.sent==0;
+  a=net_replica_ack(a,33,32);#assert a.base==0;
+}
+#test "replication: lost visibility and fresh identities clear their baseline, not earlier removals" {
+  s:=NetReplica.{held=7,base=5,sent=31,priority=4};
+  a:=net_replica_observe(s,7,false,6,32);#assert a.gone==7 && a.held==0 && a.base==0 && a.sent==0 && a.priority==0;
+  a=net_replica_observe(s,0,false,6,32);#assert a.gone==7;
+  a=net_replica_observe(NetReplica.{} ,0,false,6,32);#assert a.gone==0 && a.gone2==0;
+  s.gone=7;s.gone_t=4;s.since=3;
+  a=net_replica_sent(s,7,6,32);#assert a.gone==0 && a.gone_t==0 && a.base==5 && a.sent==95 && a.priority==0 && a.since==0;
+  a=net_replica_sent(s,8,6,32);#assert a.base==0 && a.sent==64 && a.gone==7 && a.gone_t==4;
+}
+#test "replication: entity zero's stored identity is one; a shorter receipt ring drops high bits" {
+  s:=net_replica_observe(NetReplica.{held=1,gone=1,gone_t=3},2,true,4,32);
+  #assert s.gone==1 && s.gone_t==0 && s.gone2==1 && s.gone2_t==3;
+  #assert !net_replica_ready(NetReplica.{gone=1});
+  s=net_replica_ack(NetReplica.{gone=1,gone_t=3,gone2=1,gone2_t=3},3,32);
+  #assert s.gone==0 && s.gone_t==0 && s.gone2==0 && s.gone2_t==0;
+  s=net_replica_observe(NetReplica.{sent=(1<<4)|(1<<1)},0,false,1,4);#assert s.sent==0;
+}
+#test "replication: changed field permissions require an absolute row and revoke outstanding baselines" {
+  s:=NetReplica.{held=7,base=5,sent=64,last=6,gone=8,gone_t=4};
+  a:=net_replica_fields(s,3,3);#assert a.base==5 && a.sent==64;
+  a=net_replica_fields(s,3,15);#assert a.base==0 && a.sent==0 && a.held==7 && a.gone==8 && a.gone_t==4;
+  a=net_replica_ack(a,6,32);#assert a.base==0;
+  a=net_replica_fields(s,15,3);#assert a.base==0 && a.sent==0;
+}
+
+net_replica_ack_allowed :: (heard:int,previous:int,now:int,acks:int)->bool {
+  return heard>previous && heard<=now && now-heard<acks;
+}
+net_replica_ack :: (s:NetReplica,heard:int,acks:int)->NetReplica {
+  out:=s;bit:=1<<(heard%acks);
+  if (out.sent & bit)!=0 { out.base=net_accepted_result(out.base,heard).seq; }
+  if out.gone!=0 && out.gone_t==heard { out.gone=0;out.gone_t=0; }
+  if out.gone2!=0 && out.gone2_t==heard { out.gone2=0;out.gone2_t=0; }
+  return out;
+}
+net_replica_observe :: (s:NetReplica,id1:int,seen:bool,now:int,acks:int)->NetReplica {
+  out:=s;keep:=((1<<acks)-1) ^ (1<<(now%acks));out.sent=out.sent & keep;
+  if out.held!=0 && (!seen || out.held!=id1) {
+    if out.gone!=0 { out.gone2=out.gone;out.gone2_t=out.gone_t; }
+    out.gone=out.held;out.gone_t=0;out.held=0;out.base=0;out.sent=0;out.priority=0;
+  }
+  return out;
+}
+net_replica_ready :: (s:NetReplica)->bool { return !(s.gone!=0 && s.gone_t==0) && s.gone2==0; }
+net_replica_fields :: (s:NetReplica,previous:int,wanted:int)->NetReplica {
+  out:=s;if previous!=wanted {out.base=0;out.sent=0;}return out;
+}
+net_replica_sent :: (s:NetReplica,id1:int,now:int,acks:int)->NetReplica {
+  out:=s;
+  if out.held!=id1 { out.base=0;out.sent=0; }
+  out.sent=out.sent | (1<<(now%acks));out.last=now;out.held=id1;out.priority=0;out.since=0;
+  if out.gone==id1 { out.gone=0;out.gone_t=0; }
+  return out;
+}

@@ -1,0 +1,45 @@
+// Shared admission, initialized stepping and durability selection over caller-owned state.
+#module "aethyr.net.session";
+#authority;
+#load "realm.coax";
+#load "../session/compat.coax";
+#load "../session/checkpoint-flow.coax";
+
+#test "sessions: admission checks identity before readiness and an uninitialized world cannot step" {
+  p:=CompatPins.{engine=1,rules=2,content=3,wire=5,schema=2};
+  server:=CompatServer.{pins=p,wire_min=5};
+  #assert net_session_admit(server,p,true)==CP_OK;
+  #assert net_session_admit(server,p,false)==CP_NO_CAPACITY;
+  old:=p;old.rules=1;#assert net_session_admit(server,old,false)==CP_RULES;
+  #assert net_world_steps(true,true,false) && !net_world_steps(false,true,false);
+  #assert !net_world_steps(true,false,false) && !net_world_steps(true,true,true);
+}
+#test "sessions: generation fences and selected reconnect holds do not alias a new socket" {
+  #assert net_session_current(SeatGeneration.{value=1},SeatGeneration.{value=1});
+  #assert !net_session_current(SeatGeneration.{value=1},SeatGeneration.{value=2});
+  #assert !net_session_current(SeatGeneration.{value=0},SeatGeneration.{value=0});
+  #assert !net_session_current(SeatGeneration.{value=-1},SeatGeneration.{value=-1});
+  #assert net_session_holds(15000,100,15099) && !net_session_holds(15000,100,15100);
+  #assert net_session_holds(15000,100,100);
+  #assert !net_session_holds(0,100,100) && !net_session_holds(15000,100,99);
+  #assert !net_session_holds(-1,100,100);
+}
+#test "sessions: ephemeral play has no receipt requirement; durable play keeps the existing capture bound" {
+  #assert net_session_saved(NET_DURABLE_NONE,false,-1);
+  #assert net_session_saved(NET_DURABLE_RECEIPTS,true,0) && net_session_saved(NET_DURABLE_RECEIPTS,true,29999);
+  #assert !net_session_saved(NET_DURABLE_RECEIPTS,false,0) && !net_session_saved(NET_DURABLE_RECEIPTS,true,30000);
+  #assert !net_session_saved(NET_DURABLE_RECEIPTS,true,-1) && !net_session_saved(2,true,0);
+  #assert !net_session_saved(-1,true,0);
+}
+
+net_session_admit :: (server:CompatServer,pins:CompatPins,initialized:bool)->int {
+  why:=compat_admit(server,pins);if why!=CP_OK {return why;}
+  return ifx initialized then CP_OK else CP_NO_CAPACITY;
+}
+net_world_steps :: (initialized:bool,live:bool,paused:bool)->bool {return initialized && live && !paused;}
+net_session_current :: (expected:SeatGeneration,actual:SeatGeneration)->bool {return expected.value>0 && expected==actual;}
+net_session_holds :: (hold_ms:int,since:int,now:int)->bool {return now>=since && now-since<hold_ms;}
+net_session_saved :: (durability:int,accepted:bool,age:int)->bool {
+  if durability==NET_DURABLE_NONE {return true;}
+  return durability==NET_DURABLE_RECEIPTS && cf_fresh(accepted,age);
+}

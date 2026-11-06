@@ -54,10 +54,24 @@ eg_im_table :: (v: [] RmServer, k: int) {
 }
 // Seat s's pick this tick as the send path takes it: each table slot's priority (-1 not for this seat).
 eg_im_pick :: (v: [] RmServer, k: int, s_id: SeatId, x: f32, z: f32, pick: [] f32) { s := s_id.value;
+  fields:[WIRE_SLOTS]int;eg_im_pick_fields(v,k,s_id,x,z,pick,fields[..]);
+  // The frozen pre-v3 codec cannot express a partial player. Withhold that entity entirely.
+  for q:0..<pick.count {if fields[q]!=((1<<WIRE_SF)-1) {pick[q]=-1;}}
+}
+eg_im_pick_fields :: (v:[]RmServer,k:int,s_id:SeatId,x:f32,z:f32,pick:[]f32,fields:[]int) {
+  s:=s_id.value;
   for q: 0..<pick.count { pick[q] = -1; }
+  for q:0..<fields.count {fields[q]=0;}
   p: [IM_PICKS] ImPick;
   n := im_pick(v[0].eg[k].im[..], s_id, x, z, v[0].eg[k].hist[0].now, p[..]);
-  for q: 0..<n { if p[q].tag >= 0 && p[q].tag < pick.count { pick[p[q].tag] = p[q].prio; } }
+  for q: 0..<n {
+    tag:=p[q].tag;
+    if tag>=0 && tag<pick.count && tag<fields.count {
+      pick[tag]=p[q].prio;
+      relation:=ifx p[q].chan==IM_HEALTH then NET_RECIPIENT_PARTY else ifx p[q].prio>=f32(IM_PRIO_OWN) then NET_RECIPIENT_OWNER else NET_RECIPIENT_PUBLIC;
+      fields[tag]=net_recipient_fields(rm_realm(RM_REALM_EVERGLADE),relation,false);
+    }
+  }
 }
 // Whether seat s blocks seat q (its n entry, who q is, isn't sent either).
 eg_im_blocks :: (v: [] RmServer, k: int, s_id: SeatId, q_id: SeatId) -> bool { q := q_id.value; s := s_id.value;
@@ -231,6 +245,22 @@ im_room_blocks :: (v: [] RmServer, k: int) {
   c: [4] int;
   im_counts(v[0].eg[k].im[..], SeatId.{value = 0}, c[..]);
   #assert c[0] == 4 && rm_st_relevant(v[..], k, SeatId.{value = 0}) == 4;   // itself, seats 1 and 2, and the town's doors (room-wide)
+}
+
+#test "interest (#12845): the party health channel cannot disclose a distant player's position" #steps 4000000000 {
+  v:[1]RmServer;rm_init(v[..]);rm_clock(v[..],0,1762190000000);
+  req:="GET /api/room/relay/everglade/pair-fields HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..],0,req)==0 && rm_join(v[..],1,req)==1;
+  k:=eg_room_at(v[..],v[0].conns[0].relay);
+  rm_heard(v[..],0,"H 5 ranger.0.0.0 druid 0 Ash");
+  rm_heard(v[..],1,"H 5 ranger.0.0.0 druid 0 Brook");
+  box:[1]EgInbox;eg_test_drain(v[..],box[..]);
+  rm_eg_moved(v[..],k,SeatId.{value=0},0,0,0,0,0,0,0,0,1,0,0);
+  rm_eg_moved(v[..],k,SeatId.{value=1},0,500,0,0,0,0,0,0,1,0,0);
+  im_party(v[0].eg[k].im[..],SeatId.{value=0},7);im_party(v[0].eg[k].im[..],SeatId.{value=1},7);
+  for q:0..<3 {eg_test_tick(v[..],k);eg_test_drain(v[..],box[..]);}
+  e:=eg_test_ent(box[..],0,1);
+  #assert e.id==1 && e.hp>0 && e.max>0 && e.x==0 && e.z==0;
 }
 
 // The raw wire, every byte seat 0 is sent from its join on: nothing of a player it blocks, nor of a

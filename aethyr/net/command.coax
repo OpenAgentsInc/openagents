@@ -1,0 +1,70 @@
+// Command ordering and earned simulation time over caller-owned state (#12845).
+#module "aethyr.net.command";
+#authority;
+#load "../session/lifecycle.coax";
+
+NetCreditProfile :: struct { hz:int; most:int; per_tick:int; excess:int; }
+NetCredit :: struct {
+  since:int=-1; earned:int; bank:int;
+  reset:bool; advanced:bool; limited:bool; // this observation's diagnostics, not cumulative state
+}
+NetAccepted :: struct { seq:int; advanced:bool; }
+
+#test "commands: accepted results move forward and reconnect resends apply once" {
+  #assert net_command_newer(7,6,0) && net_command_newer(7,6,6);
+  #assert !net_command_newer(6,6,0) && !net_command_newer(7,6,7) && !net_command_newer(7,8,0);
+  a:=net_accepted_result(6,7);#assert a.seq==7 && a.advanced;
+  a=net_accepted_result(7,7);#assert a.seq==7 && !a.advanced;
+  a=net_accepted_result(8,7);#assert a.seq==8 && !a.advanced;
+}
+#test "commands: a stalled link retains earned time without granting a faster clock" {
+  p:=NetCreditProfile.{hz=30,most=30,per_tick=4,excess=4};
+  c:=net_credit_step(p,NetCredit.{bank=3},1000);
+  #assert c.since==1000 && c.earned==0 && c.bank==4 && c.reset && !c.advanced && !c.limited;
+  c=net_credit_step(p,c,1000);#assert !c.reset && !c.advanced && c.bank==4;
+  c=net_credit_step(p,c,1640);#assert c.since==1000 && c.earned==19 && c.bank==23;
+  c=net_credit_step(p,c,1640);#assert c.earned==19 && c.bank==23 && !c.advanced;
+  c=net_credit_step(p,c,2000);#assert c.earned==30 && c.bank==30 && c.advanced && c.limited;
+  c.bank=0;c=net_credit_step(p,c,2000);#assert c.bank==0 && !c.limited;
+  c=net_credit_step(p,c,100);#assert c.since==100 && c.earned==0 && c.bank==1;
+  #assert net_credit_excess(p,20,20)==-4 && net_credit_excess(p,24,20)==0 && net_credit_excess(p,25,20)==1;
+  #assert net_credit_can_step(p,1,0) && !net_credit_can_step(p,0,0) && !net_credit_can_step(p,1,4);
+  #assert net_credit_can_step(p,1,3) && !net_credit_can_step(p,-1,0) && !net_credit_can_step(p,1,5);
+  // A second realm earns its own cadence rather than copying the 30 Hz rule.
+  p.hz=60;p.most=60;p.per_tick=2;p.excess=0;
+  c=net_credit_step(p,NetCredit.{since=0},500);#assert c.earned==30 && c.bank==30;
+  #assert net_credit_excess(p,31,30)==1 && !net_credit_can_step(p,1,2) && net_credit_can_step(p,1,1);
+}
+#test "commands: credit rounds at half a step and never grows past its selected bound" {
+  p:=NetCreditProfile.{hz=30,most=30,per_tick=4,excess=4};
+  c:=net_credit_step(p,NetCredit.{since=0},16);#assert c.earned==0 && c.bank==0;
+  c=net_credit_step(p,c,17);#assert c.earned==1 && c.bank==1;
+  c=net_credit_step(p,NetCredit.{since=0,bank=30},1000);#assert c.earned==30 && c.bank==30 && c.limited;
+  c=net_credit_step(p,NetCredit.{bank=30},0);#assert c.bank==30 && c.limited;
+  c=net_credit_step(p,NetCredit.{bank=29},0);#assert c.bank==30 && c.limited;
+  c=net_credit_step(p,NetCredit.{since=0,bank=0,earned=1},67);#assert c.bank==1 && c.earned==2;
+  c=net_credit_cap(NetCredit.{limited=true},1,30);#assert c.bank==1 && !c.limited;
+  p.hz=1;
+  c=net_credit_step(p,NetCredit.{since=0},499);#assert c.earned==0 && !c.advanced;
+  c=net_credit_step(p,c,500);#assert c.earned==1 && c.bank==1 && c.advanced;
+}
+
+net_command_newer :: (seq:int,accepted:int,queued:int)->bool { return life_room_takes(seq,accepted,queued); }
+net_accepted_result :: (accepted:int,seq:int)->NetAccepted {
+  if seq>accepted { return NetAccepted.{seq=seq,advanced=true}; }
+  return NetAccepted.{seq=accepted};
+}
+net_credit_cap :: (c:NetCredit,n:int,most:int)->NetCredit {
+  out:=c;
+  if n<most {out.bank=n;out.limited=false;}else{out.bank=most;out.limited=true;}
+  return out;
+}
+net_credit_step :: (p:NetCreditProfile,c:NetCredit,now:int)->NetCredit {
+  out:=c;out.reset=false;out.advanced=false;out.limited=false;
+  if out.since<0 || now<out.since { out.since=now;out.earned=0;out=net_credit_cap(out,out.bank+1,p.most);out.reset=true; }
+  due:=((now-out.since)*p.hz+500)/1000;
+  if due>out.earned { out=net_credit_cap(out,out.bank+due-out.earned,p.most);out.earned=due;out.advanced=true; }
+  return out;
+}
+net_credit_excess :: (p:NetCreditProfile,queued:int,bank:int)->int { return queued-bank-p.excess; }
+net_credit_can_step :: (p:NetCreditProfile,bank:int,took:int)->bool { return bank>0 && took<p.per_tick; }

@@ -3,18 +3,18 @@
 // steps per room tick, and never grant more simulation time than the server's clock earned.
 #module "room.input.policy";
 #authority;
+#load "../../../aethyr/net/command.coax";
 EGI_QUEUE :: 32; EGI_CREDIT :: 30; EGI_STEPS :: 4; EGI_KEEP :: 4;
+eg_credit_profile :: ()->NetCreditProfile { return NetCreditProfile.{hz=30,most=EGI_CREDIT,per_tick=EGI_STEPS,excess=EGI_KEEP}; }
 #test "input policy: the qualified resend fits within bounded earned clock credit" {
-  #assert EGI_QUEUE == 32 && egi_credit_limit() == 30 && EGI_STEPS == 4 && EGI_KEEP == 4;
+  p:=eg_credit_profile();
+  #assert EGI_QUEUE == 32 && p.hz==30 && p.most==30 && p.per_tick==4 && p.excess==4;
   // 640 ms at 30 Hz, with a bounded browser frame, fits without changing simulation rate.
   #assert EGI_QUEUE >= 20 && EGI_CREDIT >= 20 && EGI_CREDIT <= 30;
   #assert !egi_queue_full(31) && egi_queue_full(32) && egi_queue_full(33) && !egi_queue_full(0);
-  #assert !egi_tick_full(3) && egi_tick_full(4) && egi_tick_full(5) && !egi_tick_full(0);
-  #assert egi_excess(20, 20) == -4 && egi_excess(24, 20) == 0 && egi_excess(25, 20) == 1;
-  #assert egi_excess(32, 0) == 28 && egi_excess(0, 30) == -34;
+  #assert net_credit_can_step(p,1,3) && !net_credit_can_step(p,1,4) && !net_credit_can_step(p,1,5) && net_credit_can_step(p,1,0);
+  #assert net_credit_excess(p,20,20)==-4 && net_credit_excess(p,24,20)==0 && net_credit_excess(p,25,20)==1;
+  #assert net_credit_excess(p,32,0)==28 && net_credit_excess(p,0,30)==-34;
 }
 // The room's existing decisions, with explicit realm limits. Credit still comes only from its clock.
 egi_queue_full :: (queued: int) -> bool { return queued >= EGI_QUEUE; }
-egi_tick_full :: (took: int) -> bool { return took >= EGI_STEPS; }
-egi_credit_limit :: () -> int { return EGI_CREDIT; }
-egi_excess :: (queued: int, bank: int) -> int { return queued - bank - EGI_KEEP; }

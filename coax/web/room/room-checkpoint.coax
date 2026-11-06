@@ -106,7 +106,7 @@ ck_restore :: (v:[]RmServer,k:int, s_id: SeatId) { s := s_id.value;
   if r>=0&&cast(string)room[0..<c.room_n]==cast(string)v[0].relays[r].code[0..<v[0].relays[r].code_n]{st:=v[0].eg[k].seat[s..<s+1];st[0].back=true;st[0].back_x=f32(c.n[13])/1000;st[0].back_y=f32(c.n[14])/1000;st[0].back_z=f32(c.n[15])/1000;st[0].back_yaw=f32(c.n[16])/1000;}
 }
 ck_can_play :: (v:[]RmServer,k:int, s_id: SeatId)->bool {
-  tk:=eg_ticket(v,k, s_id);if tk.schema!=2{return true;}i:=ck_slot_seat(v,k, s_id);return i>=0&&cf_fresh(v[0].ck.slot[i].accepted,v[0].mono_ms-v[0].ck.slot[i].accepted_mono);
+  tk:=eg_ticket(v,k, s_id);if tk.schema!=2{return net_session_saved(NET_DURABLE_NONE,false,0);}i:=ck_slot_seat(v,k, s_id);return i>=0&&net_session_saved(NET_DURABLE_RECEIPTS,v[0].ck.slot[i].accepted,v[0].mono_ms-v[0].ck.slot[i].accepted_mono);
 }
 rm_checkpoint_paused :: (v:[]RmServer,k:int)->bool #export_c {
   if k<0||k>=EG_ROOMS||!v[0].eg[k].live{return false;}

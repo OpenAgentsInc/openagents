@@ -115,6 +115,7 @@ NetFx :: struct { live: bool; slot: int; caster: int; at: Point; seed: int; t: i
 // You as the server has you after input `ack` (D's p entry for your seat).
 NetFix :: struct { ok: bool; ack: int; x: f32; y: f32; z: f32; yaw: f32; vx: f32; vy: f32; vz: f32; ground: bool; carry: f32; jump: bool; }
 EgNet :: struct {
+  party_only:[16]bool;party_hp:[16]int;party_max:[16]int;party_seen:[16]int;
   want: bool;
   state: int; sock: int = -1; tries: int; retry: int;
   url: [NET_URL] u8; url_n: int;
@@ -577,6 +578,7 @@ net_down :: (n: [] EgNet) {
 }
 // What the page holds of the server's rows, forgotten: a new seat's are a new snapshot.
 net_forget :: (n: [] EgNet) {
+  for q:0..<16 {n[0].party_only[q]=false;}
   for e: 0..<WIRE_MIRROR { n[0].mir[0].ents[e].live = false; }
   n[0].mir[0].heard = 0; n[0].mir[0].tick = 0; n[0].mir[0].part = 0; n[0].mir[0].whole = false;
   n[0].out_got = 0; n[0].was_snap = false; n[0].town_check = false;   // a new seat's count starts again (#12902)
@@ -738,6 +740,7 @@ net_record :: (s: [] Everglade, n: [] EgNet, t: string) {
     wire_mirror_end(n[0].mir[..], d);
     if (d.f & 1) != 0 && (d.f & 2) == 0 {
       for e: 0..<NET_ENTS { if n[0].ents[e].live && n[0].ents[e].seen != d.tick { n[0].ents[e].live = false; } }
+      for q:0..<16 {if n[0].party_seen[q]!=d.tick {n[0].party_only[q]=false;}}
     }
     return;
   }
@@ -826,7 +829,20 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
   }
   if c == 's' {
     e := wire_mirror_s(n[0].mir[..], d.tick, t);
-    if e >= 0 { net_row(s, n, wire_mirror_get(n[0].mir[..], e), d); }
+    if e >= 0 {
+      w:=wire_mirror_get(n[0].mir[..],e);
+      h:=wire_read_s_head(t,r[..]);mask:=wire_num(t,r[..]);
+      if w.id>=0 && w.id<16 {
+        health:=(1<<WS_HP)|(1<<WS_MAX);
+        if h.back==0 {n[0].party_only[w.id]=mask!=0 && (mask & health)==mask;}
+        if n[0].party_only[w.id] {
+          n[0].party_hp[w.id]=w.hp;n[0].party_max[w.id]=w.max;n[0].party_seen[w.id]=d.tick;
+          old:=net_ent(n,w.id,false);if old>=0 {n[0].ents[old].live=false;}
+          return;
+        }
+      }
+      net_row(s,n,w,d);
+    }
     return;
   }
   if c == 'n' {
@@ -848,6 +864,7 @@ net_entry :: (s: [] Everglade, n: [] EgNet, t: string, d: WireD) {
   if c == 'x' {
     id := wire_num(t, r[..]);
     if !r[0].ok { return; }
+    if id>=0 && id<16 {n[0].party_only[id]=false;}
     _ := wire_mirror_x(n[0].mir[..], id);
     k := net_ent(n, id, false);
     if k >= 0 { ege_gone(s, n, k); n[0].ents[k].live = false; }   // a raider's body falls (everglade-events.coax)
@@ -2038,6 +2055,12 @@ net_count :: (s: [] Everglade, kind: int) -> int {
   }
   return c;
 }
+NetPartyHealth :: struct {ok:bool;hp:int;max:int;}
+net_party_health :: (s:[]Everglade,seat:int)->NetPartyHealth {
+  if !net_on(s) || seat<0 || seat>=16 {return NetPartyHealth.{};}
+  n:=net_of(s);
+  return NetPartyHealth.{ok=n[0].party_only[seat],hp=n[0].party_hp[seat],max=n[0].party_max[seat]};
+}
 net_mine_player :: (n: [] EgNet, en: NetEnt) -> bool { return en.kind == WK_PLAYER && en.owner >= 0 && en.owner == n[0].seat; }
 // The k-th live entity of kind (-1 any; your own player left out): its place in the table, -1 none.
 net_nth :: (s: [] Everglade, kind: int, k: int) -> int {
@@ -2879,6 +2902,24 @@ net_test_pair :: (a: [] Everglade, na: [] EgNet, b: [] Everglade, nb: [] EgNet, 
   #assert net_test_hear(a[..], 2, net_test_frame(room[..])) && net_fix_due(a[..]);
   #assert net_replay_n(a[..]) == 2;
   #assert abs(net_replay_input(a[..], 0).key_y - 0.5) < 0.001 && abs(net_replay_input(a[..], 1).key_x - 1) < 0.001;
+}
+#test "net (#12845): a party health row never creates a player body at the default origin" {
+  a:[1]Everglade;na:[1]EgNet;room:[1]NetTestRoom;
+  #assert net_test_page(a[..],na[..],0,"pa",100) && net_test_hear(a[..],0,"y 2 1 5000100");
+  net_test_world(room[..],0);#assert net_test_hear(a[..],0,net_test_frame(room[..]));
+  #assert net_test_hear(a[..],0,"D 1 0 0 0 s 1 0 3072 7 11");
+  #assert net_count(a[..],WK_PLAYER)==0 && !net_view(a[..],WK_PLAYER,0).ok;
+  #assert net_party_health(a[..],1).ok && net_party_health(a[..],1).hp==7 && net_party_health(a[..],1).max==11;
+  #assert net_test_hear(a[..],0,"D 2 0 0 0 s 1 1 1024 -2");
+  #assert net_party_health(a[..],1).hp==5 && net_count(a[..],WK_PLAYER)==0;
+  net_test_tick(room[..],3,0);net_test_s(room[..],WireS.{id=1,kind=WK_PLAYER,owner=1,x=5,hp=5,max=11,life=1});
+  #assert net_test_hear(a[..],0,net_test_frame(room[..]));
+  #assert !net_party_health(a[..],1).ok && net_count(a[..],WK_PLAYER)==1;
+  #assert net_test_hear(a[..],0,"D 4 0 0 0 s 1 0 3072 4 11");
+  #assert net_party_health(a[..],1).hp==4 && net_count(a[..],WK_PLAYER)==0;
+  #assert net_test_hear(a[..],0,"D 5 0 0 0 x 1");#assert !net_party_health(a[..],1).ok;
+  #assert net_test_hear(a[..],0,"D 6 0 0 0 s 1 0 3072 3 11");
+  #assert net_party_health(a[..],1).ok;net_forget(na[..]);#assert !net_party_health(a[..],1).ok;
 }
 #test "net: a page in a room has each person in the conditions their row's COND says, and the abilities' holds follow them: Entangle's vines (#12873)" #steps 400000000 {
   a: [1] Everglade; na: [1] EgNet; room: [1] NetTestRoom;

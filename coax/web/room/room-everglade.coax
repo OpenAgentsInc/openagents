@@ -191,6 +191,7 @@ EgCast :: struct {
   hp0: int; mx: f32; mz: f32;   // a Repair's: its caster's HP and feet at its start (hurt or moved, it stops)
 }
 EgRoom :: struct {
+  initialized:bool;
   work:[1]WorkBudget;
   forge_version:int=-1;
   stale_n: int;        // hellos refused for another WIRE_VERSION (#12788)
@@ -300,7 +301,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
   if k >= 0 { return k; }
   for q: 0..<EG_ROOMS {
     if v[0].eg[q].live { continue; }
-    v[0].eg[q].live = true; v[0].eg[q].relay = r; v[0].eg[q].tick = 0; v[0].eg[q].cache_tick = -1;
+    v[0].eg[q].initialized=false;v[0].eg[q].live = true; v[0].eg[q].relay = r; v[0].eg[q].tick = 0; v[0].eg[q].cache_tick = -1;
     v[0].eg[q].work[0]=WorkBudget.{};
     v[0].eg[q].effect_known=false;v[0].eg[q].house_free=0;for s:0..<EG_SEATS{v[0].eg[q].effect_free[s]=0;}
     for t: 0..<WIRE_BASES { v[0].eg[q].hist[0].tick[t] = -1; }
@@ -324,6 +325,7 @@ eg_room_of :: (v: [] RmServer, r: int) -> int {
     v[0].eg[q].rules[0].b[0].dice[0].fixed = rc_dice_fixed(v);   // a local room told "dice fixed" (room-control.coax)
     ra_fresh(v, q);   // its abilities (room-abilities.coax)
     ev_fresh(v, q);   // its world event, XP and levels (room-events.coax)
+    v[0].eg[q].initialized=true;
     return q;
   }
   return -1;
@@ -404,7 +406,7 @@ eg_grace_ends :: (v: [] RmServer, k: int) {
   r := v[0].eg[k].relay;
   out := false;
   for s: 0..<EG_SEATS {
-    if !v[0].eg[k].seat[s].held || !v[0].eg[k].live || !eg_held(v, k, SeatId.{value = s}) || life_room_holds(v[0].eg[k].seat[s].held_at, v[0].mono_ms) { continue; }
+    if !v[0].eg[k].seat[s].held || !v[0].eg[k].live || !eg_held(v, k, SeatId.{value = s}) || net_session_holds(EG_GRACE_MS,v[0].eg[k].seat[s].held_at,v[0].mono_ms) { continue; }
     h: [16] u8;
     rl_queue(v, r, -1, -1, rl_head(h[..], 'l', SeatId.{value = s}, false), "");
     eg_left(v, r, SeatId.{value = s});
@@ -631,7 +633,7 @@ eg_heard_input :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat
   st := v[0].eg[k].seat[seat..<seat + 1];
   seq := w.seq;
   n := st[0].q_n;
-  if !life_room_takes(seq, st[0].ack, ifx n > 0 then st[0].q[n - 1].seq else st[0].ack) { return; }   // old or repeated (aethyr/session/lifecycle.coax)
+  if !net_command_newer(seq, st[0].ack, ifx n > 0 then st[0].q[n - 1].seq else st[0].ack) { return; }
   if n >= EG_INPUTS {
     for i: 1..<EG_INPUTS { st[0].q[i - 1] = st[0].q[i]; }
     n = EG_INPUTS - 1;
@@ -726,7 +728,7 @@ eg_pins :: (v: [] RmServer, k: int, seat_id: SeatId, wire: int) -> CompatPins { 
   return CompatPins.{engine = p.engine, rules = p.rules, content = p.content, wire = wire, schema = eg_ticket(v, k, seat_id).schema};
 }
 // Whether seat s's hello on wire `wire` may play in this room: CP_OK, else why not (CP_*).
-eg_admit :: (v: [] RmServer, k: int, seat_id: SeatId, wire: int) -> int { seat := seat_id.value; return compat_admit(eg_server(), eg_pins(v, k, seat_id, wire)); }
+eg_admit :: (v: [] RmServer, k: int, seat_id: SeatId, wire: int) -> int { seat := seat_id.value; return net_session_admit(eg_server(),eg_pins(v,k,seat_id,wire),v[0].eg[k].initialized); }
 // The seat's ticket (ok false: none, in a room that needs none).
 eg_ticket :: (v: [] RmServer, k: int, seat_id: SeatId) -> Ticket { seat := seat_id.value;
   c := v[0].eg[k].seat[seat].conn;
@@ -776,6 +778,7 @@ eg_heard_rest :: (v: [] RmServer, k: int, seat_id: SeatId, text: string) { seat 
 // tick (EG_BANK at most), however late this tick is. False: no such room.
 rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
   if k < 0 || k >= EG_ROOMS || !v[0].eg[k].live { return false; }
+  if !net_world_steps(v[0].eg[k].initialized,v[0].eg[k].live,false) {return false;}
   eg_grace_ends(v, k);   // held seats whose player did not come back in time leave (#12792)
   if !v[0].eg[k].live { return false; }
   if rm_checkpoint_paused(v,k) { ck_pause(v,k); return false; }
@@ -787,13 +790,12 @@ rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
     if !st[0].live { continue; }
     st[0].took = 0;
     // its first tick earns its first step; each 1/EG_HZ s of the clock after it, one more (to the nearest)
-    if st[0].sat_ms < 0 || now < st[0].sat_ms { st[0].sat_ms = now; st[0].earned = 0; st[0].bank = least(st[0].bank + 1, egi_credit_limit()); }
-    due := ((now - st[0].sat_ms) * EG_HZ + 500) / 1000;
-    if due > st[0].earned { st[0].bank = least(st[0].bank + due - st[0].earned, egi_credit_limit()); st[0].earned = due; }
+    credit:=net_credit_step(eg_credit_profile(),NetCredit.{since=st[0].sat_ms,earned=st[0].earned,bank=st[0].bank},now);
+    st[0].sat_ms=credit.since;st[0].earned=credit.earned;st[0].bank=credit.bank;
     // input past what it is owed and EG_KEEP ticks more is a page sending faster than the clock (a
     // skewed clock, or a cheat): the oldest of it goes, so no seat's input stands more than EG_KEEP
     // ticks behind its time; the page's re-run takes the server's word for the step that went
-    over := egi_excess(st[0].q_n, st[0].bank);
+    over := net_credit_excess(eg_credit_profile(),st[0].q_n,st[0].bank);
     if over > 0 {
       for i: over..<st[0].q_n { st[0].q[i - over] = st[0].q[i]; }
       st[0].q_n -= over; st[0].late += over;
@@ -806,7 +808,7 @@ rm_eg_begin :: (v: [] RmServer, k: int) -> bool #export_c {
 rm_eg_input :: (v: [] RmServer, k: int, s_id: SeatId, out: [] int) -> bool #export_c { s := s_id.value;
   if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || out.count < EG_IN_FIELDS { return false; }
   st := v[0].eg[k].seat[s..<s + 1];
-  if !st[0].live || !st[0].placed || st[0].q_n == 0 || st[0].bank <= 0 || egi_tick_full(st[0].took) { return false; }
+  if !st[0].live || !st[0].placed || st[0].q_n == 0 || !net_credit_can_step(eg_credit_profile(),st[0].bank,st[0].took) { return false; }
   if eg_waits(v, k, s_id, st[0].q[0].seq) { return false; }
   i := st[0].q[0];
   for q: 1..<st[0].q_n { st[0].q[q - 1] = st[0].q[q]; }
@@ -820,7 +822,8 @@ rm_eg_moved :: (v: [] RmServer, k: int, s_id: SeatId, seq: int, x: f32, y: f32, 
   if k < 0 || k >= EG_ROOMS || s < 0 || s >= EG_SEATS || !v[0].eg[k].live || !v[0].eg[k].seat[s].live { return; }
   st := v[0].eg[k].seat[s..<s + 1];
   st[0].pose = EgPose.{x = x, y = y, z = z, yaw = yaw, vx = vx, vy = vy, vz = vz, g = g, clip = clip, carry = carry};
-  if seq > st[0].ack { st[0].ack = seq; st[0].ack_at = st[0].step_at; }
+  accepted:=net_accepted_result(st[0].ack,seq);
+  if accepted.advanced { st[0].ack=accepted.seq;st[0].ack_at=st[0].step_at; }
   if !st[0].placed && st[0].checkpoint_hello { v[0].ck.force=true; }
   st[0].placed = true;
   e5rr_place(v[0].eg[k].rules[..], s, x, z);
@@ -1359,8 +1362,9 @@ eg_send :: (v: [] RmServer, k: int, s_id: SeatId) { s := s_id.value;
   if behind { v[0].eg[k].behind_n += 1; }
   // what this seat may hear (room-interest.coax, #12789): near it, room-wide, its own; never whom it blocks
   pick: [WIRE_SLOTS] f32;
-  eg_im_pick(v, k, s_id, me.x, me.z, pick[..]);
-  n := wire_seat_frame_in(st[0].rep[..], rm[0].hist[..], s, me.x, me.z, pick[..], ifx full then rows.count else ifx behind then 0 else WIRE_BUDGET, rows[..]);
+  fields:[WIRE_SLOTS]int;
+  eg_im_pick_fields(v,k,s_id,me.x,me.z,pick[..],fields[..]);
+  n := wire_seat_frame_fields(st[0].rep[..],rm[0].hist[..],s,me.x,me.z,pick[..],fields[..],ifx full then rows.count else ifx behind then 0 else WIRE_BUDGET,rows[..]);
   observed_seat:=k*EG_SEATS+s;v[0].st.rows_last[observed_seat]=0;v[0].st.left_last[observed_seat]=st[0].rep[0].left;v[0].st.rows_deferred+=st[0].rep[0].left;
   for q: 0..<wire_entries(cast(string) rows[0..<n], 0) {
     en := wire_entry(cast(string) rows[0..<n], 0, q);
@@ -1643,6 +1647,14 @@ dr_mac :: (key: string, text: string, out: [] u8) {
   // the build the room view shows
   #assert rm_st_pin(0) == WIRE_ENGINE && rm_st_pin(1) == WIRE_RULES && rm_st_pin(2) == WIRE_CONTENT && rm_st_pin(3) == WIRE_MIN && rm_st_pin(4) == WIRE_VERSION && rm_st_pin(5) == RV_SCHEMA;
 }
+#test "everglade room (#12845): live storage cannot step before world initialization completes" {
+  v:[1]RmServer;rm_init(v[..]);rm_clock(v[..],0,1762190000000);
+  #assert rm_join(v[..],0,"GET /api/room/relay/everglade/pair-init HTTP/1.1\r\n\r\n")==0;
+  k:=eg_room_at(v[..],v[0].conns[0].relay);before:=v[0].eg[k].tick;
+  v[0].eg[k].initialized=false;
+  #assert !rm_eg_begin(v[..],k) && v[0].eg[k].tick==before;
+}
+
 #test "everglade room: the world's header on joining, each seat's inputs stepped no faster than the tick, everyone's players and names in D" #steps 2000000000 {
   v: [1] RmServer;
   rm_init(v[..]);

@@ -1,0 +1,77 @@
+// Bounded whole-number records for realm codecs. The caller chooses the message and field policy.
+#module "aethyr.net.record";
+#authority;
+NET_RECORD_FIELDS :: 32;NET_RECORD_BYTES :: 2048;NET_RECORD_MAX :: 2000000000;
+NetRecord :: struct {ok:bool;head:u8;n:int;v:[NET_RECORD_FIELDS]int;}
+
+#test "records: exact tokens, signed bounds and capacity are checked before publication" {
+  r:=net_record_read("I 1 -1000 0 7");#assert r.ok && r.head=='I' && r.n==4 && r.v[0]==1 && r.v[1]==-1000 && r.v[2]==0 && r.v[3]==7;
+  r=net_record_read("s 0 2000000000 -2000000000");#assert r.ok && r.n==3 && r.v[1]==NET_RECORD_MAX && r.v[2]==-NET_RECORD_MAX;
+  for t:[14]string.["","I","I ","I  1","I 1 ","I 1  2","I +1","I -","I 1.0","I 1x","I 2000000001","I -2000000001","I 99999999999999999999999","II 1"] {#assert !net_record_read(t).ok;}
+  #assert net_record_read("I 0").ok && net_record_read("I 9").v[0]==9 && !net_record_read("I :").ok;
+  b:[NET_RECORD_BYTES+1]u8;for i:0..<b.count {b[i]='0';}b[0]='I';b[1]=' ';
+  #assert net_record_read(cast(string)b[0..<NET_RECORD_BYTES]).ok;
+  #assert !net_record_read(cast(string)b[..]).ok;
+  values:=[5]int.[0,-1,12,NET_RECORD_MAX,-NET_RECORD_MAX];out:[128]u8;
+  n:=net_record_write('s',values[..],out[..]);#assert n>0 && cast(string)out[0..<n]=="s 0 -1 12 2000000000 -2000000000";
+  r=net_record_read(cast(string)out[0..<n]);#assert r.ok && r.n==5;
+  for i:0..<5 {#assert r.v[i]==values[i];}
+  exact:[128]u8;m:=net_record_write('s',values[..],exact[0..<n]);#assert m==n;
+  exact[0]=99;#assert net_record_write('s',values[..],exact[0..<n-1])==0 && exact[0]==99;
+  values[0]=NET_RECORD_MAX+1;#assert net_record_write('s',values[..],out[..])==0;
+  values[0]=-NET_RECORD_MAX-1;#assert net_record_write('s',values[..],out[..])==0;
+  #assert net_record_write('s',values[0..<0],out[..])==0;
+  one:=[1]int.[0];#assert net_record_write('I',one[..],out[0..<3])==3;
+  #assert cast(string)out[0..<3]=="I 0";
+}
+#test "records: all thirty-two fields fit and a thirty-third is refused" {
+  v:[33]int;b:[512]u8;
+  n:=net_record_write('I',v[0..<32],b[..]);#assert n==65 && net_record_read(cast(string)b[0..<n]).n==32;
+  #assert net_record_write('I',v[..],b[..])==0;
+  b[n]=' ';b[n+1]='0';#assert !net_record_read(cast(string)b[0..<n+2]).ok;
+}
+
+net_record_digit :: (ch:u8)->int {
+  if ch>='0' && ch<='9' {return cast(int)(ch-'0');}return -1;
+}
+net_record_read :: (t:string)->NetRecord {
+  out:NetRecord;
+  if t.count<3 || t.count>NET_RECORD_BYTES || t[1]!=' ' {return out;}
+  out.head=t[0];i:=2;
+  while i<t.count {
+    if out.n>=NET_RECORD_FIELDS {return NetRecord.{};}
+    neg:=false;if t[i]=='-' {neg=true;i+=1;}
+    if i>=t.count || net_record_digit(t[i])<0 {return NetRecord.{};}
+    v:=0;
+    while i<t.count {
+      d:=net_record_digit(t[i]);if d<0 {break;}
+      if v>(NET_RECORD_MAX-d)/10 {return NetRecord.{};}
+      v=v*10+d;i+=1;
+    }
+    out.v[out.n]=ifx neg then -v else v;out.n+=1;
+    if i==t.count {out.ok=true;return out;}
+    if t[i]!=' ' {return NetRecord.{};}i+=1;
+  }
+  return NetRecord.{};
+}
+net_record_write :: (head:u8,values:[]int,out:[]u8)->int {
+  if values.count<1 || values.count>NET_RECORD_FIELDS {return 0;}
+  need:=1;
+  for value:values {
+    if value< -NET_RECORD_MAX || value>NET_RECORD_MAX {return 0;}
+    x:=value;need+=1;if x<0 {need+=1;}
+    // Integer division toward zero counts either sign's digits without negating the value.
+    while true {need+=1;x/=10;if x==0 {break;}}
+  }
+  // At most 32 fields of one sign and ten digits: 385 bytes, below the record byte cap.
+  if out.count<need {return 0;}
+  n:=1;out[0]=head;
+  for value:values {
+    out[n]=' ';n+=1;x:=value;
+    if x<0 {out[n]='-';n+=1;x=-x;}
+    digits:[10]u8;c:=0;
+    while true {digits[c]=cast(u8)(48+x%10);c+=1;x/=10;if x==0 {break;}}
+    while c>0 {c-=1;out[n]=digits[c];n+=1;}
+  }
+  return n;
+}

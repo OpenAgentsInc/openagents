@@ -23,6 +23,9 @@
 #load "../../../aethyr/session/lifecycle.coax";   // the room's side of the session lifecycle: what it takes, how long it holds a seat (#12856)
 #load "../../../aethyr/session/travel.coax";   // one owner per character (its fence, control.coax) and travel's admission (#12834, #12850, #12845)
 #load "../../../aethyr/net/profile.coax";   // each realm's timing, trust, durability and fairness (#12845)
+#load "../../../aethyr/net/realm.coax";
+#load "../../../aethyr/net/command.coax";
+#load "../../../aethyr/net/session.coax";
 #load "../../../aethyr/session/party.coax";   // a party's rules: who shows to whom (#12852, #12845)
 #load "room-interest.coax";   // who may receive what, each tick (#12789)
 #load "room-input-policy.coax";
@@ -118,7 +121,7 @@ RmServer :: struct {
 rm_init :: (v: [] RmServer) #export_c {
   for i: 0..<CONNS { v[0].conns[i] = RmConn.{}; }
   for r: 0..<RELAYS { v[0].relays[r].live = false; }
-  for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].relay = -1; }
+  for k: 0..<EG_ROOMS { v[0].eg[k].live = false; v[0].eg[k].initialized=false;v[0].eg[k].relay = -1; }
   v[0].q_head = 0; v[0].q_n = 0;
   for r: 0..<ROOMS { v[0].rooms[r].live = false; v[0].rooms[r].s[0] = OrbitLeague.{}; }
 }
@@ -292,7 +295,20 @@ rm_profile :: (realm: int) -> NetProfile {
   if realm == RM_REALM_EVERGLADE {
     return NetProfile.{hz = EG_HZ, substeps = 1, trust = NET_TRUST_AUTHORITY, durable = NET_DURABLE_RECEIPTS, fair = NET_FAIR_EARNED};
   }
-  return NetProfile.{hz = cast(int) ROOM_HZ, substeps = cast(int) (1.0 / (ROOM_HZ * STEP) + 0.5), trust = NET_TRUST_AUTHORITY};
+  // The published Orbit profile accepts reported car bodies. Server-owned ball physics does
+  // not make those cars authoritative. Its replacement uses a separate versioned input profile.
+  return NetProfile.{hz = cast(int) ROOM_HZ, substeps = cast(int) (1.0 / (ROOM_HZ * STEP) + 0.5), trust = NET_TRUST_PRESENCE};
+}
+rm_realm :: (realm:int)->NetRealm {
+  if realm==RM_REALM_EVERGLADE {
+    return NetRealm.{beat=rm_profile(realm),collision=NET_COLLIDE_CAPSULE,fields=WIRE_SF,
+      public_fields=(1<<WIRE_SF)-1,owner_fields=(1<<WIRE_SF)-1,party_fields=(1<<WS_HP)|(1<<WS_MAX)};
+  }
+  if realm==RM_REALM_ORBIT {
+    return NetRealm.{beat=rm_profile(realm),collision=NET_COLLIDE_REPORTED,fields=13,
+      public_fields=(1<<13)-1,owner_fields=(1<<13)-1};
+  }
+  return NetRealm.{};
 }
 // The host, on beat number `beat`: whether realm steps on it.
 rm_realm_due :: (v: [] RmServer, realm: int, beat: int) -> bool #export_c { return net_due(rm_profile(realm), beat); }
@@ -350,10 +366,14 @@ rm_players :: (v: [] RmServer) -> int #export_c {
   return n;
 }
 
+#test "profiles (#12845): client-reported Orbit cars cannot qualify the whole realm as authoritative" {
+  #assert !net_authoritative(rm_profile(RM_REALM_ORBIT));
+}
+
 #test "profiles: Orbit League and Everglade run by their own profiles on the one beat" {
   v: [1] RmServer;
   o := rm_profile(RM_REALM_ORBIT); e := rm_profile(RM_REALM_EVERGLADE);
-  #assert net_authoritative(o) && net_authoritative(e) && o.hz == 60 && o.substeps == 2 && o.durable == NET_DURABLE_NONE;
+  #assert !net_authoritative(o) && net_authoritative(e) && o.hz == 60 && o.substeps == 2 && o.durable == NET_DURABLE_NONE;
   #assert e.hz == EG_HZ && e.substeps == 1 && e.durable == NET_DURABLE_RECEIPTS && e.fair == NET_FAIR_EARNED;
   no := 0; ne := 0;
   for b: 0..<NET_BEAT_HZ { if rm_realm_due(v[..], RM_REALM_ORBIT, b) { no += 1; } if rm_realm_due(v[..], RM_REALM_EVERGLADE, b) { ne += 1; } }

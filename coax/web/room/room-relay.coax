@@ -363,7 +363,7 @@ rl_current :: (v: [] RmServer, conn: int) -> bool {
   k := eg_room_at(v, c.relay);
   if k < 0 || c.seat < 0 || c.seat >= EG_SEATS { return true; }
   st := v[0].eg[k].seat[c.seat..<c.seat + 1];
-  return st[0].live && st[0].conn == conn && st[0].gen == c.gen;
+  return st[0].live && st[0].conn == conn && net_session_current(st[0].gen,c.gen);
 }
 rl_left :: (v: [] RmServer, conn: int) {
   c := v[0].conns[conn];
@@ -371,7 +371,7 @@ rl_left :: (v: [] RmServer, conn: int) {
   k := ifx v[0].relays[c.relay].limited then eg_room_at(v, c.relay) else -1;
   if k >= 0 && c.seat >= 0 && c.seat < EG_SEATS && v[0].eg[k].seat[c.seat].live {
     // a socket its player's newer one took the seat from: the seat is that one's now
-    if v[0].eg[k].seat[c.seat].conn != conn || v[0].eg[k].seat[c.seat].gen != c.gen {
+    if v[0].eg[k].seat[c.seat].conn != conn || !net_session_current(v[0].eg[k].seat[c.seat].gen,c.gen) {
       if rl_people(v, c.relay) == 0 { v[0].relays[c.relay].live = false; }
       return;
     }

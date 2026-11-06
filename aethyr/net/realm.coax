@@ -1,0 +1,84 @@
+// Realm selection over the caller's state. No host, room, or game is owned here.
+// A field is transmitted only through a realm's explicit recipient whitelist.
+#module "aethyr.net.realm";
+#authority;
+#load "profile.coax";
+
+NET_COLLIDE_CAPSULE :: 1; NET_COLLIDE_VEHICLE :: 2; NET_COLLIDE_REPORTED :: 3;
+NET_RECIPIENT_PUBLIC :: 1; NET_RECIPIENT_OWNER :: 2; NET_RECIPIENT_PARTY :: 3;
+NET_FIELD_MOST :: 23;
+NetRealm :: struct {
+  beat: NetProfile;
+  collision: int;
+  fields: int;
+  public_fields: int;
+  owner_fields: int;
+  party_fields: int;
+}
+
+#test "realm: collision and field selection are explicit; an unset realm admits no state" {
+  #assert !net_realm_ok(NetRealm.{});
+  p := NetRealm.{beat = NetProfile.{hz=30,substeps=1,trust=NET_TRUST_AUTHORITY},
+    collision=NET_COLLIDE_CAPSULE,fields=4,public_fields=3,owner_fields=15,party_fields=4};
+  #assert net_realm_ok(p);
+  #assert net_recipient_fields(p,NET_RECIPIENT_PUBLIC,false)==3;
+  #assert net_recipient_fields(p,NET_RECIPIENT_OWNER,false)==15;
+  #assert net_recipient_fields(p,NET_RECIPIENT_PARTY,false)==4;
+  #assert net_recipient_fields(p,0,false)==0 && net_recipient_fields(p,4,false)==0;
+  for r: 0..<5 { #assert net_recipient_fields(p,r,true)==0; }
+  b:=p;b.public_fields=16;#assert !net_realm_ok(b);
+  b=p;b.owner_fields=-1;#assert !net_realm_ok(b);
+  b=p;b.party_fields=16;#assert !net_realm_ok(b);
+  b=p;b.fields=0;#assert !net_realm_ok(b);
+  b=p;b.fields=24;#assert !net_realm_ok(b);
+  b=p;b.fields=23;#assert net_realm_ok(b);
+  b=p;b.fields=1;b.public_fields=1;b.owner_fields=1;b.party_fields=1;#assert net_realm_ok(b);
+  b=p;b.public_fields=0;b.owner_fields=0;b.party_fields=0;#assert net_realm_ok(b);
+  b=p;b.public_fields=15;b.owner_fields=15;b.party_fields=15;#assert net_realm_ok(b);
+  b=p;b.public_fields=-1;#assert !net_realm_ok(b);
+  b=p;b.owner_fields=16;#assert !net_realm_ok(b);
+  b=p;b.party_fields=-1;#assert !net_realm_ok(b);
+  #assert net_recipient_fields(b,NET_RECIPIENT_PUBLIC,false)==0;
+  b=p;b.beat.hz=7;#assert !net_realm_ok(b);
+  b=p;b.collision=0;#assert !net_realm_ok(b);
+  b=p;b.collision=4;#assert !net_realm_ok(b);
+  b=p;b.collision=NET_COLLIDE_REPORTED;#assert !net_realm_ok(b);
+  b.beat.trust=NET_TRUST_PRESENCE;#assert net_realm_ok(b);
+  b.beat.durable=NET_DURABLE_RECEIPTS;#assert !net_realm_ok(b);
+  b=p;b.collision=NET_COLLIDE_VEHICLE;b.beat.hz=60;b.beat.substeps=2;
+  #assert net_realm_ok(b) && net_authoritative(b.beat);
+}
+
+#forall "realm: fields outside the selected recipient mask are never admitted" recipient: 1..<4, field: 0..<23 {
+  p:=NetRealm.{beat=NetProfile.{hz=60,substeps=2,trust=NET_TRUST_AUTHORITY},
+    collision=NET_COLLIDE_VEHICLE,fields=23,public_fields=5,owner_fields=13,party_fields=2};
+  expected:=ifx recipient==1 then 5 else ifx recipient==2 then 13 else 2;
+  #assert net_field_allowed(p,recipient,false,field)==((expected & (1<<field))!=0);
+  #assert !net_field_allowed(p,recipient,true,field);
+  #assert !net_field_allowed(p,recipient,false,-1) && !net_field_allowed(p,recipient,false,23);
+  p.public_fields=1<<field;p.owner_fields=1<<field;p.party_fields=1<<field;
+  #assert net_field_allowed(p,recipient,false,field);
+}
+
+net_realm_ok :: (p: NetRealm) -> bool {
+  if !net_profile_ok(p.beat) || p.fields<1 || p.fields>NET_FIELD_MOST { return false; }
+  if p.collision<NET_COLLIDE_CAPSULE || p.collision>NET_COLLIDE_REPORTED { return false; }
+  if p.collision==NET_COLLIDE_REPORTED && net_authoritative(p.beat) { return false; }
+  all:=(1<<p.fields)-1;
+  return p.public_fields>=0 && p.public_fields<=all && p.owner_fields>=0 && p.owner_fields<=all
+    && p.party_fields>=0 && p.party_fields<=all;
+}
+net_recipient_fields :: (p: NetRealm, recipient: int, blocked: bool) -> int {
+  if blocked || !net_realm_ok(p) { return 0; }
+  if recipient==NET_RECIPIENT_PUBLIC { return p.public_fields; }
+  if recipient==NET_RECIPIENT_OWNER { return p.owner_fields; }
+  if recipient==NET_RECIPIENT_PARTY { return p.party_fields; }
+  return 0;
+}
+net_field_allowed :: (p: NetRealm, recipient: int, blocked: bool, field: int) -> bool {
+  mask:=net_recipient_fields(p,recipient,blocked);
+  if mask==0 { return false; }
+  // The input field never becomes a shift count. The admitted mask already bounds its domain.
+  for i: 0..<p.fields { if field==i { return (mask & (1<<i))!=0; } }
+  return false;
+}

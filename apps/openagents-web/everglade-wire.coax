@@ -73,6 +73,8 @@
 // and draws every remote entity from one interpolation buffer (everglade-net.coax).
 
 #load "everglade-forest-profile.coax";
+#load "../../aethyr/net/replication.coax";
+#load "../../aethyr/net/row.coax";
 
 WIRE_VERSION :: 5;   // 5: authoritative forest rows; 4: I's THETA in 0.1 mrad (WIRE_FINE)
 WIRE_REFUSE_VERSION :: "version";   // r 0 version: the room speaks another WIRE_VERSION than the hello's (the page reloads)
@@ -481,8 +483,12 @@ wire_s_unpack :: (id: int, f: [] s32) -> WireS {
 }
 // "s ID BACK MASK V V ...": the row `now` as a delta against `base` (BACK ticks back; zeros with BACK 0).
 wire_put_s :: (out: [] u8, at: int, id: int, back: int, base: [] s32, now: [] s32) -> int {
-  mask := 0;
-  for q: 0..<WIRE_SF { if now[q] != base[q] { mask = mask | (1 << q); } }
+  return wire_put_s_fields(out,at,id,back,base,now,(1<<WIRE_SF)-1);
+}
+wire_put_s_fields :: (out:[]u8,at:int,id:int,back:int,base:[]s32,now:[]s32,allowed:int)->int {
+  d:=net_row_delta(WIRE_SF,allowed,base,now);
+  if !d.ok {return at;}
+  mask:=d.mask;
   n := wire_int(out, wire_put(out, at, "s"), id);
   n = wire_int(out, n, back); n = wire_int(out, n, mask);
   for q: 0..<WIRE_SF { if (mask & (1 << q)) != 0 { n = wire_int(out, n, cast(int) now[q] - cast(int) base[q]); } }
@@ -685,8 +691,11 @@ wire_hist_at :: (h: [] WireHist, t: int, q: int, id1: int) -> int {
   return (row * WIRE_SLOTS + q) * WIRE_SF;
 }
 wire_rows_same :: (f: [] s32, a: int, b: int) -> bool {
-  for q: 0..<WIRE_SF { if f[a + q] != f[b + q] { return false; } }
-  return true;
+  return wire_rows_same_fields(f,a,b,(1<<WIRE_SF)-1);
+}
+wire_rows_same_fields :: (f:[]s32,a:int,b:int,allowed:int)->bool {
+  d:=net_row_delta(WIRE_SF,allowed,f[a..<a+WIRE_SF],f[b..<b+WIRE_SF]);
+  return d.ok && d.mask==0;
 }
 // An entity's weight in priority, by its kind: players most, then creatures, zones and effects, townsfolk.
 wire_rel :: (kind: int) -> f32 {
@@ -698,6 +707,7 @@ wire_rel :: (kind: int) -> f32 {
 
 // What one seat's page holds, as far as the server knows (all zeros: nothing; the C server's memory starts so).
 WireSeat :: struct {
+  allowed:[WIRE_SLOTS]int;wanted:[WIRE_SLOTS]int; // explicit last-sent and current recipient fields
   held: [WIRE_SLOTS] s32;     // id + 1 of what the page holds in each slot, 0 nothing
   base: [WIRE_SLOTS] int;     // the tick of the newest row of it the page acknowledged, 0 none
   sent: [WIRE_SLOTS] int;     // bit t % WIRE_ACKS: a row of it went out at tick t
@@ -716,19 +726,30 @@ WireSeat :: struct {
   aged_all: int;
   oldest: int;                // ticks the oldest row still waiting has waited, after this tick
 }
+// The codec retains its packed arrays; shared lifecycle decisions operate on one recipient/row.
+wire_replica :: (st: [] WireSeat,q:int)->NetReplica {
+  return NetReplica.{held=cast(int)st[0].held[q],base=st[0].base[q],sent=st[0].sent[q],last=st[0].last[q],
+    gone=cast(int)st[0].gone[q],gone_t=st[0].gone_t[q],gone2=cast(int)st[0].gone2[q],gone2_t=st[0].gone2_t[q],
+    priority=st[0].acc[q],since=st[0].since[q]};
+}
+wire_replica_set :: (st:[]WireSeat,q:int,r:NetReplica) {
+  st[0].held[q]=wire_s32(r.held);st[0].base[q]=r.base;st[0].sent[q]=r.sent;st[0].last[q]=r.last;
+  st[0].gone[q]=wire_s32(r.gone);st[0].gone_t[q]=r.gone_t;st[0].gone2[q]=wire_s32(r.gone2);st[0].gone2_t[q]=r.gone2_t;
+  st[0].acc[q]=r.priority;st[0].since[q]=r.since;
+}
 wire_seat_reset :: (st: [] WireSeat) {
+  for q:0..<WIRE_SLOTS {st[0].allowed[q]=0;st[0].wanted[q]=0;}
   for q: 0..<WIRE_SLOTS { st[0].held[q] = 0; st[0].base[q] = 0; st[0].sent[q] = 0; st[0].last[q] = 0; st[0].gone[q] = 0; st[0].gone_t[q] = 0; st[0].gone2[q] = 0; st[0].gone2_t[q] = 0; st[0].acc[q] = 0; st[0].since[q] = 0; }
   st[0].heard = 0; st[0].bytes = 0; st[0].left = 0; st[0].aged = 0; st[0].oldest = 0;
 }
 // The page heard tick `heard` whole (I's HEARD): what went out that tick is its own.
 wire_seat_ack :: (st: [] WireSeat, h: [] WireHist, heard: int) {
-  if heard <= st[0].heard || heard > h[0].now || h[0].now - heard >= WIRE_ACKS { return; }
+  if !net_replica_ack_allowed(heard,st[0].heard,h[0].now,WIRE_ACKS) { return; }
   st[0].heard = heard;
-  bit := 1 << (heard % WIRE_ACKS);
   for q: 0..<WIRE_SLOTS {
-    if (st[0].sent[q] & bit) != 0 && heard > st[0].base[q] { st[0].base[q] = heard; }
-    if st[0].gone[q] != 0 && st[0].gone_t[q] == heard { st[0].gone[q] = 0; st[0].gone_t[q] = 0; }
-    if st[0].gone2[q] != 0 && st[0].gone2_t[q] == heard { st[0].gone2[q] = 0; st[0].gone2_t[q] = 0; }
+    if st[0].sent[q]!=0 || st[0].gone[q]!=0 || st[0].gone2[q]!=0 {
+      wire_replica_set(st,q,net_replica_ack(wire_replica(st,q),heard,WIRE_ACKS));
+    }
   }
 }
 // Slot q's row now into out at `at`, against the newest row the page acknowledged when the table
@@ -736,15 +757,16 @@ wire_seat_ack :: (st: [] WireSeat, h: [] WireHist, heard: int) {
 wire_seat_put :: (st: [] WireSeat, h: [] WireHist, q: int, out: [] u8, at: int) -> int {
   now := h[0].now; row := now % WIRE_BASES;
   id1 := cast(int) h[0].id[row * WIRE_SLOTS + q];
+  if st[0].allowed[q]!=st[0].wanted[q] {
+    wire_replica_set(st,q,net_replica_fields(wire_replica(st,q),st[0].allowed[q],st[0].wanted[q]));
+  }
   cur := (row * WIRE_SLOTS + q) * WIRE_SF;
   b := ifx cast(int) st[0].held[q] == id1 then wire_hist_at(h, st[0].base[q], q, id1) else -1;
   zero: [WIRE_SF] s32;
-  n := ifx b >= 0 then wire_put_s(out, at, id1 - 1, now - st[0].base[q], h[0].f[b..<b + WIRE_SF], h[0].f[cur..<cur + WIRE_SF])
-       else wire_put_s(out, at, id1 - 1, 0, zero[..], h[0].f[cur..<cur + WIRE_SF]);
-  if cast(int) st[0].held[q] != id1 { st[0].base[q] = 0; st[0].sent[q] = 0; }
-  st[0].sent[q] = st[0].sent[q] | (1 << (now % WIRE_ACKS));
-  st[0].last[q] = now; st[0].held[q] = wire_s32(id1); st[0].acc[q] = 0; st[0].since[q] = 0;
-  if cast(int) st[0].gone[q] == id1 { st[0].gone[q] = 0; st[0].gone_t[q] = 0; }
+  n := ifx b >= 0 then wire_put_s_fields(out, at, id1 - 1, now - st[0].base[q], h[0].f[b..<b + WIRE_SF], h[0].f[cur..<cur + WIRE_SF],st[0].wanted[q])
+       else wire_put_s_fields(out, at, id1 - 1, 0, zero[..], h[0].f[cur..<cur + WIRE_SF],st[0].wanted[q]);
+  wire_replica_set(st,q,net_replica_sent(wire_replica(st,q),id1,now,WIRE_ACKS));
+  st[0].allowed[q]=st[0].wanted[q];
   return n;
 }
 wire_bucket :: (a: f32) -> int { b := 0; v := a * 64; while v >= 2 && b < 31 { v = v * 0.5; b += 1; } return b; }
@@ -766,25 +788,23 @@ wire_seat_frame :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f32, 
 // (the room-wide ones: Darian, the ward stones, zones).
 WIRE_PICK_OWN :: 4.0; WIRE_PICK_ROOM :: 2.0;
 wire_seat_frame_in :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f32, pick: [] f32, budget: int, out: [] u8) -> int {
+  fields:[WIRE_SLOTS]int;for q:0..<WIRE_SLOTS {fields[q]=(1<<WIRE_SF)-1;}
+  return wire_seat_frame_fields(st,h,me,px,pz,pick,fields[..],budget,out);
+}
+wire_seat_frame_fields :: (st:[]WireSeat,h:[]WireHist,me:int,px:f32,pz:f32,pick:[]f32,fields:[]int,budget:int,out:[]u8)->int {
   now := h[0].now; row := now % WIRE_BASES;
-  keep := ((1 << WIRE_ACKS) - 1) ^ (1 << (now % WIRE_ACKS));
   n := 0; e: [WIRE_ROW] u8;
   life := 0;   // this tick's x bytes (WIRE_LIFE_BUDGET)
   cand: [WIRE_SLOTS] int; cn := 0;
   mine: [WIRE_SLOTS] int; mn := 0;
   for q: 0..<WIRE_SLOTS {
-    st[0].sent[q] = st[0].sent[q] & keep;   // that bit is now's, not WIRE_ACKS ticks ago's
     id1 := cast(int) h[0].id[row * WIRE_SLOTS + q];
+    if id1!=0 || st[0].held[q]!=0 {st[0].wanted[q]=ifx q<fields.count then fields[q] else 0;}
     dx := h[0].x[q] - px; dz := h[0].z[q] - pz; d2 := dx * dx + dz * dz;
     pk := ifx q < pick.count then pick[q] else -1.0f32;
-    seen := id1 != 0 && (q == me || pk >= 0);
-    held := cast(int) st[0].held[q];
-    // what the page holds that is gone, out of view, or another entity now: an x, until acknowledged
-    if held != 0 && (!seen || held != id1) {
-      // an earlier x still owed is kept (held is set only once it went, and never while gone2 is owed)
-      if st[0].gone[q] != 0 { st[0].gone2[q] = st[0].gone[q]; st[0].gone2_t[q] = st[0].gone_t[q]; }
-      st[0].gone[q] = wire_s32(held); st[0].gone_t[q] = 0;
-      st[0].held[q] = 0; st[0].base[q] = 0; st[0].sent[q] = 0; st[0].acc[q] = 0;
+    seen := id1 != 0 && st[0].wanted[q]!=0 && (q == me || pk >= 0);
+    if st[0].held[q]!=0 || st[0].sent[q]!=0 {
+      wire_replica_set(st,q,net_replica_observe(wire_replica(st,q),id1,seen,now,WIRE_ACKS));
     }
     if st[0].gone2[q] != 0 && now - st[0].gone2_t[q] >= WIRE_RESEND {
       m := wire_put_x(e[..], 0, cast(int) st[0].gone2[q] - 1) + 1;
@@ -803,16 +823,15 @@ wire_seat_frame_in :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f3
       }
     }
     if !seen || q == me { st[0].since[q] = 0; continue; }
-    if st[0].gone[q] != 0 && st[0].gone_t[q] == 0 { continue; }   // its x waits, and the slot's next row behind it
-    if st[0].gone2[q] != 0 { continue; }   // two x's owed: the next row waits for the earlier one's word
+    if !net_replica_ready(wire_replica(st,q)) { continue; }
     cur := (row * WIRE_SLOTS + q) * WIRE_SF;
     // the page has it as it is now: nothing to send
-    if cast(int) st[0].held[q] == id1 {
+    if cast(int) st[0].held[q] == id1 && st[0].allowed[q]==st[0].wanted[q] {
       b := wire_hist_at(h, st[0].base[q], q, id1);
-      if b >= 0 && wire_rows_same(h[0].f[..], b, cur) { st[0].acc[q] = 0; st[0].since[q] = 0; continue; }
+      if b >= 0 && wire_rows_same_fields(h[0].f[..],b,cur,st[0].wanted[q]) { st[0].acc[q] = 0; st[0].since[q] = 0; continue; }
       // sent as it is now and on its way: it waits for the page's word
       l := wire_hist_at(h, st[0].last[q], q, id1);
-      if l >= 0 && now - st[0].last[q] < WIRE_RESEND && wire_rows_same(h[0].f[..], l, cur) { continue; }
+      if l >= 0 && now - st[0].last[q] < WIRE_RESEND && wire_rows_same_fields(h[0].f[..],l,cur,st[0].wanted[q]) { continue; }
     }
     if pk >= f32(WIRE_PICK_OWN) { mine[mn] = q; mn += 1; continue; }
     st[0].acc[q] += h[0].w[q] / (1 + sqrt(d2) / f32(WIRE_NEAR)) + (ifx pk >= f32(WIRE_PICK_ROOM) then pk else 0.0f32);
@@ -822,7 +841,7 @@ wire_seat_frame_in :: (st: [] WireSeat, h: [] WireHist, me: int, px: f32, pz: f3
   // your own player first, every tick: its row with the ACK is where your page re-runs from
   wrote := 0;
   // (behind its slot's x, as every row is: in the life of a seat its slot is someone else's at most once)
-  if me >= 0 && me < WIRE_SLOTS && h[0].id[row * WIRE_SLOTS + me] != 0 && !(st[0].gone[me] != 0 && st[0].gone_t[me] == 0) && st[0].gone2[me] == 0 {
+  if me >= 0 && me < WIRE_SLOTS && st[0].wanted[me]!=0 && h[0].id[row * WIRE_SLOTS + me] != 0 && net_replica_ready(wire_replica(st,me)) {
     if n > 0 { n = wire_sep(out, n); }
     was := n; n = wire_seat_put(st, h, me, out, n); wrote += n - was;
   }
@@ -882,10 +901,12 @@ wire_seat_put_try :: (st: [] WireSeat, h: [] WireHist, q: int, e: [] u8, room: i
   // written as it would go, then noted only when it fits
   was_held := st[0].held[q]; was_base := st[0].base[q]; was_sent := st[0].sent[q]; was_last := st[0].last[q];
   was_gone := st[0].gone[q]; was_gone_t := st[0].gone_t[q]; was_acc := st[0].acc[q]; was_since := st[0].since[q];
+  was_allowed:=st[0].allowed[q];
   m := wire_seat_put(st, h, q, e, 0);
   if m <= room { return m; }
   st[0].held[q] = was_held; st[0].base[q] = was_base; st[0].sent[q] = was_sent; st[0].last[q] = was_last;
   st[0].gone[q] = was_gone; st[0].gone_t[q] = was_gone_t; st[0].acc[q] = was_acc; st[0].since[q] = was_since;
+  st[0].allowed[q]=was_allowed;
   return 0;
 }
 
@@ -901,6 +922,32 @@ wire_test_send :: (st: [] WireSeat, h: [] WireHist, m: [] WireMirror, me: int, b
   n += wire_seat_frame(st, h, me, 0, 0, 120, budget, buf[n..<buf.count]);
   if !lose { _ := wire_mirror_frame(m, cast(string) buf[0..<n]); }
   return n - m0;
+}
+
+#test "wire (#12845): recipient field changes reset baselines and a refused row retains its earlier send state" {
+  h:[1]WireHist;st:[1]WireSeat;m:[1]WireMirror;
+  pick:[WIRE_SLOTS]f32;fields:[WIRE_SLOTS]int;
+  for q:0..<WIRE_SLOTS {pick[q]=-1;}
+  pick[4]=1;fields[4]=(1<<WIRE_SF)-1;
+  buf:[4096]u8;row:=WireS.{id=9,x=5,z=7,hp=8,max=11,life=1};
+  wire_hist_begin(h[..],1);wire_test_put(h[..],4,row);
+  n:=wire_put_d(buf[..],0,WireD.{tick=1});
+  n+=wire_seat_frame_fields(st[..],h[..],-1,0,0,pick[..],fields[..],1000,buf[n..<buf.count]);
+  d:=wire_mirror_frame(m[..],cast(string)buf[0..<n]);#assert wire_mirror_of(m[..],9).x==5;
+  wire_seat_ack(st[..],h[..],1);#assert st[0].base[4]==1;
+  wire_hist_begin(h[..],2);wire_test_put(h[..],4,row);fields[4]=(1<<WS_HP)|(1<<WS_MAX);
+  n=wire_put_d(buf[..],0,WireD.{tick=2});
+  n+=wire_seat_frame_fields(st[..],h[..],-1,0,0,pick[..],fields[..],1000,buf[n..<buf.count]);
+  d=wire_mirror_frame(m[..],cast(string)buf[0..<n]);e:=wire_mirror_of(m[..],9);
+  #assert e.hp==8 && e.max==11 && e.x==0 && e.z==0 && st[0].base[4]==0;
+  wire_seat_ack(st[..],h[..],2);#assert st[0].base[4]==2;
+  wire_hist_begin(h[..],3);wire_test_put(h[..],4,row);fields[4]=(1<<WIRE_SF)-1;
+  n=wire_seat_frame_fields(st[..],h[..],-1,0,0,pick[..],fields[..],1,buf[..]);
+  #assert n==0 && st[0].base[4]==2 && st[0].allowed[4]==((1<<WS_HP)|(1<<WS_MAX));
+  n=wire_put_d(buf[..],0,WireD.{tick=3});
+  n+=wire_seat_frame_fields(st[..],h[..],-1,0,0,pick[..],fields[..],1000,buf[n..<buf.count]);
+  d=wire_mirror_frame(m[..],cast(string)buf[0..<n]);e=wire_mirror_of(m[..],9);
+  #assert e.x==5 && e.z==7 && e.hp==8 && st[0].base[4]==0;
 }
 
 #test "wire: a row goes out absolute, then as a delta of only what changed against what the page acknowledged; it reads back exactly" {
