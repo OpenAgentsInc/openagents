@@ -1,0 +1,312 @@
+# Animation Lab (spec, draft)
+
+Written 2026-11-06. Status: proposal. Nothing in this spec is built except
+the pieces listed under "What exists".
+
+Animation Lab is an unlisted realm and a set of `openagents labs` commands
+where you take any character's animation apart, change it and put it back
+together, then build scenes and cuts from it. Everything renders in Verse.
+
+It generalizes three things we already do:
+
+- **Valley Lab's Echo work:** read a character and its clips from a source
+  project, keep the data in a private pack, play it on Aethyr and compare it
+  with the source. Today that's written for one character (Echo) and one
+  source (Valley of the Ancient, then Slay's face clips).
+- **Anime Lab's director:** words become typed directions, checked against a
+  catalogue, laid out on a timeline and played.
+- **The pre-Nuke Video Lab:** a film is typed documents (cut, shot, scene),
+  every edit is a version, and one checked writer changes them.
+
+The example production is a short original Draconia scene (see "Example:
+Draconia, The Guardian").
+
+## What exists
+
+| Piece | Where | What it does today |
+| --- | --- | --- |
+| Pose math | `aethyr/anim/pose.coax` | Quaternions, local poses, blending, the joint chain and the skinning palette |
+| Blend shapes | `aethyr/anim/morph.coax`, `morph-gpu.coax` | Sampled curves; sparse morph deltas applied on the GPU before skinning |
+| Face playback | `aethyr/anim/face.coax`, `face-pack.coax` | Plays face clips as morph weights plus face-bone overlays on a body pose; the EFC1 face pack format and its checks |
+| Face rig | `aethyr/facerig.coax` | A Coax port of OpenRigLogic: controls, correctives, joint groups and blend shapes from a MetaHuman DNA file |
+| Clip playback | `aethyr/skin.coax` | Skinned clips chosen by speed (stand, walk, run, jump) |
+| Retargeting by name | `aethyr/mannequin.coax` | The 65 UE-mannequin joint names; maps other skeletons onto them by name |
+| Cameras | `aethyr/cinematic.coax`, `aethyr/shot.coax` | Authored camera flights with keys, easing and cuts; orbit and dive shots |
+| Determinism | `aethyr/replay.coax` | Record and replay of inputs, so the same inputs give the same frames |
+| Speaking | `aethyr/speak.coax`, `coax/web/tool.sh speak` | Text to speech, word timing, visemes and moods on a MetaHuman face, rendered to video |
+| Echo port | `verse/valley/echo*.coax`, `aethyr/tools/valley-echo-*`, `aethyr/tools/unreal-echo-sdk/` | Echo's mesh, 334 joints, 24 clips and source walking profile, in a private pack |
+| Slay face | `verse/valley/slay-shot.coax`, `slay-shot-play.coax` (#12962) | Slay's facial clips on Echo, with a fixed source-shot view |
+| Anime director | `verse/anime/director.coax`, `take.coax`, `stage.coax`, `coax/web/api/anime-director-policy.coax` | Words to typed directions with confidence; `.take` files (`anime.v1`); timeline grammar |
+| Labs CLI | `apps/openagents-cli/labs.coax`, `docs/cli/2026-11-01-openagents-labs.md` | `labs shot`, `clip`, `frames`, `cut`, `compare`, `anime` |
+| Private packs | `docs/verse/private-assets.md`, `docs/verse/metahuman-support.md` | Licensed data stays out of git, addressed by SHA-256, resolved owner-locally |
+
+Before the Nuke (`git show 0b401561a0^:<path>`):
+
+- `docs/verse/draconia/`: the Draconia plan, its character build (Blender on
+  the 65-joint rig; hair chains, blend shapes, cloth as bone chains), the
+  night-courtyard world, the MetaHuman pipeline (UE Python, DNA with 782
+  blend-shape channels and 870 joints) and 20 parity rounds against a
+  photoreal reference.
+- `docs/video-lab/`: typed `cut.v1`, `shot.v1` and `scene.v1` documents and
+  the `lab.*` chat tools.
+
+What's missing is the general part: each of these works for one character,
+one source or one style. Animation Lab is the shared layer.
+
+## Principles
+
+1. **One character model for every source.** A Slay clip, a Valley clip, a
+   Mixamo-style FBX, a mocap BVH, a phone face capture and a hand-keyed pose
+   all become the same clip type on the same rig model.
+2. **Documents, not a timeline UI.** A scene is a typed file. The realm, the
+   CLI, voice and agents all change it through one checked writer, and every
+   change is a version you can diff and undo.
+3. **Same inputs, same frames.** Rendering a scene twice gives the same
+   frame hashes. That's what makes compare, review and agent iteration work.
+4. **Sources stay private.** Licensed rigs, clips and faces live in private
+   packs addressed by hash. Documents name packs by hash and role, never by
+   their licensed content. Nothing licensed is committed or used for training.
+5. **Verse renders.** Unreal, Blender and other tools only read and export
+   source data. Every frame we show is drawn by Aethyr.
+6. **Checks you can see.** Foot sliding, joint limits, intersections and cut
+   continuity are measured and shown on screen, with their limits stated.
+7. **Directions are typed.** Spoken or written directions go through a
+   decision model with a response schema, as Anime Lab's director does. No
+   keyword matching.
+
+## The model
+
+Six document types. Each is JSON with a schema name, bounds, and a Coax
+`#authority` admission procedure, the way `verse/anime/take.coax` admits
+`anime.v1` takes.
+
+### Rig (`anim.rig.v1`)
+
+What a character is made of:
+
+- **Skeleton:** joint names, parents, rest pose, bind matrices.
+- **Mesh:** skinned sections, up to 8 influences per vertex, material slots.
+- **Face:** blend shapes by name, face bones, and optionally a DNA face rig
+  (`aethyr/facerig.coax`) with its controls.
+- **Retarget map:** each joint's match on the 65-joint mannequin
+  (`mannequin_fold`), plus per-joint rest-pose offsets.
+- **Face map:** how ARKit's 52 shape names map onto this face: direct shapes,
+  DNA controls, or a weighted mix. This is what lets one face capture drive
+  Echo's shapes and a MetaHuman's controls.
+- **Pack:** the private pack's SHA-256 and the role of each part.
+
+### Clip (`anim.clip.v1`)
+
+One piece of motion:
+
+- Joint tracks (local rotation and translation per frame), root motion, face
+  curves by name, face-bone tracks, and events (foot down, contact, cast).
+- Rate, length, loop flag.
+- **Source:** where it came from (pack hash, source asset role, export
+  receipt), so a clip's origin is always known.
+
+### Performance (`anim.performance.v1`)
+
+What one character does over time: a stack of layers, each with a clip, a
+start time, a speed, a blend in and out, and a mask.
+
+- **Base:** locomotion or a full-body clip.
+- **Override:** replaces masked joints (upper body, one arm, the face).
+- **Additive:** adds on top (breathing, a flinch, a head turn).
+- **Face:** face curves and face bones only, as Slay's face clips are.
+- **Fix-ups:** solved after the layers: foot lock, look-at, hand to prop,
+  reach to a point. Each fix-up names its target and its weight over time.
+
+Masks are named joint sets on the mannequin (`face`, `head`, `upper`, `arm_l`,
+`hands`, `legs`), so they work on any rig with a retarget map.
+
+### Scene (`anim.scene.v1`)
+
+A stage and what happens on it:
+
+- Stage: a realm and a place in it (Valley Lab's canyon, Anime Lab's
+  courtyard), with time of day and weather.
+- Cast: characters (rig plus look), each with a performance and a path.
+- Props and effects with their own timed events.
+- Lights with keys.
+- Cameras: named flights (`aethyr/cinematic.coax` keys), lens and focus.
+- Sound cues: voice lines (through `aethyr/speak.coax`), music and effects.
+- Style: the render profile (realistic, anime cel), so one scene renders in
+  either look.
+
+### Cut (`anim.cut.v1`)
+
+The edit: a list of shots, each a camera and a time range in the scene, with
+transitions. Reuses the `.cut` line format from `docs/cli/cut-format.md` and
+reads `cut.v1`.
+
+### Pose (`anim.pose.v1`)
+
+A single named pose (for a pose library and keyframes): joint rotations on
+the mannequin, plus face curves.
+
+## What you can do
+
+### Bring in
+
+| Source | How |
+| --- | --- |
+| Unreal projects (Valley, Slay, Epic samples) | The editor-only SDK plugin and Python exporters, generalized from `aethyr/tools/unreal-echo-sdk/` and `valley-echo-*` |
+| glTF and FBX | Headless Blender export to glTF, then the same reader |
+| BVH mocap | Read directly; retarget by name |
+| Phone face capture | ARKit curves (Live Link Face CSV) straight into face curves |
+| MetaHuman | The existing pipeline (`docs/verse/metahuman-support.md`), DNA through `aethyr/facerig.coax` |
+| Hand keys | Poses from the pose library, set at times |
+
+Every import writes a receipt (source, export settings, counts, hashes) and
+a private pack.
+
+### Change
+
+- **Retarget:** play any clip on any rig through the mannequin map, with
+  rest-pose correction. Shown side by side: source rig and target rig.
+- **Trim, loop, speed, mirror** a clip.
+- **Layer and mask:** Slay's face over Valley's walk is one example; an
+  upper-body wand cast over a run is another.
+- **Key:** set a joint or face curve at a time; the lab blends to and from
+  it.
+- **Fix up:** lock feet that slide, aim the head or eyes, put a hand on a
+  prop.
+- **Transitions:** blend lengths and curves between clips, chosen per
+  transition.
+- **Face:** edit curves, add blinks, and drive visemes and moods from a
+  voice line (`aethyr/speak.coax`).
+
+### Check
+
+| Check | Measures | Shown as |
+| --- | --- | --- |
+| Foot sliding | Distance a planted foot moves while its contact event is on | Centimetres per contact, red over the limit |
+| Joint limits | Rotation outside a per-joint range | The joint and frame |
+| Intersections | Capsule overlap between body parts, and with props | The pair and frame |
+| Continuity | Jumps in pose or camera at a cut | Per cut |
+| Face range | Curves outside 0–1, or mixes that exceed the face's limit | Curve and frame |
+| Determinism | Frame hashes from two renders | Same or different |
+| Parity | Pixel and pose difference against source frames | Per frame, for imported shots |
+
+### See
+
+Stations in the realm, each with a deep link, as Valley Lab does:
+
+- `#rig`: skeleton, weights and face shapes; pick a joint or shape and see
+  what it moves.
+- `#clip`: scrub a clip, show ghost frames, plot joint and face curves.
+- `#retarget`: source and target side by side on the same clip.
+- `#layers`: one performance with each layer toggled.
+- `#face`: a close-up view for face clips (Slay's source-shot view,
+  generalized).
+- `#scene`: the stage playing the scene, with the timeline under it.
+- `#cut`: the cut playing through its cameras.
+- `#compare`: our frames against a source's frames, side by side.
+
+### Direct
+
+Anime Lab's director, extended to these documents: spoken or written
+directions become typed edits through the Decisions API with a response
+schema, each with confidence.
+
+Examples of what a direction can become:
+
+- "She walks slower toward the gate": the base layer's speed and path.
+- "Look at the figure on the wall when he speaks": a look-at fix-up timed to
+  his line.
+- "Hold the wand raise longer": a clip's speed or a key.
+- "Cut to her face when the light flares": a new shot in the cut, aligned to
+  the effect event.
+
+A direction that maps to nothing in stock says so, as Anime Lab does now.
+
+### Command line
+
+New `openagents labs anim` commands, on the existing labs CLI:
+
+```sh
+openagents labs anim import SOURCE --rig NAME          # writes a rig, clips and a private pack
+openagents labs anim rig NAME                          # counts, joints, shapes, maps
+openagents labs anim retarget CLIP --to RIG            # a new clip on another rig
+openagents labs anim edit FILE "direction or op"       # one checked change, a new version
+openagents labs anim check FILE                        # all checks, JSON
+openagents labs anim play FILE out.mp4                 # render a performance, scene or cut
+openagents labs anim compare FILE --source FRAMES      # parity against source frames
+```
+
+## Example: Draconia, The Guardian
+
+A 30-second original scene, rendered twice from one scene file: once
+realistic and once in Anime Lab's cel style.
+
+**Rights.** The pre-Nuke Draconia work began as an internal study of a fan
+anime. That study stays internal. This scene is original: our character, our
+academy (Skyreach Academy, Anime Lab's courtyard), our story beats. Nothing
+in it copies the fan film's shots.
+
+**Cast.**
+
+- **Draconia:** in the realistic render, her private MetaHuman (face through
+  the DNA rig); in the cel render, Anime Lab's heroine look. One rig per look,
+  both mapped to the mannequin, so the same performance drives either.
+- **Two hooded figures:** mannequin-rigged extras.
+- **The guardian:** a summoned spirit animal made of light. It's an effect
+  with its own rig, not a character with a face.
+
+**Sources.**
+
+| Need | Source |
+| --- | --- |
+| Walk, stop, turn | Valley Echo's locomotion clips, retargeted, for study renders only |
+| Wand raise and cast | Hand-keyed from the pose library, then a recorded mocap take when one exists |
+| Face | The owner's phone face capture of the lines (ARKit curves through the face map); Slay's face clips only for internal parity tests |
+| Voice | `aethyr/speak.coax` with a chosen voice |
+| Guardian | An effect rig keyed by hand |
+
+Valley's and Slay's clips are Epic sample content. They're fine for the lab's
+internal tests and comparisons, but a published render uses our own captured
+or keyed motion and faces.
+
+**Shots** (scene time):
+
+| Shot | Time | Camera | What happens | Layers in use |
+| --- | --- | --- | --- | --- |
+| S1 | 0–5 s | Wide crane down into the night courtyard | Wind; Draconia walks in from the gate | Base walk; additive breathing; foot lock |
+| S2 | 5–9 s | Medium, slow push in | She stops and turns toward the hooded figures on the wall | Base stop and turn; look-at the nearer figure |
+| S3 | 9–12 s | Close-up | "Leave. Now." | Face from the capture; visemes from the voice line; head additive |
+| S4 | 12–18 s | Low angle, rack focus to the wand | She raises the wand; light gathers | Override upper body with the wand raise; hand-to-wand fix-up |
+| S5 | 18–25 s | Wide, orbit | The guardian forms and spreads its wings; the figures recoil | Guardian effect events; extras' flinch additives |
+| S6 | 25–30 s | Close-up, then cut to black | She lowers the wand; a small breath | Face breath; upper-body override out over 0.4 s |
+
+**What it shows.** Every layer type, retargeting across rigs, a face from a
+capture, a voice line, effect events driving cuts, and the same scene in two
+render styles. The checks run on it in CI: foot sliding in S1 and S2,
+continuity at each cut, determinism of the full cut.
+
+## Milestones
+
+Each ends on a check run on our own machines.
+
+| | Milestone | Done when |
+| --- | --- | --- |
+| A0 | Documents and admission | `anim.rig.v1`, `clip`, `performance`, `scene`, `cut` and `pose` have schemas and `#authority` admission with 0 surviving mutants; Echo's rig and clips convert into them losslessly (same frames as today's port) |
+| A1 | Rig and clip stations | `#rig` and `#clip` show Echo and a mannequin character; curves plot; ghost frames show |
+| A2 | Retargeting | An Echo clip plays on a mannequin rig and back; joint error after the round trip is reported and under a stated limit |
+| A3 | Layers and fix-ups | Slay's face layered over Valley's walk through a performance file, with foot lock and look-at; the foot-sliding check reports before and after |
+| A4 | Imports | glTF, BVH and ARKit face CSV imports, each with a receipt; one of each plays in `#clip` |
+| A5 | Scenes and cuts | The Draconia scene file plays S1–S6 in the realm and renders to video with `labs anim play`; two renders give the same frame hashes |
+| A6 | Two styles | The same scene file renders realistic and cel; the cut and timing match |
+| A7 | Directing | Ten typed directions (speed, look-at, hold, cut-on-event and others) change the Draconia scene through the director, each as one version with confidence |
+| A8 | Published version | The scene uses only our own motion, faces and voice, and is ready to show |
+
+## Open questions
+
+1. Which mocap source do we use for our own motion: a phone video-to-motion
+   tool, a suit, or keyed animation only?
+2. Does the cel style need its own rig (different proportions) or a style
+   pass over the realistic rig?
+3. Should performances be able to react (a look-at that follows a moving
+   target) or only play what's written?
+4. Where do private packs for extras and props live when they're our own
+   assets and could be committed?
