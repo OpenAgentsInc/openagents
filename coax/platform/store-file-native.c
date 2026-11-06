@@ -319,6 +319,26 @@ int64_t cxfs_size(void) {
   return (int64_t)st.st_size;
 }
 
+/* A tool owns at most one explicit lock. Descriptor lifetime is a host
+   effect; the Coax caller decides what work that ownership protects. */
+static int fs_exclusive_lock = -1;
+int64_t cxfs_try_lock(void) {
+  const char *p = take_path();
+  if (!p || fs_exclusive_lock >= 0) return -1;
+  int opened = open(p, O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+  if (opened < 0) return -1;
+  if (flock(opened, LOCK_EX | LOCK_NB) != 0) { close(opened); return -1; }
+  fs_exclusive_lock = opened;
+  return 0;
+}
+int64_t cxfs_unlock(void) {
+  if (fs_exclusive_lock < 0) return -1;
+  int held = fs_exclusive_lock;fs_exclusive_lock = -1;
+  int unlocked = flock(held, LOCK_UN);
+  int closed = close(held);
+  return unlocked == 0 && closed == 0 ? 0 : -1;
+}
+
 int64_t cxfs_mkdir(void) {
   const char *p = take_path();
   if (!p) return -1;

@@ -1,0 +1,34 @@
+// Physical filesystem/process checks: another executable must observe the
+// kernel lock, and a killed owner must not retain it. No timing verdicts.
+#import "Basic";
+#load "../../lib/sys/tool.coax";
+#load "../../lib/sys/fs.coax";
+#load "../../lib/sys/proc.coax";
+cxproc_self_path :: (out: []u8) -> int #foreign;
+cxtool_out_flush :: () -> int #foreign;
+tool_main :: () -> int #export_c {
+  args:[1]Args;if !args_load(args[..]) {return 1;}
+  if args_at(args[..],0)=="try" {
+    got:=fs_try_lock(args_at(args[..],1));expected:=args_at(args[..],2)=="yes";
+    if got {if !fs_unlock() {return 2;}}
+    return ifx got==expected then 0 else 1;
+  }
+  if args_at(args[..],0)=="hold" {
+    if !fs_try_lock(args_at(args[..],1)) {return 1;}
+    print("locked\n");_:=cxtool_out_flush();proc_sleep(30000);return 2;
+  }
+  self:[4096]u8;sn:=cxproc_self_path(self[..]);if sn<=0 {return 1;}exe:=cast(string)self[0..<sn];
+  dir:[4096]u8;tmp:=fs_temp("coax-file-lock-",dir[..]);if tmp.count==0 {return 1;}
+  paths:[2][4096]u8;one:=fs_join(tmp,"one.lock",paths[0][..]);two:=fs_join(tmp,"two.lock",paths[1][..]);
+  out:[256]u8;err:[256]u8;
+  if !fs_try_lock(one) || fs_try_lock(two) {return 1;}
+  deny:=[4]string.[exe,"try",one,"no"];other:=[4]string.[exe,"try",two,"yes"];
+  if proc_run(deny[..],5000,out[..],err[..]).status!=0 || proc_run(other[..],5000,out[..],err[..]).status!=0 {return 1;}
+  if !fs_unlock() || fs_unlock() {return 1;}
+  allow:=[4]string.[exe,"try",one,"yes"];if proc_run(allow[..],5000,out[..],err[..]).status!=0 {return 1;}
+  child:=proc_new();if child<0 {return 1;}if !proc_arg(child,exe) || !proc_arg(child,"hold") || !proc_arg(child,one) || proc_start(child)!=0 {r:=proc_release(child);return 1;}
+  n:=proc_line(child,5000,out[..]);if n!=6 || cast(string)out[0..<n]!="locked" {r:=proc_release(child);return 1;}
+  killed:=proc_kill(child,PROC_SIGKILL);waited:=proc_wait(child,5000);released:=proc_release(child);
+  if proc_run(allow[..],5000,out[..],err[..]).status!=0 || !fs_remove(tmp) {return 1;}
+  print("fs-lock: contention, independent paths, nested refusal, unlock and killed-owner release pass\n");return 0;
+}
