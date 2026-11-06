@@ -164,7 +164,7 @@ WireHelloValue :: struct #persisted {
   for i:0..<n {packet[i]=0;}
   #assert value.ok && rd[0].ok && value.look_n==12 && value.kind_n==5 && value.name_n==8;
   out:[WIRE_FRAME]u8;m:=wire_put_hello_value(out[..],0,value);
-  #assert cast(string)out[0..<m]=="H 4 ranger.2.1.0 druid 2 Ash Wood";
+  #assert cast(string)out[0..<m]=="H 5 ranger.2.1.0 druid 2 Ash Wood";
   huge:[WIRE_FRAME+1]u8;rd[0]=wire_rd(cast(string)huge[..],1);
   #assert !wire_read_hello_value(cast(string)huge[..],rd[..]).ok && !rd[0].ok;
 }

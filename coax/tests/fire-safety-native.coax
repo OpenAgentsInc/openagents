@@ -1,0 +1,10 @@
+// The real world fire contacts, including the replicated forest starter.
+// tool.sh: stack-gib 1
+#import "Basic";
+#load "../../apps/openagents-web/everglade.coax";
+tool_main :: ()->int #export_c #effects(all) {
+  fi_owner_contact_check();
+  eg_effect_lifetime_check();
+  print("ok native fire lifetimes: contacts, forest replication and accepted delayed impacts\n");
+  return 0;
+}

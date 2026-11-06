@@ -177,7 +177,7 @@ ft_candidate :: (dir: string) -> int {
   source:[1048576]u8;n:=fs_read(FE_SOURCE,source[..]);if n<0 {return 1;}text:=cast(string)source[0..<n];p:=fe_scalar_span(text,FE_NAME,"t","f32");
   if !p.ok || !ft_context(dir,text) || !fe_door_body(text[p.body..<p.end]) {tool_errln("fast-edit: full rebuild required (context, interface or unsupported body changed)");return 2;}
   prefix:[16384]u8;pn:=ft_read(dir,"prefix.coax",prefix[..]);if pn<0 {return 1;}
-  generated:[1]FeText;ft_add(generated[..],cast(string)prefix[0..<pn]);ft_add(generated[..],"\nfast_edit_candidate :: (t: f32) -> f32 #export_c ");ft_add(generated[..],text[p.body..<p.end]);ft_add(generated[..],"\n");
+  generated:[1]FeText;ft_add(generated[..],cast(string)prefix[0..<pn]);ft_add(generated[..],"\nfast_edit_candidate :: (t: f32) -> f32 #export_c #effects(computes) ");ft_add(generated[..],text[p.body..<p.end]);ft_add(generated[..],"\n");
   if generated[0].bad || !ft_write(dir,"candidate.coax",ft_text(generated[..])) {return 1;}
   hash:[64]u8;_:=ft_sha(text,hash[..]);if !ft_write(dir,"candidate-source-sha256",cast(string)hash[..]) {return 1;}print("%\n",cast(string)hash[..]);return 0;
 }

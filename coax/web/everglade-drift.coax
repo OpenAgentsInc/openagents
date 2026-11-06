@@ -401,6 +401,12 @@ dr_wait_end :: (p: DrPair) -> bool {
 // holds start as one.
 DR_HELD :: "((__dr.probe(52) & 3) || __dr.probe(53) > 0) ? 1 : 0";
 dr_held_move_ms :: () -> int { return 500; }
+// Publish a complete control answer; native hosts watch this rename immediately.
+dr_control_write :: (path:string,text:string)->bool {
+  temporary:[1]Buf;bput(temporary[..],path);bput(temporary[..],".next");
+  if temporary[0].bad || !fs_write(btext(temporary[..]),text) {return false;}
+  return fs_rename(btext(temporary[..]),path);
+}
 #test "the held movement attempt ends before either three-second hold expires" {
   // Even a delayed receipt leaves room for this attempt. Do not compare free walking across
   // two independently delivered releases as if it were an identical input interval.
@@ -408,14 +414,14 @@ dr_held_move_ms :: () -> int { return 500; }
 }
 dr_hold :: (p: DrPair) {
   if p.native {
-    // Both rooms are in one native process. Apply both holds in one control-file read,
-    // then remove the lines before its next read (the shared last-stamp is global).
+    // The independent native hosts observe the same atomic control publication.
+    // Remove both lines before their next periodic API read.
     c:[1]Buf;bput(c[..],DR_CONTROL_PAIR);stamp:=proc_now_ms();
     bput(c[..],"hold pair-drift-");bint(c[..],p.room);bput(c[..]," ");bint(c[..],dr_int(p.b,"__dr.probe(1)",-1));bput(c[..]," ");bint(c[..],stamp);bput(c[..],"\n");
     bput(c[..],"hold local-1 ");bint(c[..],dr_int(p.a,"__dr.probe(1)",-1));bput(c[..]," ");bint(c[..],stamp+1);bput(c[..],"\n");
-    _:=fs_write(p.ctl,btext(c[..]));deadline:=proc_now_ms()+4000;
+    _:=dr_control_write(p.ctl,btext(c[..]));deadline:=proc_now_ms()+4000;
     while proc_now_ms()<deadline && (dr_int(p.a,DR_HELD,0)!=1 || dr_int(p.b,DR_HELD,0)!=1) {proc_sleep(20);}
-    _=fs_write(p.ctl,DR_CONTROL_PAIR);return;
+    _=dr_control_write(p.ctl,DR_CONTROL_PAIR);return;
   }
   took := false; tries := 0; asked := 0; stamp := 0;
   while tries < 3 && !took {
@@ -423,7 +429,7 @@ dr_hold :: (p: DrPair) {
       seat := dr_int(p.b, "__dr.probe(1)", -1);
       stamp = proc_now_ms(); asked = stamp; tries += 1;
       c: [1] Buf; bput(c[..], DR_CONTROL_PAIR); bput(c[..], "hold pair-drift-"); bint(c[..], p.room); bput(c[..], " "); bint(c[..], seat); bput(c[..], " "); bint(c[..], stamp); bput(c[..], "\n");
-      _ := fs_write(p.ctl, btext(c[..]));
+      _ := dr_control_write(p.ctl, btext(c[..]));
     }
     took = dr_int(p.b, DR_HELD, 0) == 1;
     if !took { proc_sleep(20); }
@@ -433,7 +439,7 @@ dr_hold :: (p: DrPair) {
   w := proc_now_ms();
   while held == 1 && dr_int(p.a, DR_HELD, 0) != 1 && proc_now_ms() - w < 2000 { proc_sleep(20); }
   held = dr_int(p.a, DR_HELD, 0);
-  _ := fs_write(p.ctl, DR_CONTROL_PAIR);
+  _ := dr_control_write(p.ctl, DR_CONTROL_PAIR);
   if !took { print("  (the room page was never held: % asks)\n", tries); }
   if held != 1 { print("  (the offline page did not take the hold: %)\n", held); }
 }

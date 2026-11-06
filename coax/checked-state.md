@@ -31,9 +31,11 @@ an optional entity value; components stay in the realm's columns. Dead Gears'
 callers also carry the typed handle. Saves and messages use stable IDs.
 
 Everglade keeps a character's seat lifetime separate from its socket generation.
-A reconnect preserves it; replacement advances it. Casts, queued strikes and
-ability owners capture that lifetime. Fire may continue after its owner leaves,
-but cannot blame the next occupant. Shouts carry the speaker's lifetime and
+A reconnect preserves it; replacement advances it. Room casts, queued strikes, accepted world impacts and
+ability owners capture that lifetime. Town, placed-object, forest, grass and
+debris fires capture their starter's handle. Contacts, spread, falling trees
+and forest replication resolve it before assigning blame. Fire may continue
+after its owner leaves. Shouts carry the speaker's lifetime and
 clear when the replicated slot is replaced. Exhausted lifetimes retire.
 
 ## Effects
@@ -157,8 +159,13 @@ source is measured with the candidate compiler. It compares the properties still
 failing; fixing one fault does not make an unchanged fault block the release.
 A new failure, a different bad value or a newly removed declaration blocks it.
 
-`release.sh` compares the wire and checkpoint modules with production's `PASSED`
-commit. Room `deploy.sh` checks every revision receiving traffic before reading
+`release.sh` compares the message and checkpoint facades in `coax/web/compat/`
+with production's `PASSED` commit. The same reviewed facade loads each revision's
+source. It exposes the message values and saved character; marked persisted
+records are included automatically. Receive histories, delta tables and mailbox
+scratch can grow independently. Versioned codec checks still qualify the text
+bytes. The general `coax compat` command compares a module's full published
+surface. Room `deploy.sh` checks every revision receiving traffic before reading
 ticket keys or draining rooms. Revision labels retain the source commit, with
 existing image tags as the migration path. Each qualified build retains its
 manifests under `coax/web/compat/`; releases archive them and room images include

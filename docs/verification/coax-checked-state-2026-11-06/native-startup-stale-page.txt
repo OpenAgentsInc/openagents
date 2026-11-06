@@ -1,0 +1,17 @@
+everglade-drift: room 127.0.0.1:8980, page 127.0.0.1:8981, results in /tmp/oa-state-native-final
+profile local: round trip 0 ms
+  native room ready after 1 ms
+everglade-drift: the pages didn't come up: offline {"rows":3992,"net":3,"seat":-1,"wasm":true,"title":"Everglade · OpenAgents","url":"http://127.0.0.1:8983/worlds/everglade?offline=worker&levels=off&reload=1"}, room {"rows":3975,"net":3,"seat":-1,"wasm":true,"title":"Everglade · OpenAgents","url":"http://127.0.0.1:8981/worlds/everglade?relay=ws://localhost:8982&room=pair-drift-7310&reload=1"}
+DRIFT local session: it didn't run
+profile 100: round trip 100 ms, jitter 30 ms, 2% lost
+  native room ready after 0 ms
+everglade-drift: the pages didn't come up: offline {"rows":3976,"net":3,"seat":-1,"wasm":true,"title":"Everglade · OpenAgents","url":"http://127.0.0.1:8983/worlds/everglade?offline=worker&levels=off&reload=1"}, room {"rows":3934,"net":3,"seat":-1,"wasm":true,"title":"Everglade · OpenAgents","url":"http://127.0.0.1:8981/worlds/everglade?relay=ws://localhost:8982&room=pair-drift-7312&reload=1"}
+DRIFT 100 session: it didn't run
+profile 250: round trip 250 ms, jitter 30 ms, 2% lost
+  native room ready after 0 ms
+everglade-drift: the pages didn't come up: offline {"rows":402,"net":3,"seat":-1,"wasm":true,"title":"Everglade · OpenAgents","url":"http://127.0.0.1:8983/worlds/everglade?offline=worker&levels=off&reload=1"}, room {"rows":463,"net":2,"seat":3,"wasm":true,"title":"Everglade · OpenAgents","url":"http://127.0.0.1:8981/worlds/everglade?relay=ws://localhost:8982&room=pair-drift-7315"}
+DRIFT 250 session: it didn't run
+
+| probe | local | 100 | 250 |
+|---|---|---|---|
+fails

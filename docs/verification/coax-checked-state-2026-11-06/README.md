@@ -45,8 +45,8 @@ refusing a new one. The actual production gate passes offline against retained
 production source. Release/deploy syntax and pure revision-selection checks pass;
 no live deployment or Cloud Run mutation was run.
 
-Everglade's page Wasm is 1,994,379 bytes against 2,150,000; the worker is
-997,513 against 1,060,000. Shared host reactors build. Source-linked books pass
+The served SRD page Wasm is 2,005,680 bytes against 2,150,000. The classic page
+is 1,790,730 against 1,910,000; the worker is 1,023,072 against 1,060,000. Shared host reactors build. Source-linked books pass
 their structure checks: Aethyr 48 programs / 211 listings, Psionic 357 programs
 plus four native libraries / 1,865 listings, Nostr 89 programs / 787 listings.
 
@@ -66,8 +66,10 @@ CSV samples are retained beside the result.
 The earlier periodic attempt is retained in `worker-periodic-attempt.txt`: its
 final one-second p95 was 935 / 535 / 510 µs, with the local observation failing
 600 µs. That observation exposed the old harness's limited measurement window.
-The complete-workload gate keeps the same 600 µs limit and includes the earlier
-ticks as well as the final window. These measurements qualify the authored
+The complete-workload gate keeps the same 600 µs limit and collects every
+completed cost batch in each fresh scenario, including startup and the final
+window. The first full-workload trace (560 / 551 / 610 µs) remains recorded as
+a failed pre-optimization observation. These measurements qualify the authored
 paired scenario on this Mac; room capacity retains its separate load checks.
 
 The compiler bootstrap ran with `COAX_MUTATION_FULL=1`. Cached gates retained
@@ -88,6 +90,8 @@ coax/bin/coax mutate apps/openagents-web/everglade-handles.coax --root-only
 coax/bin/coax mutate aethyr/session/ledger.coax --root-only
 coax/web/tool.sh coax/tests/everglade-safety-native.coax
 coax/web/tool.sh coax/tests/ledger-safety-native.coax
+coax/web/tool.sh coax/tests/fire-safety-native.coax
+coax/web/tool.sh coax/tests/compat-facades.coax "$PWD/coax/bin/coax"
 coax/web/tool.sh coax/tests/compat.coax "$PWD/coax/bin/coax"
 coax/web/tool.sh tools-check
 ```
@@ -105,3 +109,48 @@ host/asset receipts retain their original source identities.
 Regions, native boundary enforcement, concurrent transactions, callback types
 and general memory safety remain outside this initial profile. Spec §3 retains
 its existing memory-safety claim.
+
+## Integration with current main
+
+The final integration includes the upstream session-v5 forest replication and
+input/drift fixes through `e5c3b69fac`. Forest and placed-object fires, grass
+fires and town contact lookups now resolve the captured starter's lifetime;
+the forest's replicated starter follows the same decision. The additional
+ordinary native entry is `coax/tests/fire-safety-native.coax`.
+
+The release gate uses explicit message/checkpoint facades. The production-source
+comparison passes against `1da0654445`; a six-case CLI probe admits private
+receive-cache growth and defaulted trailing fields, refuses removed/inserted
+message fields, and refuses withdrawn input/owned-hello persisted markers.
+The standalone compatibility command retains its complete published-module
+checks. The versioned session profile continues to qualify encoded bytes.
+
+Temporary timing counters located about 274 µs of the earlier worker tick in
+town setup, mostly river physics (about 304 µs of stepping and 5 µs of float
+output in a focused observation). Building only the river C unit with `-O2`
+reduced the stepping observation to about 238 µs, with strict floating-point
+flags unchanged. Its diagnostic worker grew by about 13 KB. Final qualification
+uses the ordinary build without those temporary counters; diagnostic timings
+are not a passing budget result.
+
+The final ordinary builds execute the current room/page check closures; the
+root suites list 682 and 788 entries after the main integration. The 12 room
+town regressions also pass with explicit fixture lifetimes supplied as the
+real host supplies them. The accepted-impact regression breaks a real town
+piece after replacing its caster and observes an unowned break, rather than
+the replacement's seat. Both ordinary native development C at `-O0` and Coax
+`--release` C at `-O2` execute the same contact and delayed-impact Coax bodies.
+The retained C wrappers only dispatch to those bodies; their generated C input
+hashes and the final Wasm/native artifacts are in `current-builds.json`.
+
+These final builds use `COAX_NEAR_LIMIT=100` to avoid serial replays that expand
+informational near-limit notes. Compile-time work, storage and traversal limits
+remain unchanged; the earlier default-threshold diagnostic notes are retained
+in the prior reports. The compiler's qualified source/binary record remains
+valid because this integration changes application and tool sources.
+
+A startup-only native attempt used the prior SRD page after rebuilding the
+classic target by mistake. Both pages refused the room's session version and
+reloaded, so that attempt supplies no gameplay or timing qualification. Its
+failure is retained in `native-startup-stale-page.txt`; `/worlds/everglade`
+loads `everglade5e.wasm`, which is rebuilt separately for final qualification.

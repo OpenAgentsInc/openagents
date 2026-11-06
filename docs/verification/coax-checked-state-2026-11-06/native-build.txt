@@ -1,0 +1,2 @@
+room: start check: 0 fields off their defaults, the same from any memory
+built /Users/christopherdavid/work/oa-entity-handles/coax/web/room/bin/room

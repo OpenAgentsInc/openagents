@@ -44,7 +44,7 @@ WD_HEAL_RGB :: Point.{x = 0.55, y = 1.0, z = 0.45};
 WD_BOLT_RGB :: Point.{x = 0.72, y = 0.8, z = 1.0};
 WD_THORN_RGB :: Point.{x = 0.3, y = 0.24, z = 0.12};
 
-WdFire :: struct { live: bool; at: Point; t: f32; life: f32; next: f32; gen: int; }
+WdFire :: struct { live: bool; at: Point; t: f32; life: f32; next: f32; gen: int; by: int; owner: Handle(EvergladeSeat); }
 Wild :: struct {
   time: f32;
   ff_on: bool; ff_t: f32; ff_at: Point; ff_hue: int;
@@ -485,7 +485,7 @@ wd_ignite :: (s: [] Everglade, at: Point, gen: int) -> bool {
   for q: 0..<m { if flat_gap(v[0].burnt[q], at) < 0.85 { return false; } }
   for q: 0..<WD_FIRES {
     if v[0].fires[q].live { continue; }
-    v[0].fires[q] = WdFire.{live = true, at = v3(at.x, ground_at(s, at.x, at.z), at.z), t = 0, life = 8 + 5 * sp_rand(s), next = 1.0 + 1.2 * sp_rand(s), gen = gen};
+    v[0].fires[q] = WdFire.{live = true, at = v3(at.x, ground_at(s, at.x, at.z), at.z), t = 0, life = 8 + 5 * sp_rand(s), next = 1.0 + 1.2 * sp_rand(s), gen = gen, by=fi_owner(s), owner=fi_owner_reference(s,fi_owner(s))};
     return true;
   }
   return false;
@@ -537,7 +537,9 @@ wd_fires_frame :: (s: [] Everglade, dt: f32) {
       if f.gen < WD_GEN {
         a := f32(TAU) * sp_rand(s);
         dd := 1.1 + 0.5 * sp_rand(s);
+        was_by:=fi_acting(s);fi_as_reference(s,f.by,f.owner);
         wd_light(s, add(f.at, v3(cos(a) * dd, 0, sin(a) * dd)), f.gen + 1);
+        fi_as(s,was_by);
       }
     }
   }
@@ -546,26 +548,31 @@ wd_fires_frame :: (s: [] Everglade, dt: f32) {
   w := watch_w(s);
   d := s[0].sp.dice[..];
   you := ab_you(s);
-  hurt := 0; at := you;
+  hurt := 0; at := you; hurt_by:=FI_NONE;
+  me:=w[0].me;foe:=w[0].enemy_fire;
   for i: 0..<WATCH_ACTORS {
     if !ab_person_ok(s, i) || v[0].time < v[0].fire_next[i] || ab_air(s, i) > 0.5 { continue; }
     p := wd_feet(s, i);
-    if !wd_in_fire(s, p) { continue; }
+    by:=wd_fire_by(s,p);if by==FI_NONE {continue;}
     v[0].fire_next[i] = v[0].time + f32(WD_ROUND);
-    watch_harm(w, i, srd_sum(d, 1, 4), you);
-    hurt += 1; at = p;
+    source_at:=you;
+    if s[0].wv.net {w[0].enemy_fire=foe || by<0;w[0].me=clamp_w(by,0,WATCH_YOUS-1);source_at=s[0].wv.room_at[w[0].me];}
+    watch_harm(w, i, srd_sum(d, 1, 4), source_at);
+    w[0].me=me;w[0].enemy_fire=foe;
+    hurt += 1; at = p;hurt_by=by;
   }
-  if hurt > 0 { gv_crime(s, at, f32(WD_HEAR_FIRE)); }
+  if hurt > 0 {was_by:=fi_acting(s);fi_as(s,hurt_by);gv_crime(s, at, f32(WD_HEAR_FIRE));fi_as(s,was_by);}
   if !watch_you(w[..])[0].dead && v[0].time >= v[0].you_fire_next && wd_you_down(s) && wd_in_fire(s, you) {
     v[0].you_fire_next = v[0].time + f32(WD_ROUND);
     wd_hurt_you(s, srd_sum(d, 1, 4), "YOU ARE BURNING · 1D4 FIRE");
   }
-  for q: 0..<WD_FIRES { if v[0].fires[q].live && v[0].fires[q].t < dt * 1.5 { wd_debris_catch_by(s, v[0].fires[q].at, 0.6, FI_GRASS); } }
+  for q: 0..<WD_FIRES { if v[0].fires[q].live && v[0].fires[q].t < dt * 1.5 {was_by:=fi_acting(s);fi_as_reference(s,v[0].fires[q].by,v[0].fires[q].owner);wd_debris_catch_by(s, v[0].fires[q].at, 0.6, FI_GRASS);fi_as(s,was_by); } }
 }
-wd_in_fire :: (s: [] Everglade, p: Point) -> bool {
+wd_in_fire :: (s: [] Everglade, p: Point) -> bool {return wd_fire_by(s,p)!=FI_NONE;}
+wd_fire_by :: (s: [] Everglade, p: Point) -> int {
   v := wd_of(s);
-  for q: 0..<WD_FIRES { if v[0].fires[q].live && flat_gap(v[0].fires[q].at, p) <= f32(WD_FIRE_R) && abs(p.y - v[0].fires[q].at.y) < 1 { return true; } }
-  return false;
+  for q: 0..<WD_FIRES { if v[0].fires[q].live && flat_gap(v[0].fires[q].at, p) <= f32(WD_FIRE_R) && abs(p.y - v[0].fires[q].at.y) < 1 {return fi_reference_owner(s,v[0].fires[q].by,v[0].fires[q].owner);} }
+  return FI_NONE;
 }
 
 // ---- each frame, the light and drawing

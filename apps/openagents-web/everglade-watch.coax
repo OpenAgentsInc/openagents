@@ -1274,7 +1274,7 @@ everglade_room_tree :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c 
   out[9] = v[0].soot[q]; out[10] = v[0].bare[q]; out[11] = v[0].frost[q]; out[13] = -1;
   for b: 0..<v[0].n {
     e := v[0].burn[b];
-    if e.tree == t { out[12] = 1; out[13] = f32(e.by); out[14] = e.t; out[15] = e.out; break; }
+    if e.tree == t { out[12] = 1; out[13] = f32(fi_reference_owner(s,e.by,e.owner)); out[14] = e.t; out[15] = e.out; break; }
   }
   return forest_valid(out[0..<FOREST_FLOATS]);
 }
@@ -1292,6 +1292,14 @@ everglade_room_tree :: (s: [] Everglade, q: int, out: [] f32) -> bool #export_c 
   #assert !everglade_room_tree(g[..], 0, out[..]) && !everglade_room_tree(g[..], TF_POOL, out[..]);
   #assert !everglade_room_tree(g[..], k, out[0..<15]) && everglade_room_tree(g[..], k, out[..]);
   for i: 0..<16 { #assert out[i] == want[i]; }
+  // Replication resolves the captured starter's lifetime, just as damage does.
+  g[0].wv.net = true;
+  old := ev_seat_reference(2, 1); replacement := ev_seat_reference(2, 2);
+  everglade_room_seat_owner(g[..], 2, old.value);
+  v[0].n = 0; fi_as(g[..], 2); #assert tf_ignite(g[..], 0);
+  #assert everglade_room_tree(g[..], k, out[..]) && out[13] == 2;
+  everglade_room_seat_owner(g[..], 2, replacement.value);
+  #assert everglade_room_tree(g[..], k, out[..]) && out[12] == 1 && out[13] == -1;
   tf_restore(g[..]); #assert !everglade_room_tree(g[..], k, out[..]);
 }
 // The town's pieces, and whether piece i stands whole and not alight (a Repair's, for the host).
@@ -1463,6 +1471,7 @@ everglade_room_cond :: (s: [] Everglade, p: int) -> int #export_c #effects(all) 
     g: [1] Everglade; dm: [1] DemoWorld;
     walled := everglade_walls(g[..]);   // as the room's world starts (coax/web/room/room-world.c)
     everglade_room_spells_start(g[..], dm[..], "");
+    for seat:0..<WATCH_YOUS {everglade_room_seat_owner(g[..],seat,ev_seat_reference(seat,1).value);} // the standalone world has the host's first character lifetimes
     seats: [EG_ROOM_SEAT_FLOATS * 2] f32; took: [WATCH_YOUS * 2] f32;
     everglade_room_town(g[..], 1.0 / 30.0, 1000.0, seats[..], 0, took[..]);
     #assert walled >= 0 && g[0].wv.started && watch_on(g[..]);
@@ -1487,6 +1496,7 @@ eg_fire_blame :: (by: int, next_by: int, out: [] int) {
   g: [1] Everglade; dm: [1] DemoWorld;
   walled := everglade_walls(g[..]);
   everglade_room_spells_start(g[..], dm[..], "");
+  for seat:0..<WATCH_YOUS {everglade_room_seat_owner(g[..],seat,ev_seat_reference(seat,1).value);} // the standalone world has the host's first character lifetimes
   seats: [EG_ROOM_SEAT_FLOATS * 2] f32; took: [WATCH_YOUS * 2] f32;
   everglade_room_town(g[..], 1.0 / 30.0, 1000.0, seats[..], 0, took[..]);
   w := sp_dm(g[..]);
@@ -1589,6 +1599,7 @@ eg_fire_blame :: (by: int, next_by: int, out: [] int) {
   g: [1] Everglade; dm: [1] DemoWorld;
   walled := everglade_walls(g[..]);
   everglade_room_spells_start(g[..], dm[..], "");
+  for seat:0..<WATCH_YOUS {everglade_room_seat_owner(g[..],seat,ev_seat_reference(seat,1).value);} // the standalone world has the host's first character lifetimes
   seats: [EG_ROOM_SEAT_FLOATS * 2] f32; took: [WATCH_YOUS * 2] f32;
   everglade_room_town(g[..], 1.0 / 30.0, 1000.0, seats[..], 0, took[..]);
   w := watch_w(g[..]);
@@ -1624,6 +1635,7 @@ eg_fire_blame :: (by: int, next_by: int, out: [] int) {
   g: [1] Everglade; dm: [1] DemoWorld;
   walled := everglade_walls(g[..]);
   everglade_room_spells_start(g[..], dm[..], "");
+  for seat:0..<WATCH_YOUS {everglade_room_seat_owner(g[..],seat,ev_seat_reference(seat,1).value);} // the standalone world has the host's first character lifetimes
   seats: [EG_ROOM_SEAT_FLOATS * 2] f32; took: [WATCH_YOUS * 2] f32;
   everglade_room_town(g[..], 1.0 / 30.0, 1000.0, seats[..], 0, took[..]);
   w := watch_w(g[..]);
@@ -1659,6 +1671,7 @@ eg_fire_casters :: (casters: int, out: [] f32) {
   g: [1] Everglade; dm: [1] DemoWorld;
   walled := everglade_walls(g[..]);
   everglade_room_spells_start(g[..], dm[..], "");
+  for seat:0..<WATCH_YOUS {everglade_room_seat_owner(g[..],seat,ev_seat_reference(seat,1).value);} // the standalone world has the host's first character lifetimes
   seats: [EG_ROOM_SEAT_FLOATS * 4] f32; took: [WATCH_YOUS * 2] f32;
   everglade_room_town(g[..], 1.0 / 30.0, 1000.0, seats[..], 0, took[..]);
   w := sp_dm(g[..]);
@@ -1708,6 +1721,8 @@ eg_fire_casters :: (casters: int, out: [] f32) {
   g: [1] Everglade; dm: [1] DemoWorld;
   walled := everglade_walls(g[..]);
   everglade_room_spells_start(g[..], dm[..], "");
+  for seat:0..<WATCH_YOUS {everglade_room_seat_owner(g[..],seat,ev_seat_reference(seat,1).value);} // the standalone world has the host's first character lifetimes
+
   seats: [EG_ROOM_SEAT_FLOATS * 2] f32; took: [WATCH_YOUS * 2] f32;
   everglade_room_town(g[..], 1.0 / 30.0, 1000.0, seats[..], 0, took[..]);
   w := watch_w(g[..]);
@@ -1764,6 +1779,8 @@ eg_fire_casters :: (casters: int, out: [] f32) {
   g: [1] Everglade; dm: [1] DemoWorld;
   walled := everglade_walls(g[..]);
   everglade_room_spells_start(g[..], dm[..], "");
+  for seat:0..<WATCH_YOUS {everglade_room_seat_owner(g[..],seat,ev_seat_reference(seat,1).value);} // the standalone world has the host's first character lifetimes
+
   // Two small, dry trees outside the west palisade, with touching crowns. The real room tick is
   // the only simulation entry below: calling tf_frame here would hide the missing server step.
   g[0].tree_n = 2;
@@ -1796,6 +1813,8 @@ eg_fire_casters :: (casters: int, out: [] f32) {
   g: [1] Everglade; dm: [1] DemoWorld;
   walled := everglade_walls(g[..]);
   everglade_room_spells_start(g[..], dm[..], "");
+  for seat:0..<WATCH_YOUS {everglade_room_seat_owner(g[..],seat,ev_seat_reference(seat,1).value);} // the standalone world has the host's first character lifetimes
+
   seats: [EG_ROOM_SEAT_FLOATS * 2] f32; took: [WATCH_YOUS * 2] f32;
   everglade_room_town(g[..], 1.0 / 30.0, 1000.0, seats[..], 0, took[..]);
   #assert walled >= 0 && g[0].tree_n > 1;

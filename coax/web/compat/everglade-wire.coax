@@ -1,0 +1,7 @@
+#load "../../../apps/openagents-web/everglade-wire.coax";
+// The published messages. Receive histories and delta tables are runtime state.
+contract_pins :: (value:WirePins)->WirePins #effects(computes) {return value;}
+contract_input :: (value:WireIn)->WireIn #effects(computes) {return value;}
+contract_cast :: (value:WireCast)->WireCast #effects(computes) {return value;}
+contract_use :: (value:WireUse)->WireUse #effects(computes) {return value;}
+// Marked persisted records, including the owned hello, are also inventoried.

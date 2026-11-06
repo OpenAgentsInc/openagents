@@ -43,6 +43,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -672,13 +673,34 @@ static bool poster_send(int lane, const char *cfg, size_t k, int64_t batch) {
   }
   return true;
 }
-/* The control ask, every two seconds while the server has a key, and its answers as they come. */
+/* Local control-file publication is an immediate platform event. In particular,
+   two independent native hosts must not apply the same scripted hold up to two
+   seconds apart merely because their API polling phases differ. */
+static bool dev_control_changed(void) {
+  static struct timespec seen = {-1, -1};
+  static off_t size = -1;
+  static ino_t inode;
+  char path[1024];
+  int n = snprintf(path, sizeof path, "%s/room-control.txt", dev_dir);
+  struct stat st;
+  if (n < 0 || (size_t)n >= sizeof path || stat(path, &st)) return false;
+#ifdef __APPLE__
+  struct timespec modified = {st.st_mtime, st.st_mtimensec};
+#else
+  struct timespec modified = st.st_mtim;
+#endif
+  bool changed = modified.tv_sec != seen.tv_sec || modified.tv_nsec != seen.tv_nsec || st.st_size != size || st.st_ino != inode;
+  seen = modified; size = st.st_size; inode = st.st_ino;
+  return changed;
+}
+/* Production asks every two seconds; --dev also observes new file publications. */
 static void control_ask(void) {
-  if (!rm_control_due(view())) return;
-  if (dev_dir) {   /* --dev: DIR/room-control.txt is the API's answer, read as often as the API is asked */
-    dev_control();
+  bool due = rm_control_due(view());
+  if (dev_dir) {
+    if (dev_control_changed() || due) dev_control();
     return;
   }
+  if (!due) return;
   const char *url = getenv("OA_ROOM_CONTROL_URL");
   if (!url || !*url) url = "https://openagents.com/api/playtest/room-control";
   char cfg[512];

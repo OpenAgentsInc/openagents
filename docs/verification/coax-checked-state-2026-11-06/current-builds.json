@@ -1,0 +1,112 @@
+{
+  "release_emission": {
+    "compiler": "coax0 0.52.0",
+    "success": true,
+    "parallel_checks": "parallel: 527 checks, 8 jobs",
+    "authority_checks": {
+      "cached": 0,
+      "checked": 1
+    },
+    "check_reuse": {
+      "reused": 517,
+      "run": 10
+    }
+  },
+  "artifacts": [
+    {
+      "path": "coax/bin/coax",
+      "bytes": 3884072,
+      "sha256": "23dfc150fa0d21dd199b2da382b9c2dd0762e8183e3f576657fe1341d327117e"
+    },
+    {
+      "path": "coax/bin/effects-dev/coax",
+      "bytes": 3883960,
+      "sha256": "ef2733e92f9eafdb1cb2dbd36841c65f5d2c0f41d948abc17623c41500d1f939"
+    },
+    {
+      "path": "apps/openagents-web/build/everglade.wasm",
+      "bytes": 1790730,
+      "sha256": "3b20100164fd6a69b9eca25cbc6a294649258751a2948d9b270e2227893da4b8"
+    },
+    {
+      "path": "apps/openagents-web/build/everglade-room.wasm",
+      "bytes": 1023072,
+      "sha256": "5958bdcd10bd944c0f92f024adaf2e383d49c26b28327f11775701c6bc1b5478"
+    },
+    {
+      "path": "coax/web/room/bin/room",
+      "bytes": 4052472,
+      "sha256": "714f8ee406350a1d42dacac09912f4a227012130ae453768e4ffdcaa8fa6d55e"
+    },
+    {
+      "path": "/tmp/oa-state-final-c/everglade.c",
+      "bytes": 7621922,
+      "sha256": "9ed7e6ec3bb6aa423a966889b29b3498454c1e95c1843b3fd12a3269d1cefd6b"
+    },
+    {
+      "path": "/tmp/oa-state-final-everglade-release-v2.c",
+      "bytes": 9647754,
+      "sha256": "27334c56c0363e4e94ba9af6ab002e1db16e1640872e01445e9e6ad53b11cb6e"
+    },
+    {
+      "path": "apps/openagents-web/build/everglade5e.wasm",
+      "bytes": 2005680,
+      "sha256": "1199b2292bb6fbf7fc620d1cffc450712328165cf229bf69cbc84ad7945bfb04"
+    }
+  ],
+  "classic_page": {
+    "bytes": 1790730,
+    "mode": "release",
+    "compiler_sha256": "ef2733e92f9eafdb1cb2dbd36841c65f5d2c0f41d948abc17623c41500d1f939",
+    "units": [
+      {
+        "unit": "everglade",
+        "success": true,
+        "authority_checks": {
+          "cached": 0,
+          "checked": 1
+        },
+        "parallel_checks": "parallel: 1383 checks, 8 jobs",
+        "checks": 1383
+      }
+    ]
+  },
+  "page": {
+    "target": "everglade5e",
+    "route": "/worlds/everglade",
+    "bytes": 2005680,
+    "limit_bytes": 2150000,
+    "mode": "release",
+    "compiler_sha256": "ef2733e92f9eafdb1cb2dbd36841c65f5d2c0f41d948abc17623c41500d1f939",
+    "units": [
+      {
+        "unit": "Everglade5e-rules",
+        "success": true,
+        "authority_checks": {
+          "cached": 0,
+          "checked": 0
+        },
+        "parallel_checks": "",
+        "check_reuse": {
+          "reused": 0,
+          "run": 0
+        },
+        "checks": 0
+      },
+      {
+        "unit": "everglade5e",
+        "success": true,
+        "authority_checks": {
+          "cached": 0,
+          "checked": 1
+        },
+        "parallel_checks": "parallel: 1391 checks, 8 jobs",
+        "check_reuse": {
+          "reused": 0,
+          "run": 1391
+        },
+        "checks": 1391
+      }
+    ]
+  }
+}

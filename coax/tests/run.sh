@@ -219,7 +219,8 @@ unit_transactions() {
 unit_compat() {
   "$COAX" test lib/compiler/compatibility.coax &&
     "$COAX" mutate lib/compiler/compatibility.coax --root-only &&
-    COAX="$COAX_ABS" web/tool.sh tests/compat.coax "$COAX_ABS"
+    COAX="$COAX_ABS" web/tool.sh tests/compat.coax "$COAX_ABS" &&
+    (cd .. && COAX="$COAX_ABS" coax/web/tool.sh coax/tests/compat-facades.coax "$COAX_ABS")
 }
 unit_mul_wide() { python3 tests/mul_wide.py && python3 tests/foreign_buffers.py; }
 unit_cuda() {

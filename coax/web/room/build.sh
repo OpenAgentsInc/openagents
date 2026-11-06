@@ -16,14 +16,18 @@ if [[ -n "${COAX_FAST_EDIT:-}" ]]; then
   [[ "$(command -v cc)" == "$(sed -n '5p' "$COAX_FAST_EDIT/toolchain")" ]] || { echo 'fast-edit: native compiler differs from the sealed baseline' >&2; exit 2; }
   source_root="$COAX_FAST_EDIT/source"
 fi
-"$coax" c "$source_root/coax/web/room/room.coax" --library --header "$work/room.h" > "$work/room.c"
+# Ordinary builds share the worker's source paths and checked-compilation
+# cache. Sealed fast-edit snapshots keep their physical source paths.
+source_prefix=""
+[[ -z "${COAX_FAST_EDIT:-}" ]] || source_prefix="$source_root/"
+(cd "$source_root" && "$coax" c "${source_prefix}coax/web/room/room.coax" --library --header "$work/room.h") > "$work/room.c"
 # Everglade's headless world for the everglade rooms (room-world.c): the city's unit (everglade.coax,
 # nothing drawn), the controller's (everglade-step.coax, with aethyr/player.coax) and the units the
 # city links beside them, as apps/openagents-web/build.sh links the page's.
 units=(apps/openagents-web/everglade.coax apps/openagents-web/everglade-step.coax verse/grid.coax verse/everglade/river.coax verse/everglade/guard-guide-policy.coax)
 for u in "${units[@]}"; do
   n="$(basename "$u" .coax)"
-  (cd "$source_root" && "$coax" c "$source_root/$u" --library --header "$work/$n.h" > "$work/$n.c")
+  (cd "$source_root" && "$coax" c "${source_prefix}$u" --library --header "$work/$n.h" > "$work/$n.c")
 done
 # The simulation's floats as the browser's local host computes them (worker.coax, #12893): no fused
 # a * b + c, and the C library's sines, exponentials and powers left to room-math.c, which both hosts link.

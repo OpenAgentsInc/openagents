@@ -1,10 +1,27 @@
 // Authoritative impacts own physical slots; visual shot pools cannot evict them.
 #load "../../aethyr/session/effect-reservation.coax";
 EgWorldEffect::struct{
-  on:bool;by:int;source:int;slot:int;from:Point;at:Point;seed:int;
+  on:bool;by:int;owner:Handle(EvergladeSeat);source:int;slot:int;from:Point;at:Point;seed:int;
   dmg:SrdDamage;parts:[SP_METEORS]SpMeteor;part_n:int;shot:WlShot;
 }
 EgWorldEffects::struct{active:[EFFECT_TOTAL]EgWorldEffect;refused:int;landed:int;}
+#test "room effects: an accepted impact keeps the departing caster's lifetime and cannot blame its replacement" #steps 2000000000 {
+  eg_effect_lifetime_check();
+}
+eg_effect_lifetime_check :: () {
+  g:[1]Everglade;dm:[1]DemoWorld;sp_ready_city(g[..],dm[..]);
+  old:=ev_seat_reference(0,1);replacement:=ev_seat_reference(0,2);
+  everglade_room_seat_owner(g[..],0,old.value);eg_room_known(g[..]);
+  piece:= -1;for i:0..<dm[0].n {if fi_fuel(dm[0].pieces[i])>0.5 {piece=i;break;}}
+  #assert piece>=0;at:=v3(dm[0].pieces[piece].cx,dm[0].pieces[piece].cy,dm[0].pieces[piece].cz);
+  dm[0].pieces[piece].hp=1;
+  #assert everglade_room_strike_try(g[..],0,0,WL_SLOT0+WL_BLAST,at.x,at.y,at.z-2,at.x,at.y,at.z,42);
+  q:=effect_span(0).first;#assert g[0].sp.effects[0].active[q].owner==old;
+  everglade_room_seat_owner(g[..],0,replacement.value);
+  fell:=dm[0].fell;eg_effects_step(g[..],2);
+  #assert dm[0].fell>fell && g[0].wv.room_break_at[piece]>=0;
+  #assert g[0].wv.room_break_by[piece]== -1;
+}
 eg_effects_fresh::(s:[]Everglade){for q:0..<EFFECT_TOTAL{s[0].sp.effects[0].active[q].on=false;}}
 everglade_room_effect_free::(s:[]Everglade,source:int)->int #export_c #effects(all) {
   span:=effect_span(source);if !span.ok{return 0;}n:=0;
@@ -45,8 +62,8 @@ everglade_room_strike_try::(s:[]Everglade,source:int,by:int,slot:int,fx:f32,fy:f
   if span.ok{for n:span.first..<span.first+span.count{if q<0&&!s[0].sp.effects[0].active[n].on{q=n;}}}
   if q<0{s[0].sp.effects[0].refused+=1;return false;}
   c:=s[0].sp.effects[0].active[q..<q+1];
-  c[0]=EgWorldEffect.{on=true,by=by,source=source,slot=slot,from=v3(fx,fy,fz),at=v3(ax,ay,az),seed=seed};
   s[0].wv.net=true;
+  c[0]=EgWorldEffect.{on=true,by=by,owner=fi_owner_reference(s,by),source=source,slot=slot,from=v3(fx,fy,fz),at=v3(ax,ay,az),seed=seed};
   if cr_repair(slot){return true;}
   if slot>=WL_SLOT0{
     k:=slot-WL_SLOT0;c[0].shot=WlShot.{live=true,k=k,from=c[0].from,at=c[0].at,t=-WL_DELAY[k],seed=seed};return true;
@@ -79,12 +96,13 @@ eg_effects_step::(s:[]Everglade,dt:f32){
   old_dmg:=s[0].sp.dmg;old_remote:=s[0].sp.remote;
   for q:0..<EFFECT_TOTAL{
     c:=s[0].sp.effects[0].active[q..<q+1];if !c[0].on{continue;}
-    s[0].wv.room_by=c[0].by;s[0].wv.room_hit=c[0].at;s[0].wv.room_nobody=c[0].by<0;
-    watch_w(s)[0].me=clamp_w(c[0].by,0,WATCH_YOUS-1);
+    by:=fi_reference_owner(s,c[0].by,c[0].owner);
+    s[0].wv.room_by=by;s[0].wv.room_hit=c[0].at;s[0].wv.room_nobody=by<0;
+    watch_w(s)[0].me=clamp_w(by,0,WATCH_YOUS-1);
     if cr_repair(c[0].slot){eg_room_repair(s,c[0].from,c[0].at);c[0].on=false;s[0].sp.effects[0].landed+=1;continue;}
     if c[0].slot>=WL_SLOT0{
       c[0].shot.t+=dt;if c[0].shot.t>=0{
-        fell:=sp_dm(s)[0].fell;wl_land(s,c[0].shot);if sp_dm(s)[0].fell!=fell{eg_effect_breaks(s,c[0].by,c[0].at);}
+        fell:=sp_dm(s)[0].fell;wl_land(s,c[0].shot);if sp_dm(s)[0].fell!=fell{eg_effect_breaks(s,by,c[0].at);}
         c[0].on=false;s[0].sp.effects[0].landed+=1;}continue;
     }
     live:=false;
@@ -94,7 +112,7 @@ eg_effects_step::(s:[]Everglade,dt:f32){
         p[0].live=false;s[0].sp.dmg=c[0].dmg;s[0].sp.remote=false;
         at:=ifx sp_wall(p[0].n) then add(p[0].to,times(p[0].n,0.5)) else p[0].to;
         s[0].wv.room_hit=at;fell:=sp_dm(s)[0].fell;sp_blast(s,at,c[0].slot);
-        if sp_dm(s)[0].fell!=fell{eg_effect_breaks(s,c[0].by,at);}s[0].sp.effects[0].landed+=1;
+        if sp_dm(s)[0].fell!=fell{eg_effect_breaks(s,by,at);}s[0].sp.effects[0].landed+=1;
       }else{live=true;}
     }
     c[0].on=live;

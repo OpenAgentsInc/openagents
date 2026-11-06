@@ -22,6 +22,7 @@ PlacedFire :: struct {
   t: [CR_PLACED_MAX] f32;          // s alight (-1 not)
   spread: [CR_PLACED_MAX] f32;     // its next try at what touches it
   by: [CR_PLACED_MAX] int;         // the seat that set it alight (everglade-fire.coax fi_owner)
+  owner: [CR_PLACED_MAX] Handle(EvergladeSeat);
   soot: [CR_PLACED_MAX] f32;       // 0 to 1, how black it has burnt
   gone: [CR_PLACED_MAX] bool;      // burnt through and broken apart
   any: bool;                       // one burns or is sooty or gone (so most frames skip it all)
@@ -84,7 +85,7 @@ pf_ignite :: (s: [] Everglade, i: int) -> bool {
   pf_sync(s);
   v := pf_of(s);
   if i < 0 || i >= s[0].ev.edits.n || v[0].gone[i] || v[0].t[i] >= 0 || pf_fuel(s[0].ev.edits.things[i]) <= 0 { return false; }
-  v[0].t[i] = 0; v[0].spread[i] = f32(FI_SPREAD) * (0.6 + 0.8 * sp_rand(s)); v[0].by[i] = fi_owner(s); v[0].any = true;
+  v[0].t[i] = 0; v[0].spread[i] = f32(FI_SPREAD) * (0.6 + 0.8 * sp_rand(s)); v[0].by[i] = fi_owner(s); v[0].owner[i]=fi_owner_reference(s,fi_owner(s)); v[0].any = true;
   return true;
 }
 pf_out :: (s: [] Everglade, i: int) { if i >= 0 && i < CR_PLACED_MAX { pf_of(s)[0].t[i] = -1; } }
@@ -180,7 +181,7 @@ pf_frame :: (s: [] Everglade, dt: f32) {
       b := pf_box(s, t);
       // what touches it: the town's pieces and the other things (fi_catch lights both), the grass at its foot,
       // as whoever set it alight
-      was_by := fi_acting(s); fi_as(s, v[0].by[i]);
+      was_by := fi_acting(s); fi_as_reference(s, v[0].by[i],v[0].owner[i]);
       _ := fi_catch(s, v3(t.x, b.y0 + 0.3, t.z), hi(b.x1 - b.x0, b.z1 - b.z0) * 0.5 + f32(FI_NEAR), FI_EMBER);
       if sp_rand(s) < f32(FI_TO_GRASS) { wd_light(s, v3(t.x + (sp_rand(s) - 0.5) * 1.4, b.y0, t.z + (sp_rand(s) - 0.5) * 1.4), WD_GEN - 3); }
       fi_as(s, was_by);
@@ -200,7 +201,7 @@ pf_fire_by :: (s: [] Everglade, at: Point) -> int {
     b := pf_box(s, s[0].ev.edits.things[i]);
     if at.y + f32(BODY_TALL) < b.y0 - 0.2 || at.y > b.y1 + 0.2 { continue; }
     dx := clamp(at.x, b.x0, b.x1) - at.x; dz := clamp(at.z, b.z0, b.z1) - at.z;
-    if dx * dx + dz * dz <= (f32(EG_RADIUS) + 0.5) * (f32(EG_RADIUS) + 0.5) { return v[0].by[i]; }
+    if dx * dx + dz * dz <= (f32(EG_RADIUS) + 0.5) * (f32(EG_RADIUS) + 0.5) { return fi_reference_owner(s,v[0].by[i],v[0].owner[i]); }
   }
   return FI_NONE;
 }

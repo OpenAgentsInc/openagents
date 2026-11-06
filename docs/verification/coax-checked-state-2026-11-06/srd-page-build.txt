@@ -1,0 +1,1 @@
+wasm.sh: everglade5e.wasm: 174.1 s: Coax to C 164.4 s (2/4 cached), clang 1.1 s (3/20 cached), link 4.5 s, wasm-opt 3.3 s; 2005680 bytes; report /Users/christopherdavid/work/oa-entity-handles/apps/openagents-web/build/.c/everglade5e.timings.json

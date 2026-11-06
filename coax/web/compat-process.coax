@@ -2,6 +2,7 @@
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/proc.coax";
 #load "../lib/sys/fs.coax";
+#load "../lib/json/json.coax";
 #forall "production references are complete or abbreviated hexadecimal commit IDs" valid:bool, length:0..<66 {
   text:[65]u8;for i:0..<length {text[i]=ifx valid then 'a' else 'z';}
   #assert cg_revision(cast(string)text[0..<length])==(valid && length>=7 && length<=64);
@@ -23,4 +24,27 @@ cg_emit :: (compiler:string,source:string,path:string,legacy:bool)->bool {
   if n<=0 || n>=output.count {return false;}
   // proc_run joins lines without their final newline; manifests are canonical.
   output[n]=10;return fs_write(path,cast(string)output[0..<n+1]);
+}
+// Apply the same reviewed facade to either source revision. Only the load
+// path changes; none of the old checkout's tools or scripts runs.
+cg_facade_text :: (source:string,body:string,out:[]u8)->string {
+  writer:[1]Jo;jo_start(writer[..],out);jo_put(writer[..],"#load ");jo_str(writer[..],source);jo_put(writer[..],";\n");jo_put(writer[..],body);
+  return ifx writer[0].bad then "" else jo_text(writer[..]);
+}
+cg_contract_emit :: (compiler:string,source:string,facade:string,path:string,legacy:bool)->bool {
+  template:[16384]u8;length:=fs_read(facade,template[..]);
+  if length<1 || length>=template.count {return false;}
+  text:=cast(string)template[0..<length];end:=0;while end<length && text[end]!=10 {end+=1;}
+  if end>=length || end<7 || text[0..<7]!="#load \"" {return false;}
+  resolved:[FS_PATH_MAX]u8;absolute:=fs_realpath(source,resolved[..]);if absolute=="" {return false;}
+  carrier:[32768]u8;program:=cg_facade_text(absolute,text[end+1..<length],carrier[..]);if program=="" {return false;}
+  name:[FS_PATH_MAX]u8;file:=fs_join(fs_dir(path),ifx legacy then "production-contract.coax" else "candidate-contract.coax",name[..]);
+  if !fs_write(file,program) {return false;}defer {gone:=fs_remove(file);}
+  return cg_emit(compiler,file,path,legacy);
+}
+
+#test "contract facades quote source paths and refuse a truncated carrier" {
+  out:[256]u8;
+  #assert cg_facade_text("/tmp/a \"b\"/wire.coax","f :: () {}\n",out[..])=="#load \"/tmp/a \\\"b\\\"/wire.coax\";\nf :: () {}\n";
+  #assert cg_facade_text("wire.coax","body",out[0..<2])=="";
 }

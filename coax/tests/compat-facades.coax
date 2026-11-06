@@ -1,0 +1,38 @@
+// Exercise the release's actual facade transport, including its legacy-source baseline.
+#import "Basic";
+#load "../web/compat-process.coax";
+cf_compare :: (compiler:string,old:string,fresh:string,expected:int)->bool {
+  argv:=[6]string.[compiler,"compat",old,fresh,"--baseline",old];out:[65536]u8;err:[65536]u8;
+  r:=proc_run(argv[..],120000,out[..],err[..]);
+  if r.started!=0 || r.cut || r.timed_out || r.status!=expected {tool_errln(cast(string)err[0..<r.err_n]);return false;}
+  if expected==1 {
+    message:=cast(string)err[0..<r.err_n];needle:="coax compat: incompatible";found:=false;
+    if message.count>=needle.count {for i:0..<message.count-needle.count+1 {if message[i..<i+needle.count]==needle {found=true;}}}
+    if !found {tool_errln(message);return false;}
+  }
+  return true;
+}
+tool_main :: ()->int #export_c #effects(all) {
+  a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=1 {return 2;}compiler:=args_at(a[..],0);
+  temp:[4096]u8;dir:=fs_temp("coax-contract-scope-",temp[..]);if dir=="" {return 2;}defer {gone:=fs_remove(dir);}
+  paths:[6][4096]u8;old_dir:=fs_join(dir,"old",paths[0][..]);new_dir:=fs_join(dir,"new",paths[1][..]);
+  if !fs_mkdir(old_dir) || !fs_mkdir(new_dir) {return 2;}
+  old:=fs_join(old_dir,"wire.coax",paths[2][..]);fresh:=fs_join(new_dir,"wire.coax",paths[3][..]);
+  old_surface:=fs_join(dir,"legacy.surface",paths[4][..]);new_surface:=fs_join(dir,"candidate.surface",paths[5][..]);
+  retained_path:[4096]u8;retained:=fs_join(dir,"published.surface",retained_path[..]);
+  facade:="coax/web/compat/everglade-wire.coax";
+  prefix:="WirePins :: struct {id:int;} WireCast :: struct {slot:int;} WireUse :: struct {id:int;}\n";
+  source:[4096]u8;writer:[1]Jo;jo_start(writer[..],source[..]);jo_put(writer[..],prefix);jo_put(writer[..],"WireIn :: struct {seq:int;} Scratch :: struct {history:[2]int;}");
+  if !fs_write(old,jo_text(writer[..])) || !cg_contract_emit(compiler,old,facade,old_surface,true) {return 2;}
+  fields:=[6]string.["seq:int;","","inserted:int=0;seq:int;","seq:int;appended:int=0;","seq:int;","seq:int;"];
+  names:=[6]string.["private cache growth","message field removal","message field insertion","defaulted trailing field","withdrawn input marker","withdrawn owned hello marker"];
+  expected:=[6]int.[0,1,1,0,1,1];bad:=0;
+  for body,i:fields {
+    jo_start(writer[..],source[..]);jo_put(writer[..],prefix);jo_put(writer[..],"WireIn :: struct ");if i!=4 {jo_put(writer[..],"#persisted ");}jo_put(writer[..],"{");jo_put(writer[..],body);jo_put(writer[..],"} Scratch :: struct {history:[512]int;} WireHelloValue :: struct ");if i!=5 {jo_put(writer[..],"#persisted ");}jo_put(writer[..],"{version:int=5;}");
+    if writer[0].bad || !fs_write(fresh,jo_text(writer[..])) || !cg_contract_emit(compiler,fresh,facade,new_surface,false) {return 2;}
+    if i==0 {bytes:[65536]u8;n:=fs_read(new_surface,bytes[..]);if n<1 || !fs_write(retained,cast(string)bytes[0..<n]) {return 2;}}
+    ok:=cf_compare(compiler,ifx i<4 then old_surface else retained,new_surface,expected[i]);
+    print("% facade: %\n",ifx ok then "ok" else "FAIL",names[i]);if !ok {bad+=1;}
+  }
+  return ifx bad==0 then 0 else 1;
+}

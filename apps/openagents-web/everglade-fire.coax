@@ -88,10 +88,11 @@ fi_owner_reference :: (s:[]Everglade,by:int)->Handle(EvergladeSeat) {
   if !s[0].wv.net || by<0 || by>=16 {return Handle(EvergladeSeat).{};}
   return s[0].wv.seat_owner[by];
 }
+fi_reference_owner :: (s:[]Everglade,by:int,owner:Handle(EvergladeSeat))->int {
+  return ev_seat_owner(by,owner,fi_owner_reference(s,by),s[0].wv.net);
+}
 fi_as_reference :: (s:[]Everglade,by:int,owner:Handle(EvergladeSeat)) {
-  current:=fi_owner_reference(s,by);
-  resolved:=ev_seat_owner(by,owner,current,s[0].wv.net);
-  fi_as(s,resolved);
+  fi_as(s,fi_reference_owner(s,by,owner));
 }
 #test "fire ownership: a departed starter's fire cannot blame the next character in that seat" #steps 2000000000 {
   s:[1]Everglade;s[0].wv.net=true;
@@ -104,6 +105,33 @@ fi_as_reference :: (s:[]Everglade,by:int,owner:Handle(EvergladeSeat)) {
   fi_as_reference(s[..],0,fresh);#assert fi_owner(s[..])==0;
   everglade_room_seat_owner(s[..],0,0);
   fi_as_reference(s[..],0,fresh);#assert fi_owner(s[..])== -1;
+}
+#test "fire ownership: town, placed and grass contacts lose blame after the starter's seat is reused" #steps 2000000000 {
+  fi_owner_contact_check();
+}
+// Shared with the ordinary native integration entry.
+fi_owner_contact_check :: () {
+  s:[1]Everglade;dm:[1]DemoWorld;sp_ready_city(s[..],dm[..]);s[0].wv.net=true;
+  old:=ev_seat_reference(0,1);fresh:=ev_seat_reference(0,2);
+  everglade_room_seat_owner(s[..],0,old.value);fi_as(s[..],0);
+  s[0].ev.edits.n=1;s[0].ev.edits.things[0]=EgThing.{kind=0,x=4,z=-12,size=1};
+  #assert pf_ignite(s[..],0);pf_of(s[..])[0].t[0]=2;
+  at:=pf_centre(s[..],0);#assert pf_fire_by(s[..],at)==0;
+  piece:= -1;
+  for i:0..<dm[0].n {if fi_fuel(dm[0].pieces[i])>0 {piece=i;break;}}
+  #assert piece>=0 && fi_ignite(s[..],piece);fi_of(s[..])[0].burn[0].t=2;
+  p:=dm[0].pieces[piece];touch:=v3(p.cx,p.y0,p.cz);#assert fi_fire_by(s[..],touch)==0;
+  grass:=v3(-140,ground_at(s[..],-140,-140),-140);
+  #assert wd_ignite(s[..],grass,0) && wd_fire_by(s[..],grass)==0;
+  s[0].tree_n=1;put_tree(s[0].trees[..],0,-140,-130,0.6,0,0);
+  #assert tf_ignite(s[..],0);tree:=tf_k(s[..],0);tf_of(s[..])[0].burn[0].t=2;
+  record:[16]f32;#assert everglade_room_tree(s[..],tree,record[..]) && record[13]==0;
+  everglade_room_seat_owner(s[..],0,fresh.value);
+  #assert everglade_room_tree(s[..],tree,record[..]) && record[12]==1 && record[13]== -1;
+  #assert tf_fire_by(s[..],tf_foot(s[..],0))== -1;
+  #assert pf_fire_by(s[..],at)== -1 && fi_fire_by(s[..],touch)== -1;
+  #assert wd_in_fire(s[..],grass) && wd_fire_by(s[..],grass)== -1;
+  #assert pf_burning(s[..],0) && fi_burning(s[..],piece);
 }
 fi_cap :: (s: [] Everglade) -> int { return ifx phone(s) then FI_MAX / 2 else FI_MAX; }
 
@@ -395,7 +423,7 @@ fi_fire_by :: (s: [] Everglade, at: Point) -> int {
     p := w[0].pieces[v[0].burn[k].piece];
     if v[0].burn[k].t < 1 || at.y + f32(BODY_TALL) < p.y0 - 0.2 || at.y > p.y1 + 0.2 { continue; }
     dx := clamp(at.x, p.x0, p.x1) - at.x; dz := clamp(at.z, p.z0, p.z1) - at.z;
-    if dx * dx + dz * dz <= (f32(EG_RADIUS) + 0.5) * (f32(EG_RADIUS) + 0.5) { return v[0].burn[k].by; }
+    if dx * dx + dz * dz <= (f32(EG_RADIUS) + 0.5) * (f32(EG_RADIUS) + 0.5) { return fi_reference_owner(s,v[0].burn[k].by,v[0].burn[k].owner); }
   }
   return FI_NONE;
 }
