@@ -287,6 +287,14 @@ in [the redirect qualification](../../docs/verification/host-contract-2026-11-05
 
 ## Asset packs and graphics
 
+Version 1 media packet readers measure `coaxial_media_capacity(state)` before
+forming a view of `coaxial_media(state)` and its logical length. The shared
+[`media-packet.coax`](media-packet.md) policy admits empty packets without
+storage; nonempty packets require the complete physical allocation. A refused
+packet becomes an empty media request set, with no parser call or readiness
+notice from those bytes. Unrelated world rendering continues. This is separate
+from per-image decode, cache and GPU readiness admission.
+
 An asset is its content identity, not its URL. A pack becomes visible only
 after the complete bytes and table are admitted; failed/partial packs
 publish no parts. `VPK1` has a 32-byte header, little-endian count at 4,

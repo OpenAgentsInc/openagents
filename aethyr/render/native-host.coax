@@ -10,6 +10,7 @@
 #load "../host/http-target.coax";
 #load "../host/bundled-media.coax";
 #load "../host/buffers.coax";
+#load "../host/media-packet.coax";
 #load "../host/lifecycle.coax";
 #authority;
 

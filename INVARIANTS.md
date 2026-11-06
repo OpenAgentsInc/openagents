@@ -248,6 +248,16 @@ Image byte parity and the separately measured disabled presentation path do
 not enable a desktop default or substitute for the remaining complete host
 services.
 
+Version 1 media command packets expose their actual physical allocation via
+`coaxial_media_capacity`. The shared `media-packet.coax` admits empty packets
+without storage; nonempty packets require that export and the complete
+measured span before a view or parser call. Refused bytes produce an empty
+media request set and no derived readiness notice. Browser component receipts
+observe all 40 fields through the real shared-renderer entry point; policy
+and observer root gates kill 4/47 mutants without equivalents. Native and
+ordinary world integration remain separate exits. See the host contract's
+`media-packet.md` and verification `media-spans.md`.
+
 The new admitted 3f8 compiler regenerates shader products byte-identical to
 the frozen graphics corpus. Actual current17a browser, Vulkan and Metal
 adapters admit the new package identity; complete displayed and direct

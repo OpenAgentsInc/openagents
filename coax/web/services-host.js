@@ -13,6 +13,7 @@ export async function openHostServices(){
  const encoder=new TextEncoder(),decoder=new TextDecoder('utf-8',{fatal:true});
  return {presentation:(version,profile)=>!!x.services_render_presentation(BigInt(version),BigInt(profile)),httpFollow:version=>!!x.services_http_follow(BigInt(version)),httpResponse:(version,status)=>!!x.services_http_response(BigInt(version),BigInt(status)),
   span:(address,capacity,count,bytes)=>!!x.services_span(BigInt(address),BigInt(capacity),BigInt(count),BigInt(bytes)),
+  mediaSpan:(address,capacity,count,bytes,present)=>!!x.services_media_span(BigInt(address),BigInt(capacity),BigInt(count),BigInt(bytes),Number(present)),
   bankLine(line,base,capacity){const storage=new Uint8Array(memory.buffer,x.services_line_ptr(),x.services_line_capacity()),written=encoder.encodeInto(line,storage);if(written.read!==line.length)return null;const id=x.services_bank_insert(written.written,BigInt(base),BigInt(capacity));if(id<0n||!x.services_bank_source(id))return null;
    const field=i=>Number(x.services_bank_field(i));return {id:Number(id),name:decoder.decode(new Uint8Array(memory.buffer,field(0),field(1))),address:field(2),bytes:field(3)};},
   bankCount:()=>Number(x.services_bank_count()),extent:(frames,channels)=>Number(x.services_extent(BigInt(frames),BigInt(channels))),reserve:words=>Number(x.services_reserve(BigInt(words))),release:ticket=>!!x.services_release(BigInt(ticket)),words:()=>Number(x.services_words()),

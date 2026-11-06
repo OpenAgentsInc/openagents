@@ -1,0 +1,15 @@
+// Observations of the physical media reader and the production shared-renderer
+// entry point. A refused packet reaches neither a byte view nor its parser.
+#authority;
+#test "media span receipt requires every hostile offer and the following valid packet" {
+ rows:=[40]int.[1,4,261,1,0, 0,0,0,0,1, 0,0,0,0,1, 0,0,0,0,1,
+  0,0,0,0,1, 0,0,0,0,1, 1,0,0,1,0, 1,4,261,1,0];
+ #assert hmsp_accept(rows[..]);#assert !hmsp_accept(rows[0..<39]);extra:[41]int;#assert !hmsp_accept(extra[..]);
+ for i:0..<rows.count {changed:=rows;changed[i]+=1;#assert !hmsp_accept(changed[..]);}
+}
+hmsp_accept :: (rows:[]int)->bool #export_c {
+ want:=[40]int.[1,4,261,1,0, 0,0,0,0,1, 0,0,0,0,1, 0,0,0,0,1,
+  0,0,0,0,1, 0,0,0,0,1, 1,0,0,1,0, 1,4,261,1,0];
+ if rows.count!=want.count {return false;}
+ for value,i:want {if rows[i]!=value {return false;}}return true;
+}

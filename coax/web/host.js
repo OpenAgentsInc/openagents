@@ -225,6 +225,7 @@ import { makeHostLifecycle } from "./host-lifecycle.js";
 import { openHostServices, openPcmMemory } from "./services-host.js";
 import { openCoaxAudio, renderCoaxAudio } from "./audio-host.js";
 import { RenderHost } from "./render.js";
+import {mediaSource} from "./media-source.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 const app = (script && script.dataset.app) || "app";
@@ -1115,6 +1116,7 @@ async function loadShadersOnce() {
         captureRequested && ["float","unorm8-v1"].includes(globalThis.coaxialRenderPresentation) ? globalThis.coaxialRenderPresentation : false,
       canonicalLayers: Boolean(hostTransport) || (captureRequested && globalThis.coaxialCanonicalLayers === true),
       canonicalMedia: Boolean(hostTransport) || (captureRequested && globalThis.coaxialCanonicalMedia === true),
+      mediaSpan: hostTransport ? hostServices.mediaSpan : null,
       onMedia: (rows) => {
         if(candidate.canonicalMedia){
           if(engine?.exports!==candidate.x||candidate.mediaCache?.retiring)return;
@@ -1784,10 +1786,11 @@ function mediaClose(key, m) {
 // The media this frame wants, opened as they're first named; the ready ones drawn into pass: the
 // pictures and videos under the strokes, or (over) the ones drawn over them.
 function drawMedia(x, pass, w, h, depth, over = false) {
-  const n = x.coaxial_media && x.coaxial_media_len ? x.coaxial_media_len(arena.state) : 0;
+  const source = mediaSource(x, arena.state, memory, hostTransport ? hostServices.mediaSpan : null);
+  const n = source?.bytes ?? 0;
   const wanted = new Set();
   if (n > 0) {
-    const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_media(arena.state), n).slice());
+    const text = new TextDecoder().decode(source.view.slice());
     for (const line of text.split("\n").slice(0, MEDIA_MAX)) {
       const [named, url, ...b] = line.split(" ");
       const nums = b.map(Number), box = nums.slice(0, 4);

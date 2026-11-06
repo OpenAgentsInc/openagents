@@ -860,6 +860,7 @@ EXPORT("coaxial_pad") void coaxial_pad(cx_face_addr state, float x, float y, int
 // The spell bar's icons and card for the host to draw (coax/web/host.js coaxial_media): everglade-spells.coax sp_media.
 EXPORT("coaxial_media") cx_face_addr coaxial_media(cx_face_addr state) { coax_t_Everglade *g = city(state); return g->sp.media_big.count ? (cx_face_addr)(uintptr_t)g->sp.media_big.data : (cx_face_addr)(uintptr_t)g->sp.media.e; }
 EXPORT("coaxial_media_len") uint32_t coaxial_media_len(cx_face_addr state) { return (uint32_t)city(state)->sp.media_n; }
+EXPORT("coaxial_media_capacity") uint32_t coaxial_media_capacity(cx_face_addr state) { coax_t_Everglade *g = city(state); return g->sp.media_big.count ? (uint32_t)g->sp.media_big.count : (uint32_t)sizeof g->sp.media.e; }
 EXPORT("coaxial_wheel") void coaxial_wheel(cx_face_addr state, float dy) { everglade_wheel(at(state), dy); }
 
 EXPORT("coaxial_inbox") cx_face_addr coaxial_inbox(cx_face_addr state) { (void)state; return (cx_face_addr)(uintptr_t)inbox; }

@@ -3,6 +3,7 @@
 // selectors below are renderer transport ABI1; no realm table lives here.
 import {canonicalLayerSide,decodeCanonicalLayer} from './layers-host.js';
 import {decodeCanonicalMedia,prepareCanonicalMedia,formatCanonicalMediaNotice} from './media-host.js';
+import {mediaSource} from './media-source.js';
 const number = (x) => Number(x);
 class RenderRefusal extends Error {}
 // The ledger handle (registry.coax) of a GPU object this host created: its
@@ -18,8 +19,8 @@ const blendComponent = (mode, alpha) => {
 };
 
 export class RenderHost {
-  constructor({ device, context, format, memory, exports, arena, url, profile, coarse, capture = false, presentation = false, presentationOnly = false, canonicalLayers = false, canonicalMedia = false, onMedia = null }) {
-    Object.assign(this, { device, context, format, displayFormat: format, memory, x: exports, arena, url, profile, coarse, capture, presentationRequested: presentation, presentationOnly, canonicalLayers, canonicalMedia, onMedia });
+  constructor({ device, context, format, memory, exports, arena, url, profile, coarse, capture = false, presentation = false, presentationOnly = false, canonicalLayers = false, canonicalMedia = false, mediaSpan = null, onMedia = null }) {
+    Object.assign(this, { device, context, format, displayFormat: format, memory, x: exports, arena, url, profile, coarse, capture, presentationRequested: presentation, presentationOnly, canonicalLayers, canonicalMedia, mediaSpan, onMedia });
     this.modules = new Map(); this.pipelines = new Map(); this.groups = new Map(); this.shaderMessages = [];this.ready = false;this.samplers = new Map();this.textureCaptures = [];this.layouts = new Map();this.requests = new Map();this.targets = new Map();this.generatedBuffers = new Map();this.buffers = [];this.pendingEffects = new Set();
   }
   info(field) { return number(this.x.coaxial_render_frame_info(field)); }
@@ -409,7 +410,9 @@ export class RenderHost {
     const { x, memory, arena } = this;
     if (!this.pipelines.has(13)) return { text: "", images: [], draws: [] };
     this.mediaCache ||= new Map();
-    const bytes = x.coaxial_media_len?.(arena.state) ?? 0, address = bytes ? x.coaxial_media(arena.state) : 0;
+    const source = mediaSource(x, arena.state, memory, this.mediaSpan);
+    if (!source) return { text: "", images: [], draws: [] };
+    const {bytes, address} = source;
     if (x.coaxial_render_media_parse(address, bytes, memory.buffer.byteLength) !== 0) throw new RenderRefusal("Coax refused media command source");
     const text = this.mediaText(x.coaxial_render_media_text_ptr(), bytes), requests = [], wanted = new Set();
     for (let row = 0; row < x.coaxial_render_media_count(); row++) {
