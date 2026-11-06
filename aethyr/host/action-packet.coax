@@ -1,0 +1,14 @@
+// Borrowed action bytes need the complete concrete allocation before decoding.
+#load "buffers.coax";
+#authority;
+#test "empty actions need no storage and complete nonempty actions require a physical capacity" {
+ #assert hap_span(0,0,0,0,false)&&hap_span(0,4,0,0,true);
+ #assert hap_span(4096,64,16,4160,true)&&hap_span(4096,64,64,4160,true);
+ #assert !hap_span(4096,64,16,4160,false)&&!hap_span(4096,64,65,4161,true);
+ #assert !hap_span(4096,64,16,4159,true)&&!hap_span(0,64,16,4160,true);
+ #assert !hap_span(4294967280,64,16,4294967296,true);
+ #assert !hap_span(18446744073709551600,64,16,18446744073709551615,true);
+}
+hap_span::(address:u64,capacity:u64,bytes:u64,address_limit:u64,capacity_present:bool)->bool #export_c {
+ return bytes==0||(capacity_present&&htb_copy_span(address,capacity,bytes,address_limit));
+}

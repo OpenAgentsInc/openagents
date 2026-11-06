@@ -326,6 +326,18 @@ reader/parser passes the same 40 fields normally and under ASan, with no
 parser call on refusal and eight continuing producer frames. See the host contract's
 `media-packet.md` and verification `media-spans.md`.
 
+Version 1 browser action readers require the selected outbox's measured
+physical capacity before a byte view, decode or effect. The additive
+`coaxial_outbox_capacity` reports the actual bar/place/city array extent;
+empty actions need no storage. Missing, short, null or out-of-address-space
+nonempty packets produce no effect, acknowledge exactly once, then deliver
+604 outside that producer call. Actual ordinary-host receipts check all 110
+fields across ten cases, including no prefix, acknowledgment/error order and
+a later producer frame. Shared span and independent observation root gates
+kill 4/117 mutants without equivalents. Native adoption remains a separate
+host integration gate; see the host contract and
+`docs/verification/host-contract-2026-11-05/action-packets.md`.
+
 The opt-in Mac Metal host's final 85c producer snapshot runs ordinary gameplay
 at its observed 120 Hz display rate, with same-seat GPU rebuild and engine
 reload, fresh gesture ownership, and final GPU/CPU/audio retirement. Actual

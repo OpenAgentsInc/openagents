@@ -1,12 +1,17 @@
 // Platform ABI glue for the Coax host-conformance realm. This is linked in
 // place of a game's face, through the same host and GPU/platform adapters.
 // The recorder, defaults, outputs and interpretation are fixture.coax's.
-#include "fixture.h"
+#ifndef HF_FIXTURE_HEADER
+#define HF_FIXTURE_HEADER "fixture.h"
+#endif
+#include HF_FIXTURE_HEADER
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #ifndef HF_EXTERNAL_TRANSPORT
-#define HOST_TRANSPORT_HEADER "fixture.h"
+#ifndef HOST_TRANSPORT_HEADER
+#define HOST_TRANSPORT_HEADER HF_FIXTURE_HEADER
+#endif
 #include "../../../coax/web/host-transport-face.c"
 #endif
 
@@ -72,8 +77,14 @@ HF_EXPORT("coaxial_asset") HfAddress coaxial_asset(HfAddress p,int32_t i,uint32_
 HF_EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(HfAddress p,int32_t i) { (void)p;(void)i;return 64; }
 HF_EXPORT("coaxial_asset_ready") void coaxial_asset_ready(HfAddress p,int32_t i,uint32_t bytes) { hf_asset_ready(view(p),i,bytes); }
 HF_EXPORT("coaxial_action") int32_t coaxial_action(HfAddress p) { return (int32_t)game(p)->action; }
-HF_EXPORT("coaxial_outbox") HfAddress coaxial_outbox(HfAddress p) { return (HfAddress)(uintptr_t)game(p)->outbox.e; }
-HF_EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(HfAddress p) { return (uint32_t)game(p)->out_n; }
+#ifndef HF_OUTBOX_EXPORT
+#define HF_OUTBOX_EXPORT(name) HF_EXPORT(name)
+#endif
+HF_OUTBOX_EXPORT("coaxial_outbox") HfAddress coaxial_outbox(HfAddress p) { return (HfAddress)(uintptr_t)game(p)->outbox.e; }
+HF_OUTBOX_EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(HfAddress p) { return (uint32_t)game(p)->out_n; }
+#ifndef HF_OMIT_OUTBOX_CAPACITY
+HF_OUTBOX_EXPORT("coaxial_outbox_capacity") uint32_t coaxial_outbox_capacity(HfAddress p) { return sizeof game(p)->outbox.e; }
+#endif
 HF_EXPORT("coaxial_action_done") void coaxial_action_done(HfAddress p) { hf_action_done(view(p)); }
 HF_EXPORT("coaxial_host_probe") int64_t coaxial_host_probe(HfAddress p,int32_t event,int32_t field) { return hf_probe(view(p),event,field); }
 HF_EXPORT("coaxial_host_reset") void coaxial_host_reset(HfAddress p) { hf_reset(view(p)); }

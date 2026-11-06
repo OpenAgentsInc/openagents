@@ -228,6 +228,7 @@ import { openCoaxAudio, renderCoaxAudio, renderClipAudio } from "./audio-host.js
 import { openClipTimeline } from "./audio-timeline.js";
 import { RenderHost } from "./render.js";
 import {mediaSource} from "./media-source.js";
+import {actionSource} from "./action-source.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 const app = (script && script.dataset.app) || "app";
@@ -2723,6 +2724,8 @@ if (dev) {
   globalThis.coaxial.socketRetention=()=>({active:socketQueues?.info()??null,retired:lastSocketQueueRetired});
   globalThis.coaxial.holdSocketDelivery=value=>{socketDeliveryHeld=!!value;};
   globalThis.coaxial.holdSocketSending=value=>{socketSendingHeld=!!value;};
+  globalThis.coaxial.actionFixtureMode=mode=>engine?.exports.coaxial_action_fixture_mode?.(mode);
+  globalThis.coaxial.actionFixtureProbe=field=>Number(engine?.exports.coaxial_action_fixture_probe?.(field)??-1n);
   globalThis.coaxial.hostProbe=(event,field)=>engine?.exports.coaxial_host_probe?.(arena.state,event,field)?.toString() ?? "";
   globalThis.coaxial.hostReset=()=>engine?.exports.coaxial_host_reset?.(arena.state);
   globalThis.coaxial.hotbarProbe = (slot, field = 0) => engine?.exports.coaxial_hotbar_probe?.(arena.state, slot, field) ?? -1;
@@ -2859,7 +2862,9 @@ function after(gesture, tap = false) {
   if (field) placeField(want);
   const code = call("coaxial_action");
   if (code) {
-    const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_outbox(arena.state), x.coaxial_outbox_len(arena.state)).slice());
+    const packet=actionSource(x,arena.state,memory,hostTransport?hostServices.actionSpan:null);
+    if(!packet){call("coaxial_action_done");send(604,"Action output unavailable");return;}
+    const text = new TextDecoder().decode(packet.view.slice());
     call("coaxial_action_done");
     if (code === 1) { if (text.startsWith("https://") || /^lightning:ln[a-z0-9]+$/i.test(text)) location.assign(text); else if (text.startsWith("/")) navigateTo(root && !text.startsWith(root + "/") ? root + (text === "/" ? "/index.html" : text) : text); }
     // A copy or cut: the app chose the text (never a masked field's); this runs

@@ -1,0 +1,27 @@
+// Recording-only malformed action scalars, never a replacement host consumer.
+#load "fixture.coax";
+HostActionFixture::struct{mode:int=0;reads:[3]int;}
+HostActionFixtureSpan::struct{address:u64;capacity:u64;bytes:u64;}
+#test "action fixture keeps actual read counters separate from malformed metadata" {
+ s:=[1]HostActionFixture.[hpa_open()];q:=hpa_plan(s[..],4096,64,16,65536);#assert q.address==4096&&q.capacity==64&&q.bytes==16;
+ hpa_read(s[..],0);hpa_read(s[..],0);hpa_read(s[..],1);hpa_read(s[..],2);#assert hpa_probe(s[..],0)==2&&hpa_probe(s[..],1)==1&&hpa_probe(s[..],2)==1;
+ hpa_mode(s[..],1);q=hpa_plan(s[..],4096,64,16,65536);#assert q.bytes==65&&hpa_probe(s[..],0)==0;
+ hpa_mode(s[..],2);#assert hpa_plan(s[..],4096,64,16,65536).address==0;
+ hpa_mode(s[..],3);#assert hpa_plan(s[..],4096,64,16,65536).address==65532;
+ hpa_mode(s[..],4);#assert hpa_plan(s[..],4096,64,16,65536).capacity==0;
+ hpa_mode(s[..],5);q=hpa_plan(s[..],4096,64,16,65536);#assert q.bytes==0&&q.address==0;
+ hpa_mode(s[..],6);q=hpa_plan(s[..],4096,64,16,65536);#assert q.bytes==0&&q.address==65536;
+ hpa_mode(s[..],7);#assert hpa_plan(s[..],4096,64,16,65536).capacity==65536;
+ hpa_mode(s[..],7);q=hpa_plan(s[..],4096,64,16,18446744073709551615);#assert q.address==18446744069414584321&&q.capacity==4294967295&&q.bytes==16;
+ hpa_mode(s[..],8);#assert hpa_plan(s[..],4096,64,16,65536).capacity==15;
+ hpa_mode(s[..],99);q=hpa_plan(s[..],4096,64,16,65536);#assert q.address==4096&&q.capacity==64&&q.bytes==16;
+}
+hpa_open::()->HostActionFixture #export_c{return HostActionFixture.{};}
+hpa_mode::(s:[]HostActionFixture,mode:int) #export_c{s[0]=hpa_open();s[0].mode=mode;}
+hpa_read::(s:[]HostActionFixture,field:int) #export_c{if field>=0&&field<3{s[0].reads[field]+=1;}}
+hpa_probe::(s:[]HostActionFixture,field:int)->int #export_c{return ifx field>=0&&field<3 then s[0].reads[field] else -1;}
+hpa_plan::(s:[]HostActionFixture,address:u64,capacity:u64,bytes:u64,limit:u64)->HostActionFixtureSpan #export_c{
+ q:=HostActionFixtureSpan.{address=address,capacity=capacity,bytes=bytes};mode:=s[0].mode;
+ if mode==1{q.bytes=capacity+1;}if mode==2{q.address=0;}if mode==3{q.address=limit-4;}if mode==4{q.capacity=0;}
+ if mode==5{q.bytes=0;q.address=0;}if mode==6{q.bytes=0;q.address=limit;}if mode==7{if limit>4294967295{q.address=limit-4294967295+1;q.capacity=4294967295;}else{q.capacity=limit;}}if mode==8{q.capacity=15;}return q;
+}

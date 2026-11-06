@@ -631,6 +631,7 @@ EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) {
 }
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return bar_out_now ? (uint32_t)(uintptr_t)bar_text : place_out_now ? place_outbox() : (uint32_t)(uintptr_t)city(state)->outbox.e; }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return bar_out_now ? bar_text_n : place_out_now ? place_outbox_len() : (uint32_t)city(state)->out_n; }
+EXPORT("coaxial_outbox_capacity") uint32_t coaxial_outbox_capacity(uint32_t state) { return bar_out_now ? sizeof bar_text : place_out_now ? place_outbox_capacity() : sizeof city(state)->outbox.e; }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { if (bar_out_now) { bar_out_now = false; bar_text_n = 0; } else if (place_out_now) place_done(); else everglade_action_done(at(state)); }
 EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return everglade_wants_text(at(state)) ? 1 : 0; }
 // ---- the spells' fire and smoke, drawn after the scene (everglade-fx.wgsl, host.js particles)

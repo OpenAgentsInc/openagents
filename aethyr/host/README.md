@@ -197,7 +197,13 @@ restores neither place nor bar. Completion order of independent asynchronous
 assets is not ordered; callbacks always retain their declared asset index.
 
 Output is `coaxial_action(state)`, `coaxial_outbox(state)` and
-`coaxial_outbox_len(state)`. The host copies the requested bytes, executes or
+`coaxial_outbox_len(state)`. A nonempty version 1 packet also supplies
+`coaxial_outbox_capacity(state)`, the physical byte extent of the selected
+allocation. `action-packet.coax` admits the complete measured span before a
+byte view, decode or effect. Empty actions need no pointer/capacity export.
+A refused packet executes no effect; it acknowledges the action once and
+then delivers platform-error message 604 outside that producer call.
+The host copies admitted requested bytes, executes or
 explicitly refuses the platform effect, then calls `coaxial_action_done`
 once. Action 1 navigates, 2 copies text, 3 replaces the location hash, 4
 persists the realm slot, 5 persists the playtest identity, 11 persists place

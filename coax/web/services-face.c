@@ -13,6 +13,7 @@ static coax_v_t_HostInboxQueue queue_view(void){return(coax_v_t_HostInboxQueue){
 SERVICES_EXPORT("services_line_ptr") uint32_t services_line_ptr(void){return(uint32_t)(uintptr_t)service_line;}
 SERVICES_EXPORT("services_line_capacity") uint32_t services_line_capacity(void){return sizeof service_line;}
 SERVICES_EXPORT("services_span") uint32_t services_span(uint64_t address,uint64_t capacity,uint64_t count,uint64_t memory_bytes){return htb_copy_span(address,capacity,count,memory_bytes);}
+SERVICES_EXPORT("services_action_span") uint32_t services_action_span(uint64_t address,uint64_t capacity,uint64_t count,uint64_t memory_bytes,uint32_t present){return hap_span(address,capacity,count,memory_bytes,present!=0);}
 SERVICES_EXPORT("services_media_span") uint32_t services_media_span(uint64_t address,uint64_t capacity,uint64_t count,uint64_t memory_bytes,uint32_t present){return hmp_span(address,capacity,count,memory_bytes,present!=0);}
 SERVICES_EXPORT("services_render_presentation") uint32_t services_render_presentation(int64_t version,int64_t profile){return hrm_presentation(version,profile);}
 SERVICES_EXPORT("services_http_follow") uint32_t services_http_follow(int64_t version){return hhr_follow(version);}

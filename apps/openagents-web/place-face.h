@@ -111,6 +111,7 @@ static int32_t place_action(void) {
   return 0;
 }
 static cx_face_addr place_outbox(void) { return (cx_face_addr)(uintptr_t)place_text_out; }
+static uint32_t place_outbox_capacity(void) { return sizeof place_text_out; }
 static uint32_t place_outbox_len(void) { return place_out_code == 3 ? 0 : place_text_n; }
 static void place_done(void) {
   if (place_out_code == 3) place_unhash = false; else place_text_n = 0;

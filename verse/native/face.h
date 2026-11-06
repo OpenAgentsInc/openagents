@@ -52,6 +52,7 @@ void coaxial_hash(cx_face_addr state, uint32_t length);
 int32_t coaxial_action(cx_face_addr state);
 cx_face_addr coaxial_outbox(cx_face_addr state);
 uint32_t coaxial_outbox_len(cx_face_addr state);
+uint32_t coaxial_outbox_capacity(cx_face_addr state);
 void coaxial_action_done(cx_face_addr state);
 uint32_t coaxial_particle_cap(void);
 cx_face_addr coaxial_particles(cx_face_addr state);
