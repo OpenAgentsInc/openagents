@@ -1,0 +1,45 @@
+#load "scene-document.coax";
+#load "cut-lines.coax" as media_cut;
+#load "cut-document-checks.coax";
+#authority;
+AnimCutShot :: struct {name:AnimName;camera:int;from:f32;to:f32;transition:int;blend:f32;}
+AnimCut :: struct {ready:bool;name:AnimName;scene:AnimName;fps:int;shots:int;shot:[128]AnimCutShot;length:f32;legacy:bool;composition:[1]media_cut.LbCut;}
+anim_camera_index :: (scene:AnimScene,name:AnimName)->int #effects(all) {for k:0..<scene.cameras {if anim_equal(scene.camera[k].name,name) {return k;}}return -1;}
+anim_cut_ranges :: (c:AnimCut,scene:AnimScene)->int #effects(all) {
+ for k:0..<c.shots {s:=c.shot[k];duration:=s.to-s.from;if s.from<0 || s.to>scene.length || s.blend<0 || s.blend>=duration {return ANIM_RANGE;}
+  if k>0 && s.blend>=c.shot[k-1].to-c.shot[k-1].from {return ANIM_RANGE;}
+  if k+1<c.shots && s.to+c.shot[k+1].blend>scene.length {return ANIM_RANGE;}
+ }return ANIM_OK;
+}
+anim_cut_read :: (d:Jv,scenes:[]AnimScene,out:[]AnimCut)->int #effects(all) {
+ if !anim_schema(d,"anim.cut.v1") || !anim_keys(d,0,"schema|name|scene|fps|shots") {return ANIM_SCHEMA;}
+ c:AnimCut;c.name=anim_name(d,jv_get(d,0,"name"));c.scene=anim_name(d,jv_get(d,0,"scene"));if c.name.n==0 || c.scene.n==0 {return ANIM_NAME;}si:= -1;for scene,k:scenes {if scene.ready && anim_equal(scene.name,c.scene) {si=k;break;}}if si<0 {return ANIM_REFERENCE;}scene:=scenes[si];
+ c.fps=anim_integer(d,jv_get(d,0,"fps"),1,120);if c.fps== -1 {return ANIM_NUMBER;}shots:=jv_get(d,0,"shots");c.shots=anim_array(d,shots,128);if c.shots<1 {return ANIM_LIMIT;}names:[128]AnimName;
+ transitions:=[3]string.["cut","fade","crossfade"];
+ for k:0..<c.shots {row:=jv_at(d,shots,k);if !anim_keys(d,row,"name|camera|from|to|transition|blend") {return ANIM_SCHEMA;}shot:AnimCutShot;shot.name=anim_name(d,jv_get(d,row,"name"));if shot.name.n==0 || anim_find(names[0..<k],shot.name)>=0 {return ANIM_NAME;}names[k]=shot.name;shot.camera=anim_camera_index(scene,anim_name(d,jv_get(d,row,"camera")));if shot.camera<0 {return ANIM_REFERENCE;}
+  from:=anim_number(d,jv_get(d,row,"from"),0,cast(f64)scene.length);to:=anim_number(d,jv_get(d,row,"to"),0,cast(f64)scene.length);blend:=anim_number(d,jv_get(d,row,"blend"),0,600);shot.transition=anim_choice(d,jv_get(d,row,"transition"),transitions[..]);if !from.ok || !to.ok || !blend.ok || shot.transition<0 {return ANIM_NUMBER;}
+  if (shot.transition==0 && blend.value!=0) || (shot.transition!=0 && blend.value==0) {return ANIM_RANGE;}shot.from=cast(f32)from.value;shot.to=cast(f32)to.value;shot.blend=cast(f32)blend.value;c.shot[k]=shot;c.length+=shot.to-shot.from;
+ }e:=anim_cut_ranges(c,scene);if e!=0 {return e;}if c.length>ANIM_SECONDS {return ANIM_LIMIT;}c.ready=true;out[0]=c;return ANIM_OK;
+}
+anim_cut_load :: (text:string,scenes:[]AnimScene,out:[]AnimCut)->int #effects(all) {if out.count<1 {return ANIM_CAPACITY;}nodes:[ANIM_DOCUMENT_NODES]JvNode;d:[1]Jv;e:=anim_json(text,d[..],nodes[..]);if e!=0 {return e;}return anim_cut_read(d[0],scenes,out);}
+// A .cut's camera source is camera:NAME. Other .cut composition data remains
+// owned in composition, for the existing media writer; no field is discarded.
+anim_cut_lines :: (text:string,scene:AnimScene,out:[]AnimCut)->int #effects(all) {
+ if out.count<1 {return ANIM_CAPACITY;}if text.count>ANIM_DOCUMENT_BYTES {return ANIM_LIMIT;}if !scene.ready {return ANIM_REFERENCE;}
+ c:AnimCut;media_cut.lb_cut_parse(c.composition[..],text,"");return anim_cut_composition(c,scene,out);
+}
+// cut.v1's media composition is kept intact, including audio, titles and size.
+// Its sources must name scene cameras rather than arbitrary files or URLs.
+anim_cut_json :: (text:string,scene:AnimScene,out:[]AnimCut)->int #effects(all) {
+ if out.count<1 {return ANIM_CAPACITY;}if !scene.ready {return ANIM_REFERENCE;}
+ nodes:[ANIM_DOCUMENT_NODES]JvNode;d:[1]Jv;e:=anim_json(text,d[..],nodes[..]);if e!=0 {return e;}if !anim_schema(d[0],"cut.v1") || !anim_keys(d[0],0,"schema|name|fps|size|music|voice|fade_in|fade_out|shots") {return ANIM_SCHEMA;}
+ c:AnimCut;media_cut.lb_cut_json(c.composition[..],text,"",nodes[..]);name:=jv_get(d[0],0,"name");if name!= -1 {label:=[1]AnimName.[anim_name(d[0],name)];if label[0].n==0 {return ANIM_NAME;}c.composition[0].name=media_cut.lb_add(c.composition[0].pool[..],anim_text(label[..],0));}return anim_cut_composition(c,scene,out);
+}
+anim_cut_composition :: (input:AnimCut,scene:AnimScene,out:[]AnimCut)->int #effects(all) {
+ c:=input;b:=c.composition[0];if b.problems[0].n!=0 || b.notes[0].n!=0 {return ANIM_FORMAT;}
+ c.legacy=true;c.scene=scene.name;c.fps=b.fps;c.name=anim_named(media_cut.lb_cut_sp(c.composition[..],b.name));if c.name.n==0 {c.name=anim_named("imported-cut");}c.shots=b.shot_n;names:[128]AnimName;
+ for k:0..<c.shots {src:=media_cut.lb_cut_sp(c.composition[..],b.shots[k].src);if src.count<8 || src[0..<7]!="camera:" {return ANIM_REFERENCE;}camera:=anim_camera_index(scene,anim_named(src[7..<src.count]));if camera<0 {return ANIM_REFERENCE;}shot:=b.shots[k];
+  name:=anim_named(media_cut.lb_cut_sp(c.composition[..],shot.name));if name.n==0 || anim_find(names[0..<k],name)>=0 {return ANIM_NAME;}names[k]=name;
+  c.shot[k]=AnimCutShot.{name=name,camera=camera,from=cast(f32)shot.in_ms/1000,to=cast(f32)(shot.in_ms+shot.dur_ms)/1000,transition=ifx shot.xfade_ms==0 then 0 else 2,blend=cast(f32)shot.xfade_ms/1000};c.length+=cast(f32)shot.dur_ms/1000;
+ }e:=anim_cut_ranges(c,scene);if e!=0 {return e;}if c.length>ANIM_SECONDS {return ANIM_LIMIT;}c.ready=true;out[0]=c;return ANIM_OK;
+}

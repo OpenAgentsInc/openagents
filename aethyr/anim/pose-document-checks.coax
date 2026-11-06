@@ -1,0 +1,34 @@
+#test "animation poses name mannequin joints and known finite face curves" {
+ r:[1]AnimRig;r[0].ready=true;r[0].name=anim_named("made-rig");r[0].shape_count=1;r[0].shapes[0]=anim_named("blink");p:[1]AnimPose;
+ text:="{\"schema\":\"anim.pose.v1\",\"name\":\"made-pose\",\"rig\":\"made-rig\",\"joints\":[{\"name\":\"Head\",\"rotation\":[0,0,0,1]}],\"face\":[{\"name\":\"blink\",\"value\":0.5}]}";
+ #assert anim_pose_load(text,r[..],p[..])==0 && p[0].ready && p[0].joints==1 && p[0].joint[0]==6 && p[0].rotation[0].w==1 && p[0].face_count==1 && p[0].face[0]==0.5;
+ changed:[1024]u8;from:=[4]string.["Head","blink","[0,0,0,1]","0.5"];to:=[4]string.["tail","unknown","[0,0,0,0]","1.1"];
+ for k:0..<4 {n:=anim_test_replace(text,from[k],to[k],changed[..]);#assert n>0 && anim_pose_load(cast(string)changed[0..<n],r[..],p[..])!=0 && p[0].face[0]==0.5;}
+}
+APOSE_TEST :: "{\"schema\":\"anim.pose.v1\",\"name\":\"made-pose\",\"rig\":\"made-rig\",\"joints\":[{\"name\":\"Head\",\"rotation\":[0.1,-0.2,0.3,0.92736185]}],\"face\":[{\"name\":\"blink\",\"value\":0.5}]}";
+#test "animation poses preserve sparse joint and curve edits and refuse each malformed domain" {
+ r:[1]AnimRig;anim_test_pose_rig(r[..]);p:[1]AnimPose;#assert anim_pose_load(APOSE_TEST,r[..],p[..])==0 && anim_equal(p[0].name,anim_named("made-pose")) && anim_equal(p[0].rig,r[0].name) && p[0].joint[0]==6 && p[0].rotation[0].x==0.1 && p[0].rotation[0].y== -0.2 && p[0].rotation[0].z==0.3 && p[0].rotation[0].w==0.92736185 && p[0].shapes[0]==0;
+ from:=[17]string.["\"schema\":\"anim.pose.v1\"","\"name\":\"made-pose\"","\"rig\":\"made-rig\"","\"name\":\"Head\"","\"name\":\"Head\"","\"rotation\":[0.1,-0.2,0.3,0.92736185]","\"rotation\":[0.1,-0.2,0.3,0.92736185]","\"rotation\":[0.1,-0.2,0.3,0.92736185]","\"value\":0.5","\"name\":\"blink\"","\"name\":\"blink\"","\"value\":0.5","\"value\":0.5","\"rig\":\"made-rig\"","\"name\":\"Head\",\"rotation\"","\"name\":\"blink\",\"value\"","\"name\":\"Head\""];
+ to:=[17]string.["\"schema\":\"anim.pose.v1\",\"extra\":0","\"name\":\"\"","\"rig\":\"\"","\"name\":\"unknown\"","\"name\":\"\"","\"rotation\":[0,0,0,0]","\"rotation\":[2,0,0,1]","\"rotation\":[0,0,1]","\"value\":-0.1","\"name\":\"unknown\"","\"name\":\"\"","\"value\":1.1","\"value\":\"bad\"","\"rig\":\"unknown\"","\"name\":\"Head\",\"extra\":0,\"rotation\"","\"name\":\"blink\",\"extra\":0,\"value\"","\"name\":false"];
+ errors:=[17]int.[2,4,4,4,4,5,5,5,5,4,4,5,5,8,2,2,4];changed:[4096]u8;for k:0..<17 {n:=anim_test_replace(APOSE_TEST,from[k],to[k],changed[..]);#assert n>0 && anim_pose_load(cast(string)changed[0..<n],r[..],p[..])==errors[k];}
+ for field:[2]string.["joints","face"] {n:=anim_test_set(APOSE_TEST,field,"{}",changed[..]);#assert anim_pose_load(cast(string)changed[0..<n],r[..],p[..])==ANIM_LIMIT;n=anim_test_set(APOSE_TEST,field,"[]",changed[..]);#assert anim_pose_load(cast(string)changed[0..<n],r[..],p[..])==ANIM_OK;}
+ #assert anim_pose_load("[]",r[..],p[..])==ANIM_JSON && anim_pose_load("{}",r[..],p[..])==ANIM_SCHEMA && anim_pose_load(APOSE_TEST,r[..],p[0..<0])==ANIM_CAPACITY;r[0].ready=false;#assert anim_pose_load(APOSE_TEST,r[..],p[..])==ANIM_REFERENCE;
+}
+#test "animation poses fit every mannequin joint and every face shape exactly" #steps 200000000 {
+ r:[1]AnimRig;anim_test_pose_rig(r[..]);r[0].shape_count=256;for k:0..<256 {r[0].shapes[k]=anim_test_label(k);}p:[1]AnimPose;text:[65536]u8;list:[32768]u8;a:[65536]u8;o:[1]Jo;jo_start(o[..],list[..]);jo_arr(o[..]);
+ for k:0..<65 {jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],MANNEQUIN_NAME[k]);jo_key(o[..],"rotation");jo_raw(o[..],"[0,0,0,1]");jo_end(o[..]);}jo_end(o[..]);n:=anim_test_set(APOSE_TEST,"joints",jo_text(o[..]),a[..]);jo_start(o[..],list[..]);jo_arr(o[..]);
+ for k:0..<256 {name:=[1]AnimName.[r[0].shapes[k]];jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],anim_text(name[..],0));jo_key(o[..],"value");jo_int(o[..],k%2);jo_end(o[..]);}jo_end(o[..]);n=anim_test_set(cast(string)a[0..<n],"face",jo_text(o[..]),text[..]);#assert anim_pose_load(cast(string)text[0..<n],r[..],p[..])==0 && p[0].joints==65 && p[0].face_count==256;
+ for k:0..<65 {#assert p[0].joint[k]==k && p[0].rotation[k].w==1;}for k:0..<256 {#assert p[0].shapes[k]==k && p[0].face[k]==cast(f32)(k%2);}
+}
+#test "animation poses reject repeated sparse edits before overwriting them" {
+ r:[1]AnimRig;anim_test_pose_rig(r[..]);p:[1]AnimPose;changed:[4096]u8;a:[4096]u8;
+ n:=anim_test_set(APOSE_TEST,"joints","[{\"name\":\"root\",\"rotation\":[0,0,0,1]},{\"name\":\"root\",\"rotation\":[0,0,0,1]}]",changed[..]);#assert anim_pose_load(cast(string)changed[0..<n],r[..],p[..])==ANIM_NAME;
+ n=anim_test_set(APOSE_TEST,"face","[{\"name\":\"blink\",\"value\":1},{\"name\":\"blink\",\"value\":0}]",changed[..]);#assert anim_pose_load(cast(string)changed[0..<n],r[..],p[..])==ANIM_NAME;
+ n=anim_test_set(APOSE_TEST,"joints","[]",changed[..]);n=anim_test_set(cast(string)changed[0..<n],"face","[]",a[..]);#assert anim_pose_load(cast(string)a[0..<n],r[..],p[..])==ANIM_LIMIT;
+}
+#test "animation poses refuse one entry beyond either fixed table" {
+ r:[1]AnimRig;anim_test_pose_rig(r[..]);p:[1]AnimPose;list:[32768]u8;changed:[65536]u8;o:[1]Jo;
+ for field,k:[2]string.["joints","face"] {jo_start(o[..],list[..]);jo_arr(o[..]);for i:0..<(ifx k==0 then 66 else 257) {jo_raw(o[..],ifx k==0 then "{\"name\":\"Head\",\"rotation\":[0,0,0,1]}" else "{\"name\":\"blink\",\"value\":1}");}jo_end(o[..]);n:=anim_test_set(APOSE_TEST,field,jo_text(o[..]),changed[..]);#assert anim_pose_load(cast(string)changed[0..<n],r[..],p[..])==ANIM_LIMIT;}
+}
+
+anim_test_pose_rig :: (out:[]AnimRig) {out[0].ready=true;out[0].name=anim_named("made-rig");out[0].shape_count=1;out[0].shapes[0]=anim_named("blink");}

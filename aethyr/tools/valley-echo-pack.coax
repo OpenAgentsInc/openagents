@@ -10,7 +10,7 @@
 EP_JOINTS :: 334;
 EP_VERTICES :: 400000;
 EP_RECORD :: 96;
-EP_CLIPS :: [24]string.["Idle","Walk_Fwd","Jog_Fwd","Jump_Idle_Fall","Jump_Idle_Land","Idle_to_Walk_Fwd","Walk_Fwd_to_Idle","Idle_To_Jog_Fwd","Jog_Fwd_to_Idle","VaultOver","Idle_to_Walk_Fwd_Left_90","Idle_to_Walk_Fwd_Right_90","Idle_to_Walk_Fwd_Left_180","Idle_to_Walk_Fwd_Right_180","Idle_to_Jog_Fwd_Left_90","Idle_to_Jog_Fwd_Right_90","Idle_to_Jog_Fwd_Left_180","Idle_to_Jog_Fwd_Right_180","Idle_Long","Sitting_Idle","StandFromSitting","ReachOut_Start","ReachOut_Loop","ReachOut_End"];
+#load "../anim/echo-source-names.coax";
 #load "echo-gltf.coax";
 EpBone :: struct {name:[96]u8;n:int;parent:int= -1;rest:SkinLocal;bind:[12]f32;}
 EpRig :: struct {bone:[EP_JOINTS]EpBone;count:int;}

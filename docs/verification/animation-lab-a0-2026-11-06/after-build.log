@@ -1,0 +1,10 @@
+coax: note[E0400]: compile-time steps: 15740301 of 20000000 used (78%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    15739851 steps  apps/openagents-web/valleycanyon.coax:34:1  #test 'Canyon pointer orbit mode isolation and two full source draws stay bounded' itself
+    244 steps  apps/openagents-web/valleycanyon.coax:131:1  in 'canyon_pointer_event' (3 times)
+    158 steps  apps/openagents-web/valleycanyon.coax:114:1  in 'canyon_key' (2 times)
+    27 steps  apps/openagents-web/valleycanyon.coax:130:1  in 'canyon_pointer' (3 times)
+    7 steps  aethyr/points.coax:42:1  in 'clamp'
+  fix: do less work #test 'Canyon pointer orbit mode isolation and two full source draws stay bounded' itself, split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+coax: note[E0400]: compile-time value slots: 31513082 of 33554432 used (93%), above three quarters of the limit; more than 33554432 fails with E0400
+wasm.sh: valleycanyon.wasm: 14.5 s: Coax to C 13.3 s (0/1 cached), clang 0.6 s (1/2 cached), link 0.2 s, wasm-opt 0.1 s; 92924 bytes; report /Users/christopherdavid/work/openagents-animlab-a0/apps/openagents-web/build/.c/valleycanyon.timings.json

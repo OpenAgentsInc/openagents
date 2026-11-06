@@ -1,0 +1,28 @@
+// ECH1 source-local poses. Kept byte-for-byte for Valley playback.
+#load "../../verse/valley/scan.coax";
+#authority;
+ECHO_RIG_CAP :: 12582912;
+ECHO_JOINTS :: 334;
+ECHO_CLIPS :: 24;
+echo_rig_finite :: (b:[]u8,at:int)->bool #effects(all) {return (scan_u32(b,at)&0x7f800000)!=0x7f800000;}
+echo_rig_size_ok :: (n:int)->bool #effects(all) {return n>=416 && n<=ECHO_RIG_CAP;}
+echo_rig_frames_ok :: (n:int)->bool #effects(all) {return n>=2 && n<=1000;}
+echo_rig_rotation_ok :: (length:f32)->bool #effects(all) {return length>0.99 && length<1.01;}
+echo_rig_close :: (a:f32,b:f32)->bool #effects(all) {return abs(a-b)<0.0001;}
+echo_rig_counts_ok :: (joints:int,tracks:int)->bool #effects(all) {return joints>=1 && joints<=ECHO_JOINTS && tracks>=1 && tracks<=joints;}
+echo_rig_bones_fit :: (n:int,joints:int)->bool #effects(all) {return joints<=(n-416)/80;}
+echo_rig_poses_fit :: (total:int,cursor:int,frames:int,tracks:int)->bool #effects(all) {return frames<=(total-cursor)/(tracks*28);}
+echo_rig_float_bytes :: (b:[]u8)->bool #effects(all) {if b.count%4!=0 {return false;}for word:0..<b.count/4 {if !echo_rig_finite(b,word*4) {return false;}}return true;}
+echo_rig_quat_ok :: (b:[]u8)->bool #effects(all) {if b.count!=16 || !echo_rig_float_bytes(b) {return false;}length:f32=0;for word:0..<4 {v:=f32_from_bits(scan_u32(b,word*4));length+=v*v;}return echo_rig_rotation_ok(length);}
+echo_rig_valid :: (b:[]u8)->bool #effects(all) {
+ if !echo_rig_size_ok(b.count) {return false;}
+ if scan_u32(b,0)!=0x31484345 || scan_u32(b,4)!=1 || scan_u32(b,12)!=24 || scan_u32(b,16)!=416 || cast(int)scan_u32(b,20)!=b.count {return false;}
+ joints:=cast(int)scan_u32(b,8);tracks:=cast(int)scan_u32(b,24);if !echo_rig_counts_ok(joints,tracks) || !echo_rig_bones_fit(b.count,joints) {return false;}
+ for k:0..<joints {at:=416+k*80;bone:=b[at..<at+80];if cast(int)scan_u32(b,at)>k {return false;}if !echo_rig_float_bytes(bone[4..<bone.count]) || !echo_rig_quat_ok(bone[64..<bone.count]) {return false;}}
+ cursor:=416+joints*80;
+ for clip:0..<24 {at:=32+clip*16;first:=cast(int)scan_u32(b,at);frames:=cast(int)scan_u32(b,at+4);if !echo_rig_finite(b,at+8) || !echo_rig_finite(b,at+12) {return false;}duration:=f32_from_bits(scan_u32(b,at+8));speed:=f32_from_bits(scan_u32(b,at+12));
+  if first!=cursor || !echo_rig_frames_ok(frames) || !echo_rig_poses_fit(b.count,cursor,frames,tracks) || !echo_rig_close(duration,cast(f32)(frames-1)/30) || !(speed>=0 && speed<10) {return false;}
+  for f:0..<frames {for j:0..<tracks {p:=cursor+(f*tracks+j)*28;if !echo_rig_float_bytes(b[p..<p+28]) || !echo_rig_quat_ok(b[p+12..<p+28]) {return false;}}}cursor+=frames*tracks*28;
+ }return cursor==b.count;
+}
+#load "../tests/echo-rig-policy-checks.coax";

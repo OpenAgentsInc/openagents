@@ -1,0 +1,92 @@
+// Hand-authored public inputs only. No source character data belongs here.
+#test "animation document names and exact object keys refuse malformed input" {
+ n:[128]JvNode;d:[1]Jv;
+ #assert anim_json("{\"name\":\"root\"}",d[..],n[..])==ANIM_OK;
+ #assert anim_keys(d[0],0,"name") && !anim_keys(d[0],0,"schema");
+ #assert anim_name(d[0],jv_get(d[0],0,"name")).n==4;
+ for bad:[7]string.["{\"a\":1,\"\\u0061\":2}","{\"\":1}","{\"x\":NaN}","{\"x\":1e999}","{\"x\":\"\\u0000\"}","[]", "{}x"] {
+  #assert anim_json(bad,d[..],n[..])!=ANIM_OK;
+ }
+ for word:[5]string.["", "has space", "../root", "x/y", "root\\n"] {#assert !anim_name_ok(word);}
+ #assert anim_name_ok("groom.Head-01") && anim_name_ok("jawOpen");
+ b:[65]u8;for k:0..<65 {b[k]='a';}#assert anim_name_ok(cast(string)b[0..<64]) && !anim_name_ok(cast(string)b[..]);
+}
+#test "animation numbers have a finite explicit decimal profile" {
+ for x:[6]string.["0","-0","1.5","-2e1","1E+2","1e-6"] {v:=anim_decimal(x);#assert v.ok;}
+ #assert anim_decimal("-2e1").value== -20 && anim_decimal("1.25").value==1.25;
+ for x:[8]string.["", "nan", "Infinity", "1e999", "1e-999", "12345678901234567890123456789012345678901", "true", "+1"] {#assert !anim_decimal(x).ok;}
+ nodes:[16]JvNode;d:[1]Jv;#assert anim_json("{\"x\":1.5,\"a\":[1,2,3]}",d[..],nodes[..])==0;
+ #assert anim_integer(d[0],jv_get(d[0],0,"x"),0,2)== -1 && anim_vector(d[0],jv_get(d[0],0,"a"),3,3);
+ #assert !anim_vector(d[0],jv_get(d[0],0,"a"),4,3) && !anim_vector(d[0],jv_get(d[0],0,"a"),3,2);
+}
+#test "animation byte windows prove the last record before multiplication" {
+ #assert anim_window(40,4,3,12,8) && !anim_window(35,4,3,12,8);
+ #assert !anim_window(40,-1,1,4,4) && !anim_window(40,4,0,4,4) && !anim_window(40,4,1,3,4);
+ #assert !anim_window(40,41,1,4,4) && !anim_window(40,4,9223372036854775807,4,4);
+ #assert anim_window(8,0,1,8,8) && !anim_window(7,0,1,8,8);
+}
+#test "animation names are owned and binary words keep their source bits" {
+ names:=[2]AnimName.[anim_named("root"),anim_named("head")];
+ #assert anim_text(names[..],1)=="head" && anim_find(names[..],anim_named("root"))==0 && anim_find(names[..],anim_named("arm"))== -1;
+ #assert !anim_equal(names[0],anim_named("roo")) && !anim_equal(names[0],anim_named("rood")) && anim_named("bad name").n==0;
+ b:=[8]u8.[0,0,128,63,1,2,3,4];#assert anim_word(b[..],4)==0x04030201 && anim_float(b[..],0)==1 && anim_floats(b[..],0,2);
+ b[6]=128;b[7]=127;#assert !anim_floats(b[..],0,2);
+}
+#test "animation pack identity and JSON range admission agree at the byte boundary" {
+ bytes:=[8]u8.[0,0,0,0,1,2,3,4];p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];
+ #assert anim_pack_valid(p[0]);p[0].id.words[0]=0;#assert !anim_pack_valid(p[0]);p[0].id=asset_id(cast(string)bytes[..]);
+ text:[512]u8;o:[1]Jo;hex:[64]u8;#assert asset_hex(p[0].id,hex[..]);
+ jo_start(o[..],text[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"fixture");jo_key(o[..],"part");jo_obj(o[..]);jo_key(o[..],"pack");jo_str(o[..],cast(string)hex[..]);jo_key(o[..],"offset");jo_int(o[..],4);jo_key(o[..],"count");jo_int(o[..],1);jo_key(o[..],"stride");jo_int(o[..],4);jo_key(o[..],"width");jo_int(o[..],4);jo_end(o[..]);jo_end(o[..]);
+ nodes:[64]JvNode;d:[1]Jv;#assert anim_json(jo_text(o[..]),d[..],nodes[..])==0 && anim_schema(d[0],"fixture") && !anim_schema(d[0],"other");
+ part:=anim_part(d[0],jv_get(d[0],0,"part"),p[..]);#assert part.pack==0 && part.offset==4 && part.count==1 && part.stride==4 && part.width==4;
+ #assert anim_part(d[0],0,p[..]).pack== -1 && anim_part(d[0],jv_get(d[0],0,"part"),p[0..<0]).pack== -1;
+ p[0].bytes=bytes[0..<7];#assert anim_part(d[0],jv_get(d[0],0,"part"),p[..]).pack== -1;
+}
+#test "animation lexical and numeric admission includes every boundary byte" {
+ for c:0..<256 {b:=[1]u8.[cast(u8)c];expected:=(c>=97 && c<=122)||(c>=65 && c<=90)||(c>=48 && c<=57)||c==95||c==45;
+  #assert anim_name_ok(cast(string)b[..])==expected;
+ }
+ #assert !anim_name_ok(".") && !anim_name_ok("..") && anim_name_ok("a.b");
+ #assert !anim_equal(anim_named("root"),anim_named("boot"));
+ for name:[3]string.["a","", "bad name"] {n:=[1]AnimName.[anim_named(name)];#assert n[0].n==(ifx name=="a" then 1 else 0);}
+ #assert anim_decimal("1e2").value==100 && anim_decimal("1e12").value==1000000000000 && anim_decimal("1e-2").value==0.01 && anim_decimal("1e+2").value==100;
+ #assert anim_decimal("1e38").ok && !anim_decimal("1e39").ok && anim_decimal("1e-38").ok && !anim_decimal("1e-39").ok;
+ long:="1000000000000000000000000000000000000000";#assert long.count==40 && anim_decimal(long).ok;
+ #assert anim_pack_size(1) && anim_pack_size(1073741824) && !anim_pack_size(0) && !anim_pack_size(1073741825);
+ #assert anim_window(1,0,1,1,1) && anim_window(1,1,1,1,0)==false && !anim_window(-1,0,1,1,1);
+ n:[64]JvNode;d:[1]Jv;
+ #assert anim_json("{\"schema\":\"one\",\"x\":0,\"empty\":\"\"}",d[..],n[..])==0 && anim_integer(d[0],jv_get(d[0],0,"x"),0,1)==0;
+ #assert !anim_keys(d[0],jv_get(d[0],0,"x"),"x") && !anim_in("x","y|z") && anim_in("x","x|z");
+ #assert anim_name(d[0],jv_get(d[0],0,"empty")).n==0 && anim_name(d[0],jv_get(d[0],0,"x")).n==0;
+ #assert !anim_number(d[0],jv_get(d[0],0,"empty"),0,1).ok && !anim_vector(d[0],0,0,1);
+ #assert anim_json("{\"a\":1e999}",d[..],n[..])==ANIM_NUMBER;
+ #assert anim_json("{\"\":0}",d[..],n[..])==ANIM_NAME && anim_json("[]",d[..],n[..])==ANIM_JSON;
+ #assert anim_json("{\"x\":\" \"}",d[..],n[..])==0 && anim_json("{\"x\":\"\\u001f\"}",d[..],n[..])==ANIM_JSON;
+ bad:=[9]u8.['{','"','x','"',':','"',255,'"','}'];#assert anim_json(cast(string)bad[..],d[..],n[..])==ANIM_JSON;
+ key:[66]u8;o:[1]Jo;source:[512]u8;for k:0..<65 {key[k]='a';}
+ for count:[2]int.[64,65] {jo_start(o[..],source[..]);jo_obj(o[..]);jo_key(o[..],cast(string)key[0..<count]);jo_int(o[..],1);jo_end(o[..]);#assert anim_json(jo_text(o[..]),d[..],n[..])==(ifx count==64 then 0 else ANIM_NAME);}
+ payload:[4097]u8;for k:0..<payload.count {payload[k]='x';}large:[8192]u8;
+ for count:[2]int.[4096,4097] {jo_start(o[..],large[..]);jo_obj(o[..]);jo_key(o[..],"x");jo_str(o[..],cast(string)payload[0..<count]);jo_end(o[..]);#assert anim_json(jo_text(o[..]),d[..],n[..])==(ifx count==4096 then 0 else ANIM_LIMIT);}
+}
+#test "animation document size is an exact joint budget" {
+ b:[ANIM_DOCUMENT_BYTES+1]u8;b[0]='{';b[1]='}';for k:2..<b.count {b[k]=' ';}n:[2]JvNode;d:[1]Jv;
+ #assert anim_json(cast(string)b[0..<ANIM_DOCUMENT_BYTES],d[..],n[..])==ANIM_OK;
+ #assert anim_json(cast(string)b[..],d[..],n[..])==ANIM_LIMIT;
+}
+#test "animation missing range fields and first values cannot be skipped" {
+ n:[64]JvNode;d:[1]Jv;#assert anim_json("{\"n\":\"a\",\"v\":[9,0,0]}",d[..],n[..])==0;
+ #assert anim_name(d[0],jv_get(d[0],0,"n")).n==1 && !anim_vector(d[0],jv_get(d[0],0,"v"),3,1);
+ #assert anim_in("","") && anim_in("","|x");
+ #assert anim_json("{\"a\":0,\"a\":1}",d[..],n[..])==ANIM_JSON;
+ raw:=[4]u8.[0,0,128,127];#assert !anim_floats(raw[..],0,1);
+ bytes:=[1]u8.[7];packs:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];hash:[64]u8;#assert asset_hex(packs[0].id,hash[..]);
+ text:[1024]u8;o:[1]Jo;
+ for omit:0..<5 {jo_start(o[..],text[..]);jo_obj(o[..]);jo_key(o[..],"pack");jo_str(o[..],cast(string)hash[..]);
+  fields:=[4]string.["offset","count","stride","width"];for k:0..<4 {if k==omit {continue;}jo_key(o[..],fields[k]);jo_int(o[..],ifx k==0 then 0 else 1);}jo_end(o[..]);
+  #assert anim_json(jo_text(o[..]),d[..],n[..])==0;part:=anim_part(d[0],0,packs[..]);#assert (part.pack==0)==(omit==4);
+ }
+}
+ #test "animation enumerations require strings and preserve the first and last choice" {
+  nodes:[64]JvNode;d:[1]Jv;#assert anim_json("{\"first\":\"a\",\"last\":\"c\",\"missing\":\"d\",\"number\":0}",d[..],nodes[..])==0;words:=[3]string.["a","b","c"];
+  #assert anim_choice(d[0],jv_get(d[0],0,"first"),words[..])==0 && anim_choice(d[0],jv_get(d[0],0,"last"),words[..])==2 && anim_choice(d[0],jv_get(d[0],0,"missing"),words[..])== -1 && anim_choice(d[0],jv_get(d[0],0,"number"),words[..])== -1;
+ }

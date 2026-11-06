@@ -1,0 +1,17 @@
+coax: note[E0400]: compile-time steps: 15209422 of 20000000 used (76%), above three quarters of the limit; more than 20000000 fails with E0400
+  top users of compile-time steps:
+    2295724 steps  /Users/christopherdavid/work/openagents-animlab-a0/aethyr/anim/clip-document.coax:41:1  in 'anim_clip_load' (71 times)
+    1978177 steps  /Users/christopherdavid/work/openagents-animlab-a0/coax/lib/json/json.coax:337:1  in 'jv_unescape' (5769 times)
+    1619862 steps  /Users/christopherdavid/work/openagents-animlab-a0/aethyr/anim/document.coax:47:1  in 'anim_json' (70 times)
+    1314576 steps  /Users/christopherdavid/work/openagents-animlab-a0/coax/lib/json/json.coax:165:1  in 'jv_string_end' (5100 times)
+    1205584 steps  /Users/christopherdavid/work/openagents-animlab-a0/coax/lib/json/json.coax:258:1  in 'jv_raw_eq' (30202 times)
+  fix: do less work in 'anim_clip_load', split the check, or give it a larger budget with #steps N on the check (or coax test --steps N for every check)
+coax: note[E0400]: compile-time traversal work: 122521755 of 134217728 used (91%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    74487920 visits  /Users/christopherdavid/work/openagents-animlab-a0/aethyr/anim/document.coax:32:88  copying arguments into 'anim_equal' (555880 calls)
+    37243960 visits  /Users/christopherdavid/work/openagents-animlab-a0/aethyr/anim/document.coax:32:1  in 'anim_find' (3176 times)
+    1769586 visits  /Users/christopherdavid/work/openagents-animlab-a0/aethyr/anim/rig-document.coax:85:1  in 'anim_rig_load' (6 times)
+    1481884 visits  /Users/christopherdavid/work/openagents-animlab-a0/aethyr/anim/rig-document.coax:43:1  in 'anim_rig_read' (6 times)
+    1442304 visits  /Users/christopherdavid/work/openagents-animlab-a0/coax/lib/crypto/sha256-kernel.coax:63:1  in 'S_compress' (7512 times)
+  fix: pass a view, an index or only the fields it needs instead of copying arguments into 'anim_equal' by value; or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+converted joints=334 body_clips=24 face_clips=20 shapes=181 curves=125 face_bones=16 bytes=65321636 sha256=e68a1cc8946b7ddc72dbe7bdbc425af39fab3c78f7aba54cc86d1460f830b019 receipt=604ade269ad88fc472e257a113f951f256f43da651d3d49eb652b6cc77ed9f88 sample_bit_differences=0

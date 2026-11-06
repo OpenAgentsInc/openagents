@@ -1,0 +1,32 @@
+#load "clip-document.coax";
+#load "performance-document-checks.coax";
+#authority;
+ANIM_MASKS :: [8]string.["all","face","head","upper","arm_l","arm_r","hands","legs"];
+ANIM_LAYER_KINDS :: [5]string.["base","override","additive","face","fix-up"];
+ANIM_SOLVERS :: [4]string.["foot-lock","look-at","hand-to-prop","reach"];
+AnimLayer :: struct {kind:int;clip:int= -1;start:f32;end:f32;speed:f32;blend_in:f32;blend_out:f32;weight:f32;mask:int;solver:int= -1;joint:int= -1;target:Point;}
+AnimPerformance :: struct {ready:bool;name:AnimName;rig:AnimName;length:f32;count:int;layers:[ANIM_LAYERS]AnimLayer;}
+anim_mask :: (word:string)->int #effects(all) {for name,k:ANIM_MASKS {if word==name {return k;}}return -1;}
+anim_point :: (d:Jv,node:int)->Point #effects(all) {return v3(cast(f32)anim_decimal(jv_raw(d,jv_at(d,node,0))).value,cast(f32)anim_decimal(jv_raw(d,jv_at(d,node,1))).value,cast(f32)anim_decimal(jv_raw(d,jv_at(d,node,2))).value);}
+anim_performance_read :: (d:Jv,rigs:[]AnimRig,clips:[]AnimClip,out:[]AnimPerformance)->int #effects(all) {
+ if !anim_schema(d,"anim.performance.v1") || !anim_keys(d,0,"schema|name|rig|length|layers") {return ANIM_SCHEMA;}
+ p:AnimPerformance;p.name=anim_name(d,jv_get(d,0,"name"));p.rig=anim_name(d,jv_get(d,0,"rig"));if p.name.n==0 || p.rig.n==0 {return ANIM_NAME;}
+ ri:= -1;for rig,k:rigs {if rig.ready && anim_equal(p.rig,rig.name) {ri=k;break;}}if ri<0 {return ANIM_REFERENCE;}rig:=rigs[ri];
+ length:=anim_number(d,jv_get(d,0,"length"),0.001,600);if !length.ok {return ANIM_NUMBER;}p.length=cast(f32)length.value;
+ layers:=jv_get(d,0,"layers");p.count=jv_len(d,layers);if jv_kind(d,layers)!=JV_ARRAY || p.count<1 || p.count>ANIM_LAYERS {return ANIM_LIMIT;}
+ base:=0;fixups:=false;
+ for k:0..<p.count {row:=jv_at(d,layers,k);if !anim_keys(d,row,"kind|clip|start|end|speed|blend_in|blend_out|weight|mask|solver|joint|target") {return ANIM_SCHEMA;}layer:AnimLayer;
+  kinds:=ANIM_LAYER_KINDS;masks:=ANIM_MASKS;layer.kind=anim_choice(d,jv_get(d,row,"kind"),kinds[..]);layer.mask=anim_choice(d,jv_get(d,row,"mask"),masks[..]);if layer.kind<0 || layer.mask<0 {return ANIM_NAME;}
+  start:=anim_number(d,jv_get(d,row,"start"),0,length.value);end:=anim_number(d,jv_get(d,row,"end"),0,length.value);speed:=anim_number(d,jv_get(d,row,"speed"),0.01,16);weight:=anim_number(d,jv_get(d,row,"weight"),0,1);
+  if !start.ok || !end.ok || cast(f32)end.value<=cast(f32)start.value || !speed.ok || !weight.ok {return ANIM_NUMBER;}
+  bin:=anim_blend_number(d,jv_get(d,row,"blend_in"));bout:=anim_blend_number(d,jv_get(d,row,"blend_out"));if !bin.ok || !bout.ok || bin.value+bout.value>end.value-start.value {return ANIM_NUMBER;}
+  layer.start=cast(f32)start.value;layer.end=cast(f32)end.value;layer.speed=cast(f32)speed.value;layer.weight=cast(f32)weight.value;layer.blend_in=cast(f32)bin.value;layer.blend_out=cast(f32)bout.value;
+  if layer.kind==4 {fixups=true;if jv_get(d,row,"clip")!= -1 {return ANIM_SCHEMA;}solvers:=ANIM_SOLVERS;layer.solver=anim_choice(d,jv_get(d,row,"solver"),solvers[..]);layer.joint=anim_find(rig.names[0..<rig.joints],anim_name(d,jv_get(d,row,"joint")));if layer.solver<0 || layer.joint<0 {return ANIM_REFERENCE;}target:=jv_get(d,row,"target");if !anim_vector(d,target,3,1000000) {return ANIM_NUMBER;}layer.target=anim_point(d,target);}
+  else {if fixups || jv_get(d,row,"solver")!= -1 || jv_get(d,row,"joint")!= -1 || jv_get(d,row,"target")!= -1 {return ANIM_SCHEMA;}clip:=anim_name(d,jv_get(d,row,"clip"));for value,j:clips {if value.ready && anim_equal(value.name,clip) && anim_equal(value.rig,p.rig) {layer.clip=j;break;}}if layer.clip<0 {return ANIM_REFERENCE;}}
+  if layer.kind==0 {base+=1;if k!=0 || layer.mask!=0 {return ANIM_SCHEMA;}}p.layers[k]=layer;
+ }
+ if base!=1 {return ANIM_SCHEMA;}p.ready=true;out[0]=p;return ANIM_OK;
+}
+anim_performance_load :: (text:string,rigs:[]AnimRig,clips:[]AnimClip,out:[]AnimPerformance)->int #effects(all) {if out.count<1 {return ANIM_CAPACITY;}nodes:[ANIM_DOCUMENT_NODES]JvNode;d:[1]Jv;e:=anim_json(text,d[..],nodes[..]);if e!=0 {return e;}return anim_performance_read(d[0],rigs,clips,out);}
+
+anim_blend_number :: (d:Jv,node:int)->AnimNumber #effects(all) {if jv_kind(d,node)!=JV_NUMBER {return AnimNumber.{};}v:=anim_decimal(jv_raw(d,node));if !v.ok || v.value<0 {return AnimNumber.{};}return v;}

@@ -1,0 +1,101 @@
+anim_test_clip :: (text:[]u8,bytes:[]u8)->int {
+ for k:0..<bytes.count {bytes[k]=0;}for k:0..<4 {anim_test_put(bytes,k*28+24,f32_bits(1.0f32));}anim_test_put(bytes,28,f32_bits(2.0f32));anim_test_put(bytes,84,f32_bits(4.0f32));
+ hash:[64]u8;#assert asset_hex(asset_id(cast(string)bytes),hash[..]);o:[1]Jo;jo_start(o[..],text);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.clip.v1");jo_key(o[..],"name");jo_str(o[..],"made-wave");jo_key(o[..],"rig");jo_str(o[..],"made-rig");jo_key(o[..],"frames");jo_int(o[..],2);jo_key(o[..],"rate");jo_int(o[..],2);jo_key(o[..],"length");jo_raw(o[..],"0.5");jo_key(o[..],"loop");jo_raw(o[..],"true");
+ jo_key(o[..],"joints");jo_raw(o[..],"[\"root\",\"Head\"]");jo_key(o[..],"body");anim_test_part(o[..],cast(string)hash[..],0,4,28,28);
+ jo_key(o[..],"curves");jo_raw(o[..],"[]");jo_key(o[..],"face_bones");jo_raw(o[..],"[]");jo_key(o[..],"events");jo_raw(o[..],"[{\"at\":0.5,\"kind\":\"contact\",\"joint\":\"Head\"}]");
+ jo_key(o[..],"source");jo_obj(o[..]);jo_key(o[..],"pack");jo_str(o[..],cast(string)hash[..]);jo_key(o[..],"role");jo_str(o[..],"made-motion");jo_key(o[..],"receipt");jo_str(o[..],cast(string)hash[..]);jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+#test "animation clips retain sample rate joint mapping events and source identity" {
+ rt:[4096]u8;rb:[452]u8;rn:=anim_test_rig(rt[..],rb[..]);b:[112]u8;text:[4096]u8;n:=anim_test_clip(text[..],b[..]);
+ p:=[2]AnimPack.[AnimPack.{id=asset_id(cast(string)rb[..]),bytes=rb[..]},AnimPack.{id=asset_id(cast(string)b[..]),bytes=b[..]}];rig:[1]AnimRig;clip:[1]AnimClip;
+ #assert anim_rig_load(cast(string)rt[0..<rn],p[..],rig[..])==0;
+ #assert anim_clip_load(cast(string)text[0..<n],p[..],rig[..],clip[..])==0 && clip[0].ready && clip[0].rate==2 && clip[0].length==0.5 && clip[0].frames==2 && clip[0].body.pack==1;
+ #assert clip[0].joint_count==2 && clip[0].joints[1]==1 && clip[0].event_count==1 && clip[0].events[0].at==0.5 && clip[0].events[0].joint==1;
+}
+#test "animation clips refuse a changed rig unknown track bad duration and nonfinite samples" {
+ rt:[4096]u8;rb:[452]u8;rn:=anim_test_rig(rt[..],rb[..]);b:[112]u8;text:[4096]u8;n:=anim_test_clip(text[..],b[..]);p:=[2]AnimPack.[AnimPack.{id=asset_id(cast(string)rb[..]),bytes=rb[..]},AnimPack.{id=asset_id(cast(string)b[..]),bytes=b[..]}];rig:[1]AnimRig;clip:[1]AnimClip;#assert anim_rig_load(cast(string)rt[0..<rn],p[..],rig[..])==0;
+ from:=[6]string.["made-rig","\"root\"","\"rate\":2","\"length\":0.5","\"kind\":\"contact\"","\"loop\":true"];to:=[6]string.["missing-rig","\"missing\"","\"rate\":0","\"length\":0.6","\"kind\":\"explode\"","\"loop\":1"];changed:[4096]u8;
+ for k:0..<6 {nn:=anim_test_replace(cast(string)text[0..<n],from[k],to[k],changed[..]);#assert nn>0 && anim_clip_load(cast(string)changed[0..<nn],p[..],rig[..],clip[..])!=0 && !clip[0].ready;}
+ anim_test_put(b[..],0,0x7f800000);#assert anim_clip_load(cast(string)text[0..<n],p[..],rig[..],clip[..])==ANIM_NUMBER;
+}
+anim_test_clip_full :: (text:[]u8,bytes:[]u8)->int {
+ for k:0..<bytes.count {bytes[k]=0;}for k:0..<8 {anim_test_put(bytes,k*28+24,f32_bits(1.0f32));}for k:0..<6 {anim_test_put(bytes,224+k*4,f32_bits(cast(f32)k+0.5));}for k:0..<4 {anim_test_put(bytes,248+k*4,f32_bits(cast(f32)k/4));}
+ hash:[64]u8;#assert asset_hex(asset_id(cast(string)bytes),hash[..]);h:=cast(string)hash[..];o:[1]Jo;jo_start(o[..],text);jo_obj(o[..]);
+ jo_key(o[..],"schema");jo_str(o[..],"anim.clip.v1");jo_key(o[..],"name");jo_str(o[..],"all-tracks");jo_key(o[..],"rig");jo_str(o[..],"made-rig");jo_key(o[..],"frames");jo_int(o[..],2);jo_key(o[..],"rate");jo_int(o[..],2);jo_key(o[..],"length");jo_raw(o[..],"0.5");jo_key(o[..],"loop");jo_raw(o[..],"false");
+ jo_key(o[..],"joints");jo_raw(o[..],"[\"Head\",\"root\"]");jo_key(o[..],"body");anim_test_part(o[..],h,0,4,28,28);
+ jo_key(o[..],"face_bones");jo_raw(o[..],"[\"root\",\"Head\"]");jo_key(o[..],"face_pose");anim_test_part(o[..],h,112,4,28,28);
+ jo_key(o[..],"curves");jo_raw(o[..],"[\"smile\",\"blink\"]");jo_key(o[..],"face");anim_test_part(o[..],h,248,4,4,4);jo_key(o[..],"root");anim_test_part(o[..],h,224,2,12,12);
+ jo_key(o[..],"events");jo_raw(o[..],"[{\"at\":0,\"kind\":\"foot-down\",\"joint\":\"root\"},{\"at\":0.1,\"kind\":\"foot-up\",\"joint\":\"Head\"},{\"at\":0.2,\"kind\":\"contact\",\"joint\":\"root\"},{\"at\":0.5,\"kind\":\"cast\",\"joint\":\"Head\"}]");
+ jo_key(o[..],"source");jo_obj(o[..]);jo_key(o[..],"pack");jo_str(o[..],h);jo_key(o[..],"receipt");jo_str(o[..],h);jo_key(o[..],"role");jo_str(o[..],"made-only");jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+anim_test_clip_rig :: (out:[]AnimRig) {
+ out[0].ready=true;out[0].name=anim_named("made-rig");out[0].joints=2;out[0].names[0]=anim_named("root");out[0].names[1]=anim_named("Head");out[0].shape_count=2;out[0].shapes[0]=anim_named("blink");out[0].shapes[1]=anim_named("smile");out[0].face_joint_count=2;out[0].face_joints[0]=0;out[0].face_joints[1]=1;
+}
+anim_test_clip_error :: (text:string,from:string,to:string,packs:[]AnimPack,rigs:[]AnimRig,expected:int) {
+ changed:[16384]u8;c:[1]AnimClip;n:=anim_test_replace(text,from,to,changed[..]);#assert n>0 && anim_clip_load(cast(string)changed[0..<n],packs,rigs,c[..])==expected && !c[0].ready;
+}
+#test "animation clip keeps body face root events names and provenance independently" {
+ text:[8192]u8;bytes:[264]u8;n:=anim_test_clip_full(text[..],bytes[..]);rig:[1]AnimRig;anim_test_clip_rig(rig[..]);p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];c:[1]AnimClip;
+ #assert anim_clip_load(cast(string)text[0..<n],p[..],rig[..],c[..])==ANIM_OK && c[0].ready && !c[0].looping;
+ v:=c[0];#assert anim_equal(v.name,anim_named("all-tracks")) && anim_equal(v.rig,rig[0].name) && v.frames==2 && v.rate==2 && v.length==0.5;
+ #assert v.joint_count==2 && v.joints[0]==1 && v.joints[1]==0 && v.body.pack==0 && v.body.offset==0 && v.body.count==4 && v.body.stride==28 && v.body.width==28;
+ #assert v.face_joint_count==2 && v.face_joints[0]==0 && v.face_joints[1]==1 && v.face_pose.pack==0 && v.face_pose.offset==112 && v.face_pose.count==4 && v.face_pose.stride==28 && v.face_pose.width==28;
+ #assert v.curve_count==2 && v.curves[0]==1 && v.curves[1]==0 && v.face.pack==0 && v.face.offset==248 && v.face.count==4 && v.face.stride==4 && v.face.width==4;
+ #assert v.root.pack==0 && v.root.offset==224 && v.root.count==2 && v.root.stride==12 && v.root.width==12 && v.event_count==4;
+ for k:0..<4 {#assert v.events[k].kind==k && v.events[k].joint==k%2;}#assert v.events[0].at==0 && v.events[1].at==0.1 && v.events[2].at==0.2 && v.events[3].at==0.5;
+ #assert asset_same(v.source,p[0].id) && asset_same(v.receipt,p[0].id) && anim_equal(v.role,anim_named("made-only"));
+ #assert anim_clip_load(cast(string)text[0..<n],p[..],rig[..],c[0..<0])==ANIM_CAPACITY && anim_clip_load("[]",p[..],rig[..],c[..])==ANIM_JSON && anim_clip_load("{}",p[..],rig[..],c[..])==ANIM_SCHEMA;
+ for word:0..<66 {old:=anim_word(bytes[..],word*4);anim_test_put(bytes[..],word*4,0x7fc00000);#assert anim_clip_load(cast(string)text[0..<n],p[..],rig[..],c[..])==ANIM_NUMBER;anim_test_put(bytes[..],word*4,old);}
+ rig[0].ready=false;#assert anim_clip_load(cast(string)text[0..<n],p[..],rig[..],c[..])==ANIM_REFERENCE;
+}
+#test "animation clip malformed fields fail in their exact domain" #steps 100000000 {
+ text:[8192]u8;bytes:[264]u8;n:=anim_test_clip_full(text[..],bytes[..]);source:=cast(string)text[0..<n];rig:[1]AnimRig;anim_test_clip_rig(rig[..]);p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];
+ from:=[31]string.["\"name\":\"all-tracks\"","\"rig\":\"made-rig\"","\"frames\":2","\"frames\":2","\"rate\":2","\"length\":0.5","\"loop\":false","\"joints\":[\"Head\",\"root\"]","\"joints\":[\"Head\",\"root\"]","\"curves\":[\"smile\",\"blink\"]","\"face_bones\":[\"root\",\"Head\"]","\"count\":4","\"width\":28","\"offset\":112","\"offset\":248","\"offset\":224","\"count\":2,\"stride\":12","\"width\":12","\"events\":[{\"at\":0,\"kind\":\"foot-down\",\"joint\":\"root\"},{\"at\":0.1,\"kind\":\"foot-up\",\"joint\":\"Head\"},{\"at\":0.2,\"kind\":\"contact\",\"joint\":\"root\"},{\"at\":0.5,\"kind\":\"cast\",\"joint\":\"Head\"}]","\"at\":0.1","\"at\":0.5","\"kind\":\"cast\"","\"kind\":\"cast\"","\"joint\":\"Head\"","\"role\":\"made-only\"","\"schema\":\"anim.clip.v1\"","\"at\":0,","\"source\":{","\"pack\":\"","\"receipt\":\"","\"rig\":\"made-rig\""];
+ to:=[31]string.["\"name\":\"\"","\"rig\":\"\"","\"frames\":1","\"frames\":2001","\"rate\":0","\"length\":0.4","\"loop\":0","\"joints\":{}","\"joints\":[\"root\",\"root\"]","\"curves\":[\"unknown\"]","\"face_bones\":[\"unknown\"]","\"count\":3","\"width\":27","\"offset\":263","\"offset\":264","\"offset\":264","\"count\":1,\"stride\":12","\"width\":11","\"events\":{}","\"at\":-0.1","\"at\":0.6","\"kind\":0","\"kind\":\"explode\"","\"joint\":\"missing\"","\"role\":\"\"","\"schema\":\"anim.clip.v1\",\"extra\":0","\"at\":0,\"extra\":0,","\"source\":{\"extra\":0,","\"pack\":\"x","\"receipt\":\"x","\"rig\":\"missing\""];
+ errors:=[31]int.[4,4,5,5,5,5,2,8,8,8,8,6,6,6,6,6,6,6,3,5,5,5,5,8,4,2,2,2,6,8,8];for k:0..<31 {anim_test_clip_error(source,from[k],to[k],p[..],rig[..],errors[k]);}
+ rig[0].face_joint_count=1;c:[1]AnimClip;#assert anim_clip_load(source,p[..],rig[..],c[..])==ANIM_REFERENCE;
+}
+#test "animation track mapping and pose windows reject exact edges without touching storage" {
+ b:[57]u8;anim_test_put(b[..],24,f32_bits(1.0f32));p:=[1]AnimPack.[AnimPack.{bytes=b[..]}];part:=AnimPart.{pack=0,count=1,stride=28,width=28};#assert anim_clip_poses(part,p[..],1)==ANIM_OK;
+ for k:0..<3 {bad:=part;if k==0 {bad.pack= -1;}if k==1 {bad.count=2;}if k==2 {bad.width=29;}#assert anim_clip_poses(bad,p[..],1)==ANIM_RANGE;}
+ anim_test_put(b[..],28,0x7fc00000);#assert anim_clip_poses(part,p[..],1)==0;anim_test_put(b[..],24,0);#assert anim_clip_poses(part,p[..],1)==ANIM_NUMBER;
+ nodes:[128]JvNode;d:[1]Jv;names:=[2]AnimName.[anim_named("a"),anim_named("b")];out:[2]int;#assert anim_json("{\"tracks\":[\"a\",\"b\"]}",d[..],nodes[..])==0;node:=jv_get(d[0],0,"tracks");#assert anim_track_names(d[0],node,names[..],out[..])==2 && out[0]==0 && out[1]==1 && anim_track_names(d[0],node,names[..],out[0..<1])== -1 && anim_track_names(d[0],0,names[..],out[..])== -1;
+}
+#test "animation clips admit each independent track family and reject extraneous payloads" #steps 100000000 {
+ text:[8192]u8;bytes:[264]u8;nn:=anim_test_clip_full(text[..],bytes[..]);rig:[1]AnimRig;anim_test_clip_rig(rig[..]);p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];a:[8192]u8;b:[8192]u8;part:[512]u8;
+ for family:0..<6 {has_body:=family==0 || family==4 || family==5;has_curve:=family==1 || family==5;has_face:=family==2 || family==4;n:=anim_test_set(cast(string)text[0..<nn],"joints",ifx has_body then "[\"root\"]" else "[]",a[..]);n=anim_test_set(cast(string)a[0..<n],"curves",ifx has_curve then "[\"blink\"]" else "[]",b[..]);n=anim_test_set(cast(string)b[0..<n],"face_bones",ifx has_face then "[\"Head\"]" else "[]",a[..]);
+  v:=anim_test_part_text(part[..],p[0],0,2,28,28);n=anim_test_set(cast(string)a[0..<n],"body",ifx has_body then cast(string)part[0..<v] else "",b[..]);
+  v=anim_test_part_text(part[..],p[0],248,2,4,4);n=anim_test_set(cast(string)b[0..<n],"face",ifx has_curve then cast(string)part[0..<v] else "",a[..]);
+  v=anim_test_part_text(part[..],p[0],112,2,28,28);n=anim_test_set(cast(string)a[0..<n],"face_pose",ifx has_face then cast(string)part[0..<v] else "",b[..]);n=anim_test_set(cast(string)b[0..<n],"events","[]",a[..]);n=anim_test_set(cast(string)a[0..<n],"loop","true",b[..]);
+  c:[1]AnimClip;expected:=ifx family==3 then ANIM_LIMIT else ANIM_OK;#assert anim_clip_load(cast(string)b[0..<n],p[..],rig[..],c[..])==expected;
+  if family!=3 {#assert c[0].ready && c[0].looping && c[0].event_count==0 && c[0].joint_count==(ifx has_body then 1 else 0) && c[0].curve_count==(ifx has_curve then 1 else 0) && c[0].face_joint_count==(ifx has_face then 1 else 0);
+   key:=ifx !has_body then "body" else ifx !has_face then "face_pose" else "face";v=anim_test_part_text(part[..],p[0],0,2,28,28);n=anim_test_set(cast(string)b[0..<n],key,cast(string)part[0..<v],a[..]);#assert anim_clip_load(cast(string)a[0..<n],p[..],rig[..],c[..])==ANIM_RANGE;
+  }
+ }
+ #assert anim_clip_close(0.0001) && anim_clip_close(-0.0001) && !anim_clip_close(0.00010001) && !anim_clip_close(-0.00010001);
+}
+#test "animation clips distinguish provenance hashes descending events and exact frame limits" {
+ text:[8192]u8;bytes:[264]u8;n:=anim_test_clip_full(text[..],bytes[..]);rig:[1]AnimRig;anim_test_clip_rig(rig[..]);p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];a:[8192]u8;b:[8192]u8;c:[1]AnimClip;
+ receipt:=asset_id("authored fixture receipt");hash:[64]u8;#assert asset_hex(receipt,hash[..]);value:[256]u8;o:[1]Jo;jo_start(o[..],value[..]);jo_obj(o[..]);jo_key(o[..],"pack");pack_hash:[64]u8;#assert asset_hex(p[0].id,pack_hash[..]);jo_str(o[..],cast(string)pack_hash[..]);jo_key(o[..],"receipt");jo_str(o[..],cast(string)hash[..]);jo_key(o[..],"role");jo_str(o[..],"made-only");jo_end(o[..]);nn:=anim_test_set(cast(string)text[0..<n],"source",jo_text(o[..]),a[..]);#assert anim_clip_load(cast(string)a[0..<nn],p[..],rig[..],c[..])==0 && asset_same(c[0].source,p[0].id) && asset_same(c[0].receipt,receipt);
+ anim_test_clip_error(cast(string)text[0..<n],"\"at\":0.2","\"at\":0",p[..],rig[..],ANIM_NUMBER);
+ nn=anim_test_set(cast(string)text[0..<n],"frames","2001",a[..]);nn=anim_test_set(cast(string)a[0..<nn],"rate","240",b[..]);nn=anim_test_set(cast(string)b[0..<nn],"length","8.333333333333333",a[..]);#assert anim_clip_load(cast(string)a[0..<nn],p[..],rig[..],c[..])==ANIM_NUMBER;
+ // A complete one-track clip is allowed; a payload without that track is not.
+ nn=anim_test_set(cast(string)text[0..<n],"root","",a[..]);#assert anim_clip_load(cast(string)a[0..<nn],p[..],rig[..],c[..])==0 && c[0].root.pack== -1;
+}
+#test "animation clips check the first face bone against a one-bone face catalogue" {
+ text:[8192]u8;bytes:[264]u8;n:=anim_test_clip_full(text[..],bytes[..]);rig:[1]AnimRig;anim_test_clip_rig(rig[..]);rig[0].face_joint_count=1;p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];a:[8192]u8;b:[8192]u8;part:[512]u8;c:[1]AnimClip;
+ n=anim_test_set(cast(string)text[0..<n],"face_bones","[\"root\"]",a[..]);v:=anim_test_part_text(part[..],p[0],112,2,28,28);n=anim_test_set(cast(string)a[0..<n],"face_pose",cast(string)part[0..<v],b[..]);#assert anim_clip_load(cast(string)b[0..<n],p[..],rig[..],c[..])==ANIM_OK;
+ n=anim_test_set(cast(string)b[0..<n],"face_bones","[\"Head\"]",a[..]);#assert anim_clip_load(cast(string)a[0..<n],p[..],rig[..],c[..])==ANIM_REFERENCE;
+}
+#test "animation clips keep curve and root windows finite with exact widths and padding" #steps 100000000 {
+ text:[8192]u8;bytes:[264]u8;n:=anim_test_clip_full(text[..],bytes[..]);rig:[1]AnimRig;anim_test_clip_rig(rig[..]);p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];a:[8192]u8;b:[8192]u8;value:[512]u8;c:[1]AnimClip;source:=cast(string)text[0..<n];
+ // Each independent face-window error reaches pack-range, not the float reader.
+ for k:0..<3 {count:=4;width:=4;offset:=248;if k==0 {count=3;}if k==1 {width=3;}if k==2 {offset=264;}v:=anim_test_part_text(value[..],p[0],offset,count,4,width);nn:=anim_test_set(source,"face",cast(string)value[0..<v],a[..]);#assert anim_clip_load(cast(string)a[0..<nn],p[..],rig[..],c[..])==ANIM_RANGE;}
+ n=anim_test_set(source,"curves","[]",a[..]);n=anim_test_set(cast(string)a[0..<n],"face","",b[..]);n=anim_test_set(cast(string)b[0..<n],"face_bones","[]",a[..]);n=anim_test_set(cast(string)a[0..<n],"face_pose","",b[..]);
+ v:=anim_test_part_text(value[..],p[0],224,2,16,12);n=anim_test_set(cast(string)b[0..<n],"root",cast(string)value[0..<v],a[..]);anim_test_put(bytes[..],236,0x7fc00000);anim_test_put(bytes[..],252,0x7fc00000);#assert anim_clip_load(cast(string)a[0..<n],p[..],rig[..],c[..])==0;
+ for k:0..<3 {count:=2;width:=12;offset:=224;if k==0 {count=1;}if k==1 {width=8;}if k==2 {offset=264;}v=anim_test_part_text(value[..],p[0],offset,count,16,width);nn:=anim_test_set(cast(string)a[0..<n],"root",cast(string)value[0..<v],b[..]);#assert anim_clip_load(cast(string)b[0..<nn],p[..],rig[..],c[..])==ANIM_RANGE;}
+}
+#test "animation clip events allow 256 and refuse 257 before indexing" #steps 100000000 {
+ text:[8192]u8;bytes:[264]u8;n:=anim_test_clip_full(text[..],bytes[..]);rig:[1]AnimRig;anim_test_clip_rig(rig[..]);p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];list:[32768]u8;changed:[65536]u8;o:[1]Jo;c:[1]AnimClip;
+ for count:[2]int.[256,257] {jo_start(o[..],list[..]);jo_arr(o[..]);for k:0..<count {jo_raw(o[..],"{\"at\":0.5,\"kind\":\"contact\",\"joint\":\"root\"}");}jo_end(o[..]);nn:=anim_test_set(cast(string)text[0..<n],"events",jo_text(o[..]),changed[..]);#assert anim_clip_load(cast(string)changed[0..<nn],p[..],rig[..],c[..])==(ifx count==256 then ANIM_OK else ANIM_LIMIT);if count==256 {#assert c[0].event_count==256 && c[0].events[255].at==0.5 && c[0].events[255].kind==2 && c[0].events[255].joint==0;}}
+}

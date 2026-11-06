@@ -1,7 +1,7 @@
-# Animation Lab (spec, draft)
+# Animation Lab
 
-Written 2026-11-06. Status: proposal. Nothing in this spec is built except
-the pieces listed under "What exists".
+Written 2026-11-06. Status: A0 documents and admission are implemented.
+A1–A8 are pending. See the verification record linked below.
 
 Animation Lab is an unlisted realm and a set of `openagents labs` commands
 where you take any character's animation apart, change it and put it back
@@ -25,6 +25,7 @@ Draconia, The Guardian").
 
 | Piece | Where | What it does today |
 | --- | --- | --- |
+| Animation documents (A0) | [Formats](anim-documents-v1.md), `aethyr/anim/*-document.coax` | Six bounded document readers, compiled-DNA admission, lossless private Echo/Slay conversion and shared source adapters; [verification](../verification/animation-lab-a0-2026-11-06/README.md) |
 | Pose math | `aethyr/anim/pose.coax` | Quaternions, local poses, blending, the joint chain and the skinning palette |
 | Blend shapes | `aethyr/anim/morph.coax`, `morph-gpu.coax` | Sampled curves; sparse morph deltas applied on the GPU before skinning |
 | Face playback | `aethyr/anim/face.coax`, `face-pack.coax` | Plays face clips as morph weights plus face-bone overlays on a body pose; the EFC1 face pack format and its checks |
@@ -50,8 +51,8 @@ Before the Nuke (`git show 0b401561a0^:<path>`):
 - `docs/video-lab/`: typed `cut.v1`, `shot.v1` and `scene.v1` documents and
   the `lab.*` chat tools.
 
-What's missing is the general part: each of these works for one character,
-one source or one style. Animation Lab is the shared layer.
+The documents and admission are shared. The remaining milestones build the
+stations, playback, retargeting, imports, scene tools and director on them.
 
 ## Principles
 
@@ -316,13 +317,27 @@ Each ends on a check run on our own machines.
 
 #12962 (Slay on Valley Lab's Echo) stays open for its exact-render work: orb deformation, flare, lighting, skin, hair. It isn't blocked by this lab.
 
-## Open questions
+## Decisions
 
-1. Which mocap source do we use for our own motion: a phone video-to-motion
-   tool, a suit, or keyed animation only?
-2. Does the cel style need its own rig (different proportions) or a style
-   pass over the realistic rig?
-3. Should performances be able to react (a look-at that follows a moving
-   target) or only play what's written?
-4. Where do private packs for extras and props live when they're our own
-   assets and could be committed?
+Recorded 2026-11-06 while implementing the milestones:
+
+1. **Key the original motion first.** The publishable Guardian uses our own
+   keyed body and face animation. A phone or suit capture can replace it
+   later, with an authoring receipt. This makes publication independent of
+   hardware, a paid capture service or an owner capture session.
+2. **Keep a rig per look.** The realistic and cel characters can have
+   different proportions. Both map to the 65-joint mannequin and use the
+   same performance, scene time and cut. A render style alone cannot change
+   proportions while preserving contact targets.
+3. **Use authored targets in v1.** Fix-ups play the targets recorded in the
+   performance. They do not read a live clock, network state or a live
+   entity. Fixed targets cover the Guardian's planted feet, figures on the
+   wall and wand hold, and make captures reproducible. Following a moving
+   target needs an explicit, versioned binding in a later format.
+4. **Start original assets in private packs too.** Animation Lab uses
+   `~/.openagents/aethyrforge/animation-lab/`. Original extras and props move
+   into public packs only with a recorded source and rights review. A
+   content hash alone does not establish permission to publish.
+
+The exact formats and admission limits are in
+[Animation documents v1](anim-documents-v1.md).

@@ -1,0 +1,87 @@
+#load "document.coax";
+#load "../mannequin.coax";
+#load "dna-pack.coax";
+#load "rig-document-checks.coax";
+#authority;
+ARKIT_NAMES :: [52]string.["eyeBlinkLeft","eyeLookDownLeft","eyeLookInLeft","eyeLookOutLeft","eyeLookUpLeft","eyeSquintLeft","eyeWideLeft","eyeBlinkRight","eyeLookDownRight","eyeLookInRight","eyeLookOutRight","eyeLookUpRight","eyeSquintRight","eyeWideRight","jawForward","jawLeft","jawRight","jawOpen","mouthClose","mouthFunnel","mouthPucker","mouthLeft","mouthRight","mouthSmileLeft","mouthSmileRight","mouthFrownLeft","mouthFrownRight","mouthDimpleLeft","mouthDimpleRight","mouthStretchLeft","mouthStretchRight","mouthRollLower","mouthRollUpper","mouthShrugLower","mouthShrugUpper","mouthPressLeft","mouthPressRight","mouthLowerDownLeft","mouthLowerDownRight","mouthUpperUpLeft","mouthUpperUpRight","browDownLeft","browDownRight","browInnerUp","browOuterUpLeft","browOuterUpRight","cheekPuff","cheekSquintLeft","cheekSquintRight","noseSneerLeft","noseSneerRight","tongueOut"];
+AnimMesh :: struct {vertices:AnimPart;indices:AnimPart;material:int;}
+AnimFaceBinding :: struct {input:int;control:bool;target:int;weight:f32;}
+AnimRigMorph :: struct {shape:int;section:int;data:AnimPart;}
+AnimRig :: struct {
+ ready:bool;name:AnimName;joints:int;names:[ANIM_JOINTS]AnimName;parents:[ANIM_JOINTS]int;rest:[ANIM_JOINTS]SkinLocal;bind:[ANIM_JOINTS*12]f32;mapped:[ANIM_JOINTS]int;offsets:[ANIM_JOINTS]Quat;
+ sections:int;meshes:[64]AnimMesh;material_count:int;materials:[64]AnimName;
+ shape_count:int;shapes:[ANIM_SHAPES]AnimName;control_count:int;controls:[1024]AnimName;face_joint_count:int;face_joints:[64]int;face_bindings:int;face_map:[416]AnimFaceBinding;dna:AnimPart;morph_count:int;morphs:[256]AnimRigMorph;
+}
+anim_error_name :: (code:int)->string #effects(all) {return [11]string.["ok","json","schema","limit","name","number","pack-range","skeleton","reference","capacity","format"][code];}
+anim_names :: (d:Jv,node:int,out:[]AnimName)->int #effects(all) {
+ if jv_kind(d,node)!=JV_ARRAY {return -1;}if jv_len(d,node)>out.count {return -1;}n:=jv_len(d,node);
+ for k:0..<n {name:=anim_name(d,jv_at(d,node,k));if name.n==0 {return -1;}if anim_find(out[0..<k],name)!= -1 {return -1;}out[k]=name;}return n;
+}
+// Accessors below are used after anim_vector admission.
+anim_quat :: (d:Jv,node:int)->Quat #effects(all) {return Quat.{x=cast(f32)anim_decimal(jv_raw(d,jv_at(d,node,0))).value,y=cast(f32)anim_decimal(jv_raw(d,jv_at(d,node,1))).value,z=cast(f32)anim_decimal(jv_raw(d,jv_at(d,node,2))).value,w=cast(f32)anim_decimal(jv_raw(d,jv_at(d,node,3))).value};}
+anim_unit_length :: (squared:f32)->bool #effects(all) {return squared>0.99 && squared<1.01;}
+anim_unit :: (q:Quat)->bool #effects(all) {return anim_unit_length(quat_dot(q,q));}
+anim_local :: (bytes:[]u8,at:int)->SkinLocal #effects(all) {return SkinLocal.{t=v3(anim_float(bytes,at),anim_float(bytes,at+4),anim_float(bytes,at+8)),q=Quat.{x=anim_float(bytes,at+12),y=anim_float(bytes,at+16),z=anim_float(bytes,at+20),w=anim_float(bytes,at+24)}};}
+anim_arkit :: (name:AnimName)->int #effects(all) {for word,k:ARKIT_NAMES {if anim_equal(name,anim_named(word)) {return k;}}return -1;}
+anim_rig_count :: (joints:int)->bool #effects(all) {return joints>=1 && joints<=ANIM_JOINTS;}
+anim_rig_parts :: (joints:int,rest:AnimPart,bind:AnimPart)->bool #effects(all) {
+ if rest.pack<0 {return false;}if bind.pack<0 {return false;}
+ if rest.count!=joints {return false;}if bind.count!=joints {return false;}
+ if rest.width!=28 {return false;}return bind.width==48;
+}
+anim_mesh_shape :: (vertices:AnimPart,indices:AnimPart)->bool #effects(all) {
+ if vertices.pack<0 {return false;}if indices.pack<0 {return false;}
+ if vertices.width!=96 {return false;}if indices.width!=4 {return false;}
+ if vertices.count<1 || vertices.count>1000000 {return false;}
+ if indices.count%3!=0 {return false;}triangles:=indices.count/3;return triangles>=1 && triangles<=1000000;
+}
+anim_skin8_vertex :: (b:[]u8,at:int,joints:int)->int #effects(all) {
+ if !anim_floats(b,at,8) {return ANIM_NUMBER;}if !anim_floats(b,at+60,4) {return ANIM_NUMBER;}
+ sum:=0;for influence:0..<8 {j:=cast(int)b[at+36+influence*2]|(cast(int)b[at+37+influence*2]<<8);if j>=joints {return ANIM_REFERENCE;}sum+=cast(int)b[at+52+influence];}
+ return ifx sum>0 then ANIM_OK else ANIM_NUMBER;
+}
+anim_rig_read :: (d:Jv,packs:[]AnimPack,out:[]AnimRig)->int #effects(all) {
+ if !anim_schema(d,"anim.rig.v1") || !anim_keys(d,0,"schema|name|joints|rest|bind|sections|materials|shapes|controls|face_bones|face_map|dna|morphs") {return ANIM_SCHEMA;}
+ r:AnimRig;r.name=anim_name(d,jv_get(d,0,"name"));if r.name.n==0 {return ANIM_NAME;}
+ js:=jv_get(d,0,"joints");r.joints=jv_len(d,js);if jv_kind(d,js)!=JV_ARRAY {return ANIM_LIMIT;}if !anim_rig_count(r.joints) {return ANIM_LIMIT;}
+ for k:0..<r.joints {row:=jv_at(d,js,k);if !anim_keys(d,row,"name|parent|mannequin|offset") {return ANIM_SCHEMA;}name:=anim_name(d,jv_get(d,row,"name"));if name.n==0 || anim_find(r.names[0..<k],name)>=0 {return ANIM_NAME;}r.names[k]=name;
+  p:=anim_number(d,jv_get(d,row,"parent"),-1,cast(f64)k-1);if !p.ok || floor(p.value)!=p.value {return ANIM_SKELETON;}r.parents[k]=cast(int)p.value;
+  m:=jv_get(d,row,"mannequin");r.mapped[k]= -1;if jv_kind(d,m)!=JV_NULL {mapped:=anim_name(d,m);tmp:=[1]AnimName.[mapped];id:=mannequin_find(anim_text(tmp[..],0));if id<0 {return ANIM_NAME;}r.mapped[k]=id;}
+  q:=jv_get(d,row,"offset");if !anim_vector(d,q,4,1) {return ANIM_NUMBER;}r.offsets[k]=anim_quat(d,q);if !anim_unit(r.offsets[k]) {return ANIM_NUMBER;}
+ }
+ rest:=anim_part(d,jv_get(d,0,"rest"),packs);bind:=anim_part(d,jv_get(d,0,"bind"),packs);
+ if !anim_rig_parts(r.joints,rest,bind) {return ANIM_RANGE;}
+ for k:0..<r.joints {at:=rest.offset+k*rest.stride;b:=packs[rest.pack].bytes;if !anim_floats(b,at,7) {return ANIM_NUMBER;}r.rest[k]=anim_local(b,at);if !anim_unit(r.rest[k].q) {return ANIM_NUMBER;}
+  at=bind.offset+k*bind.stride;b=packs[bind.pack].bytes;if !anim_floats(b,at,12) {return ANIM_NUMBER;}for word:0..<12 {r.bind[k*12+word]=anim_float(b,at+word*4);}
+ }
+ r.material_count=anim_names(d,jv_get(d,0,"materials"),r.materials[..]);r.shape_count=anim_names(d,jv_get(d,0,"shapes"),r.shapes[..]);r.control_count=anim_names(d,jv_get(d,0,"controls"),r.controls[..]);
+ if r.material_count<1 || r.shape_count<0 || r.control_count<0 {return ANIM_NAME;}
+ fb:=jv_get(d,0,"face_bones");if jv_kind(d,fb)!=JV_ARRAY || jv_len(d,fb)>64 {return ANIM_LIMIT;}r.face_joint_count=jv_len(d,fb);
+ for k:0..<r.face_joint_count {id:=anim_find(r.names[0..<r.joints],anim_name(d,jv_at(d,fb,k)));if id<0 {return ANIM_REFERENCE;}for prev:0..<k {if r.face_joints[prev]==id {return ANIM_REFERENCE;}}r.face_joints[k]=id;}
+ fm:=jv_get(d,0,"face_map");if jv_kind(d,fm)!=JV_ARRAY || jv_len(d,fm)>52 {return ANIM_LIMIT;}seen:[52]bool;
+ for k:0..<jv_len(d,fm) {row:=jv_at(d,fm,k);if !anim_keys(d,row,"input|outputs") {return ANIM_SCHEMA;}input:=anim_arkit(anim_name(d,jv_get(d,row,"input")));if input<0 || seen[input] {return ANIM_NAME;}seen[input]=true;
+  outputs:=jv_get(d,row,"outputs");count:=jv_len(d,outputs);if jv_kind(d,outputs)!=JV_ARRAY || count<1 || count>8 {return ANIM_LIMIT;}
+  for j:0..<count {target:=jv_at(d,outputs,j);if !anim_keys(d,target,"kind|name|weight") {return ANIM_SCHEMA;}kind:=jv_get(d,target,"kind");if jv_kind(d,kind)!=JV_STRING || !anim_in(jv_raw(d,kind),"shape|control") {return ANIM_NAME;}control:=jv_raw_eq(jv_raw(d,kind),"control");name:=anim_name(d,jv_get(d,target,"name"));id:=ifx control then anim_find(r.controls[0..<r.control_count],name) else anim_find(r.shapes[0..<r.shape_count],name);weight:=anim_number(d,jv_get(d,target,"weight"),0,1);if id<0 || !weight.ok {return ANIM_REFERENCE;}
+   for prev:0..<r.face_bindings {a:=r.face_map[prev];if a.input==input && a.control==control && a.target==id {return ANIM_REFERENCE;}}
+   r.face_map[r.face_bindings]=AnimFaceBinding.{input=input,control=control,target=id,weight=cast(f32)weight.value};r.face_bindings+=1;
+  }
+ }
+ sections:=jv_get(d,0,"sections");r.sections=jv_len(d,sections);if jv_kind(d,sections)!=JV_ARRAY || r.sections<1 || r.sections>64 {return ANIM_LIMIT;}
+ for k:0..<r.sections {row:=jv_at(d,sections,k);if !anim_keys(d,row,"format|vertices|indices|material") {return ANIM_SCHEMA;}format:=jv_get(d,row,"format");if jv_kind(d,format)!=JV_STRING || !jv_raw_eq(jv_raw(d,format),"skin8.v1") {return ANIM_FORMAT;}
+  vertices:=anim_part(d,jv_get(d,row,"vertices"),packs);indices:=anim_part(d,jv_get(d,row,"indices"),packs);material:=anim_find(r.materials[0..<r.material_count],anim_name(d,jv_get(d,row,"material")));
+  if !anim_mesh_shape(vertices,indices) {return ANIM_RANGE;}if material<0 {return ANIM_REFERENCE;}
+  b:=packs[vertices.pack].bytes;for v:0..<vertices.count {e:=anim_skin8_vertex(b,vertices.offset+v*vertices.stride,r.joints);if e!=0 {return e;}}
+  b=packs[indices.pack].bytes;for v:0..<indices.count {if anim_word(b,indices.offset+v*indices.stride)>=cast(u32)vertices.count {return ANIM_RANGE;}}
+  r.meshes[k]=AnimMesh.{vertices=vertices,indices=indices,material=material};
+ }
+ dna:=jv_get(d,0,"dna");if dna!=-1 {r.dna=anim_part(d,dna,packs);if r.dna.pack<0 {return ANIM_RANGE;}if r.dna.count!=1 {return ANIM_RANGE;}p:=r.dna;b:=packs[p.pack].bytes[p.offset..<p.offset+p.width];if !anim_dna_valid(b) {return ANIM_FORMAT;}}
+ morphs:=jv_get(d,0,"morphs");if morphs!= -1 {if jv_kind(d,morphs)!=JV_ARRAY || jv_len(d,morphs)>256 {return ANIM_LIMIT;}r.morph_count=jv_len(d,morphs);
+  for k:0..<r.morph_count {row:=jv_at(d,morphs,k);if !anim_keys(d,row,"shape|section|data") {return ANIM_SCHEMA;}shape:=anim_find(r.shapes[0..<r.shape_count],anim_name(d,jv_get(d,row,"shape")));section:=anim_index(d,jv_get(d,row,"section"),r.sections);if shape<0 || section<0 {return ANIM_REFERENCE;}for j:0..<k {if r.morphs[j].shape==shape && r.morphs[j].section==section {return ANIM_REFERENCE;}}
+   p:=anim_part(d,jv_get(d,row,"data"),packs);if p.pack<0 || p.width!=32 {return ANIM_RANGE;}b:=packs[p.pack].bytes;vertices:=r.meshes[section].vertices.count;for j:0..<p.count {at:=p.offset+j*p.stride;if cast(int)anim_word(b,at)>=vertices || cast(int)anim_word(b,at+4)!=shape {return ANIM_REFERENCE;}if !anim_floats(b,at+8,6) {return ANIM_NUMBER;}}r.morphs[k]=AnimRigMorph.{shape=shape,section=section,data=p};
+  }
+ }
+ r.ready=true;out[0]=r;return ANIM_OK;
+}
+anim_rig_load :: (text:string,packs:[]AnimPack,out:[]AnimRig)->int #effects(all) {if out.count<1 {return ANIM_CAPACITY;}nodes:[ANIM_DOCUMENT_NODES]JvNode;d:[1]Jv;e:=anim_json(text,d[..],nodes[..]);if e!=0 {return e;}return anim_rig_read(d[0],packs,out);}
+
+anim_index :: (d:Jv,node:int,count:int)->int #effects(all) {return anim_integer(d,node,0,count-1);}

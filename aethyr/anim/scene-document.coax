@@ -1,0 +1,66 @@
+#load "performance-document.coax";
+#load "../cinematic.coax";
+#load "scene-document-checks.coax";
+#authority;
+AnimPath :: struct {count:int;time:[32]f32;point:[32]Point;yaw:[32]f32;}
+AnimSceneCast :: struct {name:AnimName;rig:int;look:int;performance:int;path:AnimPath;}
+AnimSceneProp :: struct {name:AnimName;rig:int;position:Point;rotation:Quat;scale:f32;}
+AnimSceneEffect :: struct {name:AnimName;kind:int;start:f32;end:f32;position:Point;size:f32;seed:int;}
+AnimSceneLight :: struct {name:AnimName;count:int;time:[16]f32;position:[16]Point;colour:[16]Point;intensity:[16]f32;}
+AnimSceneCamera :: struct {name:AnimName;flight:Flight;fov:f32;focus:f32;}
+AnimSceneSound :: struct {name:AnimName;kind:int;start:f32;end:f32;gain:f32;who:int= -1;voice:AnimName;word_count:int;words:[256]u8;source:AnimPart;}
+AnimScene :: struct {
+ ready:bool;name:AnimName;length:f32;style:int;realm:int;place:int;time:f32;weather:int;
+ cast_count:int;actors:[16]AnimSceneCast;props:int;prop:[64]AnimSceneProp;effects:int;effect:[64]AnimSceneEffect;
+ lights:int;light:[16]AnimSceneLight;cameras:int;camera:[16]AnimSceneCamera;sounds:int;sound:[32]AnimSceneSound;
+}
+anim_rig_index :: (rigs:[]AnimRig,name:AnimName)->int #effects(all) {for r,k:rigs {if r.ready && anim_equal(r.name,name) {return k;}}return -1;}
+anim_array :: (d:Jv,node:int,limit:int)->int #effects(all) {return ifx jv_kind(d,node)==JV_ARRAY && jv_len(d,node)<=limit then jv_len(d,node) else -1;}
+anim_path_read :: (d:Jv,node:int,length:f32,out:[]AnimPath)->int #effects(all) {
+ p:AnimPath;p.count=anim_array(d,node,32);if p.count<1 {return ANIM_LIMIT;}previous:f32= -1;
+ for k:0..<p.count {row:=jv_at(d,node,k);if !anim_keys(d,row,"at|position|yaw") {return ANIM_SCHEMA;}at:=anim_number(d,jv_get(d,row,"at"),0,cast(f64)length);position:=jv_get(d,row,"position");yaw:=anim_number(d,jv_get(d,row,"yaw"),-1000,1000);if !at.ok || cast(f32)at.value<=previous || !anim_vector(d,position,3,1000000) || !yaw.ok {return ANIM_NUMBER;}p.time[k]=cast(f32)at.value;p.point[k]=anim_point(d,position);p.yaw[k]=cast(f32)yaw.value;previous=cast(f32)at.value;}
+ out[0]=p;return ANIM_OK;
+}
+anim_camera_read :: (d:Jv,row:int,seconds:f32,out:[]AnimSceneCamera)->int #effects(all) {
+ if !anim_keys(d,row,"name|fov|focus|keys") {return ANIM_SCHEMA;}c:AnimSceneCamera;c.name=anim_name(d,jv_get(d,row,"name"));fov:=anim_number(d,jv_get(d,row,"fov"),0.1,3);focus:=anim_number(d,jv_get(d,row,"focus"),0.01,1000000);if c.name.n==0 {return ANIM_NAME;}if !fov.ok || !focus.ok {return ANIM_NUMBER;}c.fov=cast(f32)fov.value;c.focus=cast(f32)focus.value;
+ keys:=jv_get(d,row,"keys");n:=anim_array(d,keys,FLIGHT_KEYS);if n<2 {return ANIM_LIMIT;}previous:f32= -1;
+ for k:0..<n {key:=jv_at(d,keys,k);if !anim_keys(d,key,"at|eye|look|cut|ease") {return ANIM_SCHEMA;}at:=anim_number(d,jv_get(d,key,"at"),0,cast(f64)seconds);eye:=jv_get(d,key,"eye");look:=jv_get(d,key,"look");cut:=jv_kind(d,jv_get(d,key,"cut"));ease:=anim_integer(d,jv_get(d,key,"ease"),0,3);
+  if !at.ok || cast(f32)at.value<=previous || !anim_vector(d,eye,3,1000000) || !anim_vector(d,look,3,1000000) || (cut!=JV_TRUE && cut!=JV_FALSE) || ease<0 {return ANIM_NUMBER;}
+  e:=anim_point(d,eye);target:=anim_point(d,look);if !anim_camera_distance(length(sub(e,target))) {return ANIM_NUMBER;}
+  c.flight=verse_flight_key(c.flight,cast(f32)at.value,e,target,cut==JV_TRUE,ease);previous=cast(f32)at.value;
+ }out[0]=c;return ANIM_OK;
+}
+anim_scene_read :: (d:Jv,packs:[]AnimPack,rigs:[]AnimRig,performances:[]AnimPerformance,out:[]AnimScene)->int #effects(all) {
+ if !anim_schema(d,"anim.scene.v1") || !anim_keys(d,0,"schema|name|length|style|stage|cast|props|effects|lights|cameras|sounds") {return ANIM_SCHEMA;}
+ s:AnimScene;s.name=anim_name(d,jv_get(d,0,"name"));if s.name.n==0 {return ANIM_NAME;}duration:=anim_number(d,jv_get(d,0,"length"),0.001,600);if !duration.ok {return ANIM_NUMBER;}s.length=cast(f32)duration.value;
+ styles:=[2]string.["realistic","cel"];s.style=anim_choice(d,jv_get(d,0,"style"),styles[..]);stage:=jv_get(d,0,"stage");if s.style<0 || !anim_keys(d,stage,"realm|place|time|weather") {return ANIM_SCHEMA;}
+ realms:=[3]string.["animation-lab","anime-lab","valley-lab"];places:=[3]string.["studio","courtyard","canyon"];weathers:=[4]string.["clear","wind","rain","snow"];
+ s.realm=anim_choice(d,jv_get(d,stage,"realm"),realms[..]);s.place=anim_choice(d,jv_get(d,stage,"place"),places[..]);s.weather=anim_choice(d,jv_get(d,stage,"weather"),weathers[..]);time:=anim_number(d,jv_get(d,stage,"time"),0,1);if s.realm<0 || s.place<0 || s.weather<0 || !time.ok {return ANIM_NUMBER;}s.time=cast(f32)time.value;
+ cast_node:=jv_get(d,0,"cast");s.cast_count=anim_array(d,cast_node,16);props:=jv_get(d,0,"props");s.props=anim_array(d,props,64);effects:=jv_get(d,0,"effects");s.effects=anim_array(d,effects,64);lights:=jv_get(d,0,"lights");s.lights=anim_array(d,lights,16);cameras:=jv_get(d,0,"cameras");s.cameras=anim_array(d,cameras,16);sounds:=jv_get(d,0,"sounds");s.sounds=anim_array(d,sounds,32);
+ if s.cast_count<0 || s.props<0 || s.effects<0 || s.lights<0 || s.cameras<1 || s.sounds<0 {return ANIM_LIMIT;}
+ names:[64]AnimName;looks:=[4]string.["default","heroine","hooded","guardian"];
+ for k:0..<s.cast_count {row:=jv_at(d,cast_node,k);if !anim_keys(d,row,"name|rig|look|performance|path") {return ANIM_SCHEMA;}c:AnimSceneCast;c.name=anim_name(d,jv_get(d,row,"name"));if c.name.n==0 || anim_find(names[0..<k],c.name)>=0 {return ANIM_NAME;}names[k]=c.name;c.rig=anim_rig_index(rigs,anim_name(d,jv_get(d,row,"rig")));c.look=anim_choice(d,jv_get(d,row,"look"),looks[..]);c.performance= -1;performance:=anim_name(d,jv_get(d,row,"performance"));
+  for p,j:performances {if p.ready && anim_equal(p.name,performance) {c.performance=j;break;}}if c.rig<0 || c.look<0 || c.performance<0 {return ANIM_REFERENCE;}if !anim_equal(performances[c.performance].rig,rigs[c.rig].name) || performances[c.performance].length<s.length {return ANIM_REFERENCE;}
+  path:[1]AnimPath;e:=anim_path_read(d,jv_get(d,row,"path"),s.length,path[..]);if e!=0 {return e;}c.path=path[0];s.actors[k]=c;
+ }
+ for k:0..<s.props {row:=jv_at(d,props,k);if !anim_keys(d,row,"name|rig|position|rotation|scale") {return ANIM_SCHEMA;}p:AnimSceneProp;p.name=anim_name(d,jv_get(d,row,"name"));if p.name.n==0 || anim_find(names[0..<k],p.name)>=0 {return ANIM_NAME;}names[k]=p.name;p.rig=anim_rig_index(rigs,anim_name(d,jv_get(d,row,"rig")));if p.rig<0 {return ANIM_REFERENCE;}
+  position:=jv_get(d,row,"position");rotation:=jv_get(d,row,"rotation");scale:=anim_number(d,jv_get(d,row,"scale"),0.001,1000);if !anim_vector(d,position,3,1000000) || !anim_vector(d,rotation,4,1) || !scale.ok {return ANIM_NUMBER;}p.position=anim_point(d,position);p.rotation=anim_quat(d,rotation);p.scale=cast(f32)scale.value;if !anim_unit(p.rotation) {return ANIM_NUMBER;}s.prop[k]=p;
+ }
+ fx_kinds:=[6]string.["guardian","flare","wind","smoke","light","embers"];
+ for k:0..<s.effects {row:=jv_at(d,effects,k);if !anim_keys(d,row,"name|kind|start|end|position|size|seed") {return ANIM_SCHEMA;}fx:AnimSceneEffect;fx.name=anim_name(d,jv_get(d,row,"name"));if fx.name.n==0 || anim_find(names[0..<k],fx.name)>=0 {return ANIM_NAME;}names[k]=fx.name;fx.kind=anim_choice(d,jv_get(d,row,"kind"),fx_kinds[..]);start:=anim_number(d,jv_get(d,row,"start"),0,duration.value);end:=anim_number(d,jv_get(d,row,"end"),0,duration.value);size:=anim_number(d,jv_get(d,row,"size"),0.001,1000);position:=jv_get(d,row,"position");fx.seed=anim_integer(d,jv_get(d,row,"seed"),0,2147483647);if fx.kind<0 || !start.ok || !end.ok || cast(f32)end.value<=cast(f32)start.value || !size.ok || !anim_vector(d,position,3,1000000) || fx.seed<0 {return ANIM_NUMBER;}fx.start=cast(f32)start.value;fx.end=cast(f32)end.value;fx.position=anim_point(d,position);fx.size=cast(f32)size.value;s.effect[k]=fx;
+ }
+ for k:0..<s.lights {row:=jv_at(d,lights,k);if !anim_keys(d,row,"name|keys") {return ANIM_SCHEMA;}l:AnimSceneLight;l.name=anim_name(d,jv_get(d,row,"name"));if l.name.n==0 || anim_find(names[0..<k],l.name)>=0 {return ANIM_NAME;}names[k]=l.name;keys:=jv_get(d,row,"keys");l.count=anim_array(d,keys,16);if l.count<1 {return ANIM_LIMIT;}previous:f32= -1;
+  for j:0..<l.count {key:=jv_at(d,keys,j);if !anim_keys(d,key,"at|position|colour|intensity") {return ANIM_SCHEMA;}at:=anim_number(d,jv_get(d,key,"at"),0,duration.value);position:=jv_get(d,key,"position");colour:=jv_get(d,key,"colour");intensity:=anim_number(d,jv_get(d,key,"intensity"),0,10000);if !at.ok || cast(f32)at.value<=previous || !anim_vector(d,position,3,1000000) || !anim_vector(d,colour,3,64) || !intensity.ok {return ANIM_NUMBER;}rgb:=anim_point(d,colour);if rgb.x<0 || rgb.y<0 || rgb.z<0 {return ANIM_NUMBER;}l.time[j]=cast(f32)at.value;l.position[j]=anim_point(d,position);l.colour[j]=rgb;l.intensity[j]=cast(f32)intensity.value;previous=cast(f32)at.value;
+  }s.light[k]=l;
+ }
+ for k:0..<s.cameras {c:[1]AnimSceneCamera;e:=anim_camera_read(d,jv_at(d,cameras,k),s.length,c[..]);if e!=0 {return e;}if anim_find(names[0..<k],c[0].name)>=0 {return ANIM_NAME;}names[k]=c[0].name;s.camera[k]=c[0];}
+ sound_kinds:=[3]string.["voice","music","effect"];
+ for k:0..<s.sounds {row:=jv_at(d,sounds,k);if !anim_keys(d,row,"name|kind|start|end|gain|cast|voice|words|source") {return ANIM_SCHEMA;}cue:AnimSceneSound;cue.name=anim_name(d,jv_get(d,row,"name"));if cue.name.n==0 || anim_find(names[0..<k],cue.name)>=0 {return ANIM_NAME;}names[k]=cue.name;cue.kind=anim_choice(d,jv_get(d,row,"kind"),sound_kinds[..]);start:=anim_number(d,jv_get(d,row,"start"),0,duration.value);end:=anim_number(d,jv_get(d,row,"end"),0,duration.value);gain:=anim_number(d,jv_get(d,row,"gain"),0,4);if cue.kind<0 || !start.ok || !end.ok || cast(f32)end.value<=cast(f32)start.value || !gain.ok {return ANIM_NUMBER;}cue.start=cast(f32)start.value;cue.end=cast(f32)end.value;cue.gain=cast(f32)gain.value;
+  if cue.kind==0 {who:=anim_name(d,jv_get(d,row,"cast"));for c,j:s.actors[0..<s.cast_count] {if anim_equal(c.name,who) {cue.who=j;break;}}cue.voice=anim_name(d,jv_get(d,row,"voice"));cue.word_count=jv_str(d,jv_get(d,row,"words"),cue.words[..]);if cue.who<0 || cue.voice.n==0 || cue.word_count<1 || jv_get(d,row,"source")!= -1 {return ANIM_REFERENCE;}}
+  else {if jv_get(d,row,"cast")!= -1 || jv_get(d,row,"voice")!= -1 || jv_get(d,row,"words")!= -1 {return ANIM_SCHEMA;}cue.source=anim_part(d,jv_get(d,row,"source"),packs);if cue.source.pack<0 || cue.source.count!=1 {return ANIM_RANGE;}}
+  s.sound[k]=cue;
+ }s.ready=true;out[0]=s;return ANIM_OK;
+}
+anim_scene_load :: (text:string,packs:[]AnimPack,rigs:[]AnimRig,performances:[]AnimPerformance,out:[]AnimScene)->int #effects(all) {if out.count<1 {return ANIM_CAPACITY;}nodes:[ANIM_DOCUMENT_NODES]JvNode;d:[1]Jv;e:=anim_json(text,d[..],nodes[..]);if e!=0 {return e;}return anim_scene_read(d[0],packs,rigs,performances,out);}
+
+anim_camera_distance :: (distance:f32)->bool #effects(all) {return distance>=0.0001;}

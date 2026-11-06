@@ -1,0 +1,1 @@
+wasm.sh: valleycanyon.wasm: 1.6 s: Coax to C 1.2 s (1/1 cached), clang 0.1 s (1/2 cached), link 0.2 s, wasm-opt 0.1 s; 92929 bytes; report /Users/christopherdavid/work/openagents-animlab-a0/apps/openagents-web/build/.c/valleycanyon.timings.json

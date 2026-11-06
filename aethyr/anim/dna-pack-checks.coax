@@ -1,0 +1,57 @@
+#test "compiled face-rig admission preserves the existing evaluator's made block" {
+ b:[1024]u8;n:=frig_test_block(b[..]);#assert anim_dna_valid(b[0..<n]);for i:0..<n {#assert !anim_dna_valid(b[0..<i]);}
+ r:[1]FaceRig;#assert frig_open(r[..],cast(string)b[0..<n],1024,1024,1000000);
+ for at:[10]int.[44,84,88,92,96,104,164,184,352,380] {old:=anim_word(b[..],at);dna_test_put(b[..],at,0x7fc00000);#assert !anim_dna_valid(b[0..<n]);dna_test_put(b[..],at,old);}
+}
+#test "compiled face-rig header limits are independent of payload allocation" {
+ b:[40]u8;for c,k:"FRG1" {b[k]=c;}dna_test_put(b[..],4,1);dna_test_put(b[..],20,1);dna_test_put(b[..],24,1);
+ #assert dna_header(b[..]).ok && !dna_header(b[0..<39]).ok;
+ offsets:=[10]int.[4,8,12,16,20,24,28,32,36,0];limits:=[10]int.[1024,1024,1024,256,1024,1000000,1000000,2048,32,0x31475246];
+ for k:0..<9 {old:=anim_word(b[..],offsets[k]);dna_test_put(b[..],offsets[k],cast(u32)limits[k]);if k==1 || k==2 {dna_test_put(b[..],4,1024);}#assert dna_header(b[..]).ok;dna_test_put(b[..],offsets[k],cast(u32)(limits[k]+1));#assert !dna_header(b[..]).ok;dna_test_put(b[..],offsets[k],old);dna_test_put(b[..],4,1);}
+ for offset:[3]int.[4,20,24] {old:=anim_word(b[..],offset);dna_test_put(b[..],offset,0);#assert !dna_header(b[..]).ok;dna_test_put(b[..],offset,old);}
+ for k:0..<4 {old:=b[k];b[k]=0;#assert !dna_header(b[..]).ok;b[k]=old;}
+ #assert dna_header_size(40) && !dna_header_size(39) && anim_dna_counts(1,1,1) && anim_dna_counts(1024,1024,1000000);
+ #assert dna_span(12,0,12) && dna_span(12,12,0) && !dna_span(12,-1,1) && !dna_span(12,0,-1) && !dna_span(12,13,0) && !dna_span(12,1,12);
+}
+#test "compiled face-rig rejects each reference domain and every nonfinite coefficient" {
+ b:[1024]u8;n:=frig_test_block(b[..]);r:[1]FaceRig;#assert frig_open(r[..],cast(string)b[0..<n],1024,1024,1000000);
+ offsets:=[13]int.[40,52,56,60,64,68,72,76,80,100,128,312,316];values:=[13]u32.[3,3,3,19,4,3,3,18,18,0,1,3,3];
+ for k:0..<offsets.count {old:=anim_word(b[..],offsets[k]);dna_test_put(b[..],offsets[k],values[k]);#assert !anim_dna_valid(b[0..<n]);dna_test_put(b[..],offsets[k],old);}
+ for joint:0..<2 {for word:0..<6 {at:=r[0].joint_at+joint*28+4+word*4;old:=anim_word(b[..],at);dna_test_put(b[..],at,0x7f800000);#assert !anim_dna_valid(b[0..<n]);dna_test_put(b[..],at,old);}}
+ for point:0..<2 {base:=r[0].point_at+point*72;for word:0..<6 {at:=base+word*4;old:=anim_word(b[..],at);dna_test_put(b[..],at,0x7fc00000);#assert !anim_dna_valid(b[0..<n]);dna_test_put(b[..],at,old);}for influence:0..<6 {at:=base+24+influence*8;old:=anim_word(b[..],at);dna_test_put(b[..],at,2);#assert !anim_dna_valid(b[0..<n]);dna_test_put(b[..],at,old);at+=4;old=anim_word(b[..],at);dna_test_put(b[..],at,0x7f800000);#assert !anim_dna_valid(b[0..<n]);dna_test_put(b[..],at,old);}}
+ for k:0..<3 {at:=r[0].vertex_at+k*4;old:=anim_word(b[..],at);dna_test_put(b[..],at,2);#assert !anim_dna_valid(b[0..<n]);dna_test_put(b[..],at,old);}
+ for expr:0..<2 {base:=r[0].expr_off[expr];count:=cast(int)anim_word(b[..],base+16);for k:0..<count {at:=base+20+k*8;old:=anim_word(b[..],at);dna_test_put(b[..],at,3);#assert !anim_dna_valid(b[0..<n]);dna_test_put(b[..],at,old);at+=4;old=anim_word(b[..],at);dna_test_put(b[..],at,0x7fc00000);#assert !anim_dna_valid(b[0..<n]);dna_test_put(b[..],at,old);}}
+ #assert !anim_dna_valid(b[0..<n+1]);dna_test_put(b[..],r[0].point_at+32,0x7fc00000);#assert anim_dna_valid(b[0..<n]);
+ floats:[8]u8;dna_test_put(floats[..],4,0x7fc00000);#assert dna_finite(floats[..],0) && !dna_finite(floats[..],4);
+}
+
+dna_test_put :: (b:[]u8,at:int,value:u32) {for k:0..<4 {b[at+k]=cast,trunc(u8)(value>>(k*8));}}
+#test "compiled face-rig section readers accept exact headers and data edges" {
+ b:[512]u8;
+ #assert dna_psd(b[0..<12],0,1)==12;dna_test_put(b[..],8,1);#assert dna_psd(b[0..<16],0,1)==16;dna_test_put(b[..],12,1);#assert dna_psd(b[0..<16],0,1)== -1;dna_test_put(b[..],12,0);dna_test_put(b[..],8,0);
+ #assert dna_group(b[0..<8],0,1,1)==8;
+ for rows:[2]int.[9,10] {for k:0..<512 {b[k]=0;}dna_test_put(b[..],0,cast(u32)rows);dna_test_put(b[..],4,1);size:=8+4*(1+rows+rows);#assert dna_group(b[0..<size],0,1,1)==(ifx rows==9 then size else -1);}
+ for k:0..<512 {b[k]=0;}dna_test_put(b[..],0,1);dna_test_put(b[..],4,2);#assert dna_group(b[0..<28],0,1,2)==28;
+ for k:0..<512 {b[k]=0;}dna_test_put(b[..],0,0xffffffff);#assert dna_joints(b[0..<28],0,1)==28;dna_test_put(b[..],28,0xffffffff);#assert dna_joints(b[0..<56],0,2)==56;
+ for k:0..<512 {b[k]=0;}dna_test_put(b[..],24,0x7fc00000);#assert dna_points(b[0..<72],0,1,1)==72;
+ for k:0..<512 {b[k]=0;}#assert dna_vertices(b[0..<4],0,1,1)==4;
+ #assert dna_target(b[0..<12],0,1,1)==12;dna_test_put(b[..],4,1);#assert dna_target(b[0..<12],0,1,1)==12;dna_test_put(b[..],4,0);dna_test_put(b[..],8,1);#assert dna_target(b[0..<20],0,1,1)==20;dna_test_put(b[..],12,1);#assert dna_target(b[0..<20],0,1,1)== -1;
+ // Nonzero first-point and delta indexes must both contribute.
+ dna_test_put(b[..],4,1);#assert dna_target(b[0..<20],0,1,2)== -1 && dna_target(b[0..<20],0,1,3)==20;
+ for k:0..<512 {b[k]=0;}#assert dna_expression(b[0..<20],0,1)==20;dna_test_put(b[..],16,1);#assert dna_expression(b[0..<28],0,1)==28;
+}
+#test "compiled face-rig section failures return the invalid cursor exactly" {
+ b:[512]u8;
+ #assert dna_psd(b[0..<11],0,1)== -1;dna_test_put(b[..],0,1);#assert dna_psd(b[0..<12],0,1)== -1;dna_test_put(b[..],0,0);
+ #assert dna_group(b[0..<7],0,1,1)== -1;dna_test_put(b[..],0,1);dna_test_put(b[..],4,2);#assert dna_group(b[0..<27],0,1,2)== -1;
+ dna_test_put(b[..],8,2);#assert dna_group(b[0..<28],0,1,2)== -1;dna_test_put(b[..],8,0);dna_test_put(b[..],16,9);#assert dna_group(b[0..<28],0,1,2)== -1;dna_test_put(b[..],16,0);dna_test_put(b[..],20,0x7fc00000);#assert dna_group(b[0..<28],0,1,2)== -1;
+ for k:0..<512 {b[k]=0;}#assert dna_joints(b[0..<27],0,1)== -1 && dna_joints(b[0..<28],0,1)== -1;dna_test_put(b[..],0,0xffffffff);dna_test_put(b[..],4,0x7fc00000);#assert dna_joints(b[0..<28],0,1)== -1;
+ for k:0..<512 {b[k]=0;}#assert dna_points(b[0..<71],0,1,1)== -1;dna_test_put(b[..],0,0x7fc00000);#assert dna_points(b[0..<72],0,1,1)== -1;dna_test_put(b[..],0,0);dna_test_put(b[..],24,1);#assert dna_points(b[0..<72],0,1,1)== -1;
+ for k:0..<512 {b[k]=0;}#assert dna_vertices(b[0..<3],0,1,1)== -1;dna_test_put(b[..],0,1);#assert dna_vertices(b[0..<4],0,1,1)== -1;
+ for k:0..<512 {b[k]=0;}#assert dna_target(b[0..<11],0,1,1)== -1;dna_test_put(b[..],0,1);#assert dna_target(b[0..<12],0,1,1)== -1;
+ for k:0..<512 {b[k]=0;}#assert dna_expression(b[0..<19],0,1)== -1;dna_test_put(b[..],16,2);#assert dna_expression(b[0..<36],0,1)== -1;dna_test_put(b[..],16,1);dna_test_put(b[..],20,1);#assert dna_expression(b[0..<28],0,1)== -1;
+}
+#test "compiled face-rig sparse deltas use both cursor and record stride" {
+ b:[64]u8;dna_test_put(b[..],4,65535);dna_test_put(b[..],16,0);dna_test_put(b[..],20,1);dna_test_put(b[..],24,2);dna_test_put(b[..],28,1);dna_test_put(b[..],32,255);dna_test_put(b[..],36,257);dna_test_put(b[..],40,255);
+ #assert dna_target(b[0..<44],16,1,300)==44 && dna_target(b[0..<44],16,1,258)== -1;
+}

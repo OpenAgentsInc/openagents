@@ -1,0 +1,195 @@
+// Synthetic two-joint rig and one triangle, authored here.
+anim_test_put :: (bytes:[]u8,at:int,value:u32) {for k:0..<4 {bytes[at+k]=cast,trunc(u8)(value>>(k*8));}}
+anim_test_part :: (o:[]Jo,hash:string,offset:int,count:int,stride:int,width:int) {
+ jo_obj(o);jo_key(o,"pack");jo_str(o,hash);jo_key(o,"offset");jo_int(o,offset);jo_key(o,"count");jo_int(o,count);jo_key(o,"stride");jo_int(o,stride);jo_key(o,"width");jo_int(o,width);jo_end(o);
+}
+anim_test_rig :: (text:[]u8,bytes:[]u8)->int {
+ for k:0..<bytes.count {bytes[k]=0;}
+ anim_test_put(bytes,24,f32_bits(1.0f32));anim_test_put(bytes,52,f32_bits(1.0f32));anim_test_put(bytes,32,f32_bits(1.0f32));
+ for j:0..<2 {for axis:0..<3 {anim_test_put(bytes,56+j*48+axis*20,f32_bits(1.0f32));}}
+ for k:0..<3 {at:=152+k*96;anim_test_put(bytes,at+(ifx k==1 then 0 else 4),f32_bits(ifx k==0 then 0.0f32 else 1.0f32));anim_test_put(bytes,at+20,f32_bits(1.0f32));bytes[at+52]=255;anim_test_put(bytes,440+k*4,cast(u32)k);}
+ id:=asset_id(cast(string)bytes);hash:[64]u8;#assert asset_hex(id,hash[..]);h:=cast(string)hash[..];o:[1]Jo;jo_start(o[..],text);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.rig.v1");jo_key(o[..],"name");jo_str(o[..],"made-rig");
+ jo_key(o[..],"joints");jo_raw(o[..],"[{\"name\":\"root\",\"parent\":-1,\"mannequin\":\"root\",\"offset\":[0,0,0,1]},{\"name\":\"Head\",\"parent\":0,\"mannequin\":\"Head\",\"offset\":[0,0,0,1]}]");
+ jo_key(o[..],"rest");anim_test_part(o[..],h,0,2,28,28);jo_key(o[..],"bind");anim_test_part(o[..],h,56,2,48,48);
+ jo_key(o[..],"materials");jo_raw(o[..],"[\"plain\"]");jo_key(o[..],"shapes");jo_raw(o[..],"[\"blink\"]");jo_key(o[..],"controls");jo_raw(o[..],"[]");jo_key(o[..],"face_bones");jo_raw(o[..],"[\"Head\"]");
+ jo_key(o[..],"face_map");jo_raw(o[..],"[{\"input\":\"eyeBlinkLeft\",\"outputs\":[{\"kind\":\"shape\",\"name\":\"blink\",\"weight\":1}]}]");
+ jo_key(o[..],"sections");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"material");jo_str(o[..],"plain");jo_key(o[..],"format");jo_str(o[..],"skin8.v1");jo_key(o[..],"vertices");anim_test_part(o[..],h,152,3,96,96);jo_key(o[..],"indices");anim_test_part(o[..],h,440,3,4,4);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+#test "animation rig admits a made skeleton eight influences face map and typed pack ranges" {
+ text:[4096]u8;bytes:[452]u8;n:=anim_test_rig(text[..],bytes[..]);p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];r:[1]AnimRig;
+ #assert anim_rig_load(cast(string)text[0..<n],p[..],r[..])==0 && r[0].ready && r[0].joints==2 && r[0].parents[0]== -1 && r[0].parents[1]==0 && r[0].rest[1].t.y==1;
+ #assert r[0].mapped[1]==6 && r[0].sections==1 && r[0].meshes[0].vertices.count==3 && r[0].face_bindings==1 && r[0].face_map[0].target==0 && r[0].face_map[0].weight==1;
+ #assert r[0].face_joints[0]==1 && r[0].shape_count==1 && r[0].control_count==0 && anim_error_name(ANIM_SKELETON)=="skeleton";
+}
+#test "animation rig rejects cycles unknown bindings nonfinite poses and escaped pack ranges atomically" {
+ text:[4096]u8;changed:[8192]u8;bytes:[452]u8;n:=anim_test_rig(text[..],bytes[..]);p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];r:[1]AnimRig;
+ #assert anim_rig_load(cast(string)text[0..<n],p[..],r[..])==0;
+ from:=[7]string.["\"parent\":0","\"mannequin\":\"Head\"","\"name\":\"Head\"","\"name\":\"blink\"","\"offset\":440","\"count\":3","\"schema\":\"anim.rig.v1\""];
+ to:=[7]string.["\"parent\":1","\"mannequin\":\"unknown\"","\"name\":\"root\"","\"name\":\"missing\"","\"offset\":441","\"count\":4","\"schema\":\"anim.rig.v2\""];
+ for k:0..<from.count {nn:=anim_test_replace(cast(string)text[0..<n],from[k],to[k],changed[..]);#assert nn>0 && anim_rig_load(cast(string)changed[0..<nn],p[..],r[..])!=0 && r[0].joints==2;}
+ anim_test_put(bytes[..],0,0x7fc00000);#assert anim_rig_load(cast(string)text[0..<n],p[..],r[..])==ANIM_NUMBER;
+}
+anim_test_replace :: (text:string,from:string,to:string,out:[]u8)->int {
+ start:= -1;for k:0..<text.count-from.count+1 {if text[k..<k+from.count]==from {start=k;break;}}if start<0 {return -1;}n:=0;for c:text[0..<start] {out[n]=c;n+=1;}for c:to {out[n]=c;n+=1;}for c:text[start+from.count..<text.count] {out[n]=c;n+=1;}return n;
+}
+#test "animation rig primitive boundaries precede storage access" {
+ #assert !anim_rig_count(0) && anim_rig_count(1) && anim_rig_count(512) && !anim_rig_count(513);
+ #assert !anim_unit_length(0.99) && anim_unit_length(0.9901) && anim_unit_length(1.0099) && !anim_unit_length(1.01);
+ #assert !anim_unit(Quat.{x=1,y=1}) && anim_unit(Quat.{x=0.6,w=0.8});
+ rest:=AnimPart.{pack=0,count=2,width=28};bind:=AnimPart.{pack=0,count=2,width=48};#assert anim_rig_parts(2,rest,bind);
+ for k:0..<6 {a:=rest;b:=bind;if k==0 {a.pack= -1;}if k==1 {b.pack= -1;}if k==2 {a.count=1;}if k==3 {b.count=1;}if k==4 {a.width=27;}if k==5 {b.width=47;}#assert !anim_rig_parts(2,a,b);}
+ vertices:=AnimPart.{pack=0,count=1000000,width=96};indices:=AnimPart.{pack=0,count=3000000,width=4};#assert anim_mesh_shape(vertices,indices);
+ for k:0..<9 {a:=vertices;b:=indices;if k==0 {a.pack= -1;}if k==1 {b.pack= -1;}if k==2 {a.width=95;}if k==3 {b.width=3;}if k==4 {a.count=0;}if k==5 {a.count=1000001;}if k==6 {b.count=0;}if k==7 {b.count=3000003;}if k==8 {b.count=4;}#assert !anim_mesh_shape(a,b);}
+ vertices.count=1;indices.count=3;#assert anim_mesh_shape(vertices,indices);
+ #assert anim_dna_counts(1,1,1) && anim_dna_counts(1024,1024,1000000);
+ for k:0..<6 {c:=1;j:=1;p:=1;if k==0 {c=0;}if k==1 {c=1025;}if k==2 {j=0;}if k==3 {j=1025;}if k==4 {p=0;}if k==5 {p=1000001;}#assert !anim_dna_counts(c,j,p);}
+ b:[1024]u8;n:=frig_test_block(b[..]);#assert anim_dna_valid(b[0..<n]) && !anim_dna_valid(b[0..<39]);b[0]=0;#assert !anim_dna_valid(b[0..<n]);
+}
+#test "animation skin records inspect every influence and every float before publication" {
+ b:[192]u8;ids:=[8]int.[0,1,127,133,256,257,333,511];weights:=[8]u8.[1,2,3,4,5,6,7,227];
+ for k:0..<8 {b[96+36+k*2]=cast,trunc(u8)ids[k];b[96+37+k*2]=cast(u8)(ids[k]>>8);b[96+52+k]=weights[k];}
+ #assert anim_skin8_vertex(b[..],96,512)==ANIM_OK;
+ for k:0..<8 {for j:0..<8 {b[96+52+j]=0;}b[96+52+k]=1;#assert anim_skin8_vertex(b[..],96,512)==ANIM_OK;b[96+52+k]=0;#assert anim_skin8_vertex(b[..],96,512)==ANIM_NUMBER;for j:0..<8 {b[96+52+j]=weights[j];}
+  lo:=b[96+36+k*2];hi:=b[96+37+k*2];b[96+36+k*2]=0;b[96+37+k*2]=2;#assert anim_skin8_vertex(b[..],96,512)==ANIM_REFERENCE;b[96+36+k*2]=lo;b[96+37+k*2]=hi;
+ }
+ for word:[12]int.[0,1,2,3,4,5,6,7,15,16,17,18] {anim_test_put(b[..],96+word*4,0x7fc00000);#assert anim_skin8_vertex(b[..],96,512)==ANIM_NUMBER;anim_test_put(b[..],96+word*4,0);}
+ values:=[7]f32.[1,2,3,0.6,0.0,0.0,0.8];for v,k:values {anim_test_put(b[..],k*4,f32_bits(v));}p:=anim_local(b[..],0);#assert p.t.x==1 && p.t.y==2 && p.t.z==3 && p.q.x==0.6 && p.q.y==0 && p.q.z==0 && p.q.w==0.8;
+}
+#test "animation rig named tables and mapping have exact capacities and preserve every value" {
+ nodes:[128]JvNode;d:[1]Jv;out:[2]AnimName;#assert anim_json("{\"a\":[\"a\",\"b\"]}",d[..],nodes[..])==0;
+ #assert anim_names(d[0],jv_get(d[0],0,"a"),out[..])==2 && anim_text(out[..],0)=="a" && anim_text(out[..],1)=="b";
+ #assert anim_names(d[0],jv_get(d[0],0,"a"),out[0..<1])== -1 && anim_names(d[0],0,out[..])== -1;
+ for bad:[3]string.["[\"\"]","[\"a\",\"a\"]","[\"a\",\"\"]"] {source:[128]u8;o:[1]Jo;jo_start(o[..],source[..]);jo_obj(o[..]);jo_key(o[..],"a");jo_raw(o[..],bad);jo_end(o[..]);#assert anim_json(jo_text(o[..]),d[..],nodes[..])==0 && anim_names(d[0],jv_get(d[0],0,"a"),out[..])== -1;}
+ #assert anim_arkit(anim_named("eyeBlinkLeft"))==0 && anim_arkit(anim_named("tongueOut"))==51 && anim_arkit(anim_named("unknown"))== -1;
+ text:[4096]u8;bytes:[452]u8;n:=anim_test_rig(text[..],bytes[..]);p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];r:[1]AnimRig;#assert anim_rig_load(cast(string)text[0..<n],p[..],r[..])==0;
+ for joint:0..<2 {for word:0..<12 {#assert f32_bits(r[0].bind[joint*12+word])==anim_word(bytes[..],56+joint*48+word*4);}for word:0..<7 {local:=[7]f32.[r[0].rest[joint].t.x,r[0].rest[joint].t.y,r[0].rest[joint].t.z,r[0].rest[joint].q.x,r[0].rest[joint].q.y,r[0].rest[joint].q.z,r[0].rest[joint].q.w];#assert f32_bits(local[word])==anim_word(bytes[..],joint*28+word*4);}}
+ #assert r[0].material_count==1 && anim_text(r[0].materials[..],0)=="plain" && anim_text(r[0].shapes[..],0)=="blink" && r[0].face_joint_count==1 && r[0].face_map[0].input==0 && !r[0].face_map[0].control;
+ #assert anim_rig_load("{}",p[..],r[..])==ANIM_SCHEMA && anim_rig_load("[]",p[..],r[..])==ANIM_JSON && anim_rig_load(cast(string)text[0..<n],p[..],r[0..<0])==ANIM_CAPACITY;
+}
+anim_test_rig_error :: (text:string,from:string,to:string,packs:[]AnimPack,expected:int) {
+ changed:[16384]u8;r:[1]AnimRig;n:=anim_test_replace(text,from,to,changed[..]);#assert n>0;#assert anim_rig_load(cast(string)changed[0..<n],packs,r[..])==expected && !r[0].ready;
+}
+// Names and all payloads here are made by this check, never copied from packs.
+anim_test_label :: (k:int)->AnimName {
+ out:AnimName;out.bytes[0]='j';out.n=1;digits:[12]u8;n:=0;v:=k;
+ while true {digits[n]=cast(u8)('0'+v%10);n+=1;v/=10;if v==0 {break;}}
+ for i:0..<n {out.bytes[out.n]=digits[n-1-i];out.n+=1;}return out;
+}
+anim_test_set :: (text:string,key:string,value:string,out:[]u8)->int {
+ nodes:[4096]JvNode;d:[1]Jv;#assert jv_parse(d[..],text,nodes[..]);o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);k:=d[0].nodes[0].first;found:=false;
+ while k!=-1 {name:[64]u8;n:=jv_unescape(jv_key(d[0],k),name[..]);#assert n>0;word:=cast(string)name[0..<n];if word==key {found=true;if value.count>0 {jo_key(o[..],word);jo_raw(o[..],value);}}else {jo_key(o[..],word);jv_write(d[0],k,o[..]);}k=d[0].nodes[k].next;}
+ if !found && value.count>0 {jo_key(o[..],key);jo_raw(o[..],value);}jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+anim_test_part_text :: (out:[]u8,pack:AnimPack,offset:int,count:int,stride:int,width:int)->int {
+ hash:[64]u8;#assert asset_hex(pack.id,hash[..]);o:[1]Jo;jo_start(o[..],out);anim_test_part(o[..],cast(string)hash[..],offset,count,stride,width);return o[0].n;
+}
+anim_test_rig_capacity :: (text:[]u8,bytes:[]u8,joints:int,faces:int,maps:int,sections:int)->int {
+ for k:0..<bytes.count {bytes[k]=0;}
+ for k:0..<joints {anim_test_put(bytes,k*28+24,f32_bits(1.0f32));}
+ vertex_at:=joints*76;for k:0..<3 {bytes[vertex_at+k*96+52]=255;}
+ hash:[64]u8;#assert asset_hex(asset_id(cast(string)bytes),hash[..]);h:=cast(string)hash[..];o:[1]Jo;jo_start(o[..],text);jo_obj(o[..]);
+ jo_key(o[..],"schema");jo_str(o[..],"anim.rig.v1");jo_key(o[..],"name");jo_str(o[..],"capacity-rig");jo_key(o[..],"joints");jo_arr(o[..]);
+ for k:0..<joints {label:=[1]AnimName.[anim_test_label(k)];jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],anim_text(label[..],0));jo_key(o[..],"parent");jo_int(o[..],k-1);jo_key(o[..],"mannequin");jo_raw(o[..],"null");jo_key(o[..],"offset");jo_raw(o[..],"[0,0,0,1]");jo_end(o[..]);}jo_end(o[..]);
+ jo_key(o[..],"rest");anim_test_part(o[..],h,0,joints,28,28);jo_key(o[..],"bind");anim_test_part(o[..],h,joints*28,joints,48,48);
+ for table:[3]string.["materials","shapes","controls"] {jo_key(o[..],table);jo_arr(o[..]);for k:0..<64 {label:=[1]AnimName.[anim_test_label(k)];jo_str(o[..],anim_text(label[..],0));}jo_end(o[..]);}
+ jo_key(o[..],"face_bones");jo_arr(o[..]);for k:0..<faces {label:=[1]AnimName.[anim_test_label(k)];jo_str(o[..],anim_text(label[..],0));}jo_end(o[..]);
+ jo_key(o[..],"face_map");jo_arr(o[..]);for k:0..<maps {jo_obj(o[..]);jo_key(o[..],"input");jo_str(o[..],ARKIT_NAMES[k%52]);jo_key(o[..],"outputs");jo_raw(o[..],"[{\"kind\":\"shape\",\"name\":\"j0\",\"weight\":1}]");jo_end(o[..]);}jo_end(o[..]);
+ jo_key(o[..],"sections");jo_arr(o[..]);for k:0..<sections {jo_obj(o[..]);jo_key(o[..],"format");jo_str(o[..],"skin8.v1");jo_key(o[..],"vertices");anim_test_part(o[..],h,vertex_at,3,96,96);jo_key(o[..],"indices");anim_test_part(o[..],h,vertex_at+288,3,4,4);jo_key(o[..],"material");label:=[1]AnimName.[anim_test_label(k%64)];jo_str(o[..],anim_text(label[..],0));jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+#test "animation rig maximum tables fit and one extra item has a named refusal" #steps 500000000 {
+ text:[262144]u8;bytes:[40000]u8;r:[1]AnimRig;
+ for k:0..<6 {joints:=512;faces:=64;maps:=52;sections:=64;expected:=ANIM_OK;
+  if k==1 {joints=0;expected=ANIM_LIMIT;}if k==2 {joints=513;expected=ANIM_LIMIT;}if k==3 {faces=65;expected=ANIM_LIMIT;}if k==4 {maps=53;expected=ANIM_LIMIT;}if k==5 {sections=65;expected=ANIM_LIMIT;}
+  n:=anim_test_rig_capacity(text[..],bytes[..],joints,faces,maps,sections);p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];#assert n>0 && anim_rig_load(cast(string)text[0..<n],p[..],r[..])==expected;
+  if k==0 {#assert r[0].joints==512 && r[0].sections==64 && r[0].face_joint_count==64 && r[0].face_bindings==52 && r[0].material_count==64;for i:0..<512 {#assert r[0].parents[i]==i-1;}for i:0..<64 {#assert r[0].face_joints[i]==i && r[0].meshes[i].material==i;}}
+ }
+}
+#test "animation rig rejects structurally valid JSON in the wrong field domain" {
+ text:[4096]u8;bytes:[452]u8;n:=anim_test_rig(text[..],bytes[..]);source:=cast(string)text[0..<n];p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];
+ from:=[16]string.["\"joints\":[{\"name\":\"root\",\"parent\":-1,\"mannequin\":\"root\",\"offset\":[0,0,0,1]},{\"name\":\"Head\",\"parent\":0,\"mannequin\":\"Head\",\"offset\":[0,0,0,1]}]","\"name\":\"root\"","\"name\":\"root\"","\"parent\":-1","\"offset\":[0,0,0,1]","\"face_bones\":[\"Head\"]","\"face_map\":[{\"input\":\"eyeBlinkLeft\",\"outputs\":[{\"kind\":\"shape\",\"name\":\"blink\",\"weight\":1}]}]","\"outputs\":[{\"kind\":\"shape\",\"name\":\"blink\",\"weight\":1}]","\"outputs\":[{\"kind\":\"shape\",\"name\":\"blink\",\"weight\":1}]","\"kind\":\"shape\",\"name\":\"blink\"","\"input\":\"eyeBlinkLeft\"","\"material\":\"plain\"","\"sections\":[{\"material\":\"plain\",\"format\":\"skin8.v1\",\"vertices\":","\"offset\":[0,0,0,1]","\"shapes\":[\"blink\"]","\"face_bones\":[\"Head\"]"];
+ to:=[16]string.["\"joints\":{}","\"name\":\"\"","\"name\":\"root\",\"extra\":0","\"parent\":-2","\"offset\":[0,0,1]","\"face_bones\":{}","\"face_map\":{}","\"outputs\":{}","\"outputs\":[]","\"kind\":\"shape\",\"extra\":0,\"name\":\"blink\"","\"input\":\"eyeBlinkLeft\",\"extra\":0","\"material\":\"plain\",\"extra\":0","\"sections\":[{\"material\":\"plain\",\"format\":\"skin8.v1\",\"extra\":0,\"vertices\":","\"offset\":[2,0,0,1]","\"shapes\":[]","\"face_bones\":[\"root\"]"];
+ errors:=[16]int.[3,4,2,7,5,3,3,3,3,2,2,2,2,5,8,0];for k:0..<15 {anim_test_rig_error(source,from[k],to[k],p[..],errors[k]);}
+}
+#test "animation rig decodes nontrivial signed quaternion components independently" {
+ nodes:[32]JvNode;d:[1]Jv;#assert anim_json("{\"q\":[-0.1,0.2,-0.3,0.9]}",d[..],nodes[..])==0;q:=anim_quat(d[0],jv_get(d[0],0,"q"));#assert q.x== -0.1 && q.y==0.2 && q.z== -0.3 && q.w==0.9;
+ b:[28]u8;values:=[7]f32.[3.1,4.2,5.3,-0.1,0.2,-0.3,0.9];for v,k:values {anim_test_put(b[..],k*4,f32_bits(v));}v:=anim_local(b[..],0);#assert v.t.x==3.1 && v.t.y==4.2 && v.t.z==5.3 && v.q.x== -0.1 && v.q.y==0.2 && v.q.z== -0.3 && v.q.w==0.9;
+}
+#test "animation rig skin floats exclude material and spare bytes and check each adjacent joint" {
+ b:[96]u8;b[52]=255;anim_test_put(b[..],32,0x7fc00000);anim_test_put(b[..],76,0x7fc00000);#assert anim_skin8_vertex(b[..],0,2)==ANIM_OK;
+ for k:0..<8 {b[36+k*2]=2;#assert anim_skin8_vertex(b[..],0,2)==ANIM_REFERENCE;b[36+k*2]=0;}
+}
+#test "animation rig DNA is an admitted optional part and cannot escape its range" {
+ rt:[4096]u8;rb:[452]u8;rn:=anim_test_rig(rt[..],rb[..]);db:[1024]u8;size:=frig_test_block(db[..]);bytes:[2048]u8;for k:0..<size {bytes[16+k]=db[k];}
+ hash:[64]u8;#assert asset_hex(asset_id(cast(string)bytes[..]),hash[..]);extra:[1024]u8;o:[1]Jo;jo_start(o[..],extra[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.rig.v1");jo_key(o[..],"dna");anim_test_part(o[..],cast(string)hash[..],16,1,size,size);jo_end(o[..]);
+ text:[8192]u8;n:=anim_test_replace(cast(string)rt[0..<rn],"\"schema\":\"anim.rig.v1\"",jo_text(o[..])[1..<o[0].n-1],text[..]);p:=[2]AnimPack.[AnimPack.{id=asset_id(cast(string)rb[..]),bytes=rb[..]},AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];r:[1]AnimRig;
+ #assert anim_rig_load(cast(string)text[0..<n],p[..],r[..])==0 && r[0].dna.pack==1 && r[0].dna.offset==16 && r[0].dna.width==size;
+ reverse:=[2]AnimPack.[p[1],p[0]];#assert anim_rig_load(cast(string)text[0..<n],reverse[..],r[..])==0 && r[0].dna.pack==0;
+ anim_test_rig_error(cast(string)text[0..<n],"\"count\":1","\"count\":2",p[..],ANIM_RANGE);
+ anim_test_rig_error(cast(string)text[0..<n],"\"offset\":16","\"offset\":2048",p[..],ANIM_RANGE);
+ bytes[16]=0;#assert anim_rig_load(cast(string)text[0..<n],p[..],r[..])==ANIM_FORMAT;
+ empty:[40]u8;empty[0]='F';empty[1]='R';empty[2]='G';empty[3]='1';#assert !anim_dna_valid(empty[..]);
+}
+#test "animation rig validates padding boundaries separate packs and first records" {
+  #assert !dna_header_size(39) && dna_header_size(40);short:[27]u8;#assert !anim_dna_valid(short[..]);
+ text:[4096]u8;rb:[452]u8;n:=anim_test_rig(text[..],rb[..]);source:=cast(string)text[0..<n];changed:[8192]u8;r:[1]AnimRig;
+ // Duplicate the first joint, not just the second joint's name.
+ p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)rb[..]),bytes=rb[..]}];anim_test_rig_error(source,"\"name\":\"Head\"","\"name\":\"root\"",p[..],ANIM_NAME);
+ 
+}
+#test "animation rig cannot read rest bind or index data from a different pack or stride" #steps 100000000 {
+ original:[4096]u8;rb:[452]u8;n:=anim_test_rig(original[..],rb[..]);a:[8192]u8;b:[8192]u8;value:[512]u8;
+ rest:[64]u8;bind:[104]u8;indices:[20]u8;for j:0..<2 {for k:0..<28 {rest[j*32+k]=rb[j*28+k];}anim_test_put(rest[..],j*32+28,0x7fc00000);for k:0..<48 {bind[j*52+k]=rb[56+j*48+k];}anim_test_put(bind[..],j*52+48,0x7fc00000);}
+ anim_test_put(indices[..],0,9);for k:0..<3 {anim_test_put(indices[..],4+k*4,cast(u32)k);}
+ p:=[4]AnimPack.[AnimPack.{id=asset_id(cast(string)rb[..]),bytes=rb[..]},AnimPack.{id=asset_id(cast(string)rest[..]),bytes=rest[..]},AnimPack.{id=asset_id(cast(string)bind[..]),bytes=bind[..]},AnimPack.{id=asset_id(cast(string)indices[..]),bytes=indices[..]}];
+ vn:=anim_test_part_text(value[..],p[1],0,2,32,28);n=anim_test_set(cast(string)original[0..<n],"rest",cast(string)value[0..<vn],a[..]);vn=anim_test_part_text(value[..],p[2],0,2,52,48);n=anim_test_set(cast(string)a[0..<n],"bind",cast(string)value[0..<vn],b[..]);
+ // Change a nested part while retaining the rest of the made section.
+ nodes:[1024]JvNode;d:[1]Jv;#assert jv_parse(d[..],cast(string)b[0..<n],nodes[..]);old:=jv_raw(d[0],jv_get(d[0],jv_at(d[0],jv_get(d[0],0,"sections"),0),"indices"));vn=anim_test_part_text(value[..],p[3],4,3,4,4);n=anim_test_replace(cast(string)b[0..<n],old,cast(string)value[0..<vn],a[..]);source:=cast(string)a[0..<n];r:[1]AnimRig;
+ #assert anim_rig_load(source,p[..],r[..])==ANIM_OK && r[0].bind[0]==1 && r[0].bind[12]==1;
+ anim_test_put(indices[..],4,3);#assert anim_rig_load(source,p[..],r[..])==ANIM_RANGE;anim_test_put(indices[..],4,0);
+ anim_test_put(rb[..],152,0x7fc00000);#assert anim_rig_load(source,p[..],r[..])==ANIM_NUMBER;anim_test_put(rb[..],152,0);
+ anim_test_put(rest[..],24,0);#assert anim_rig_load(source,p[..],r[..])==ANIM_NUMBER;anim_test_put(rest[..],24,f32_bits(1.0f32));
+ nn:=anim_test_set(source,"sections","{\"x\":0}",b[..]);#assert anim_rig_load(cast(string)b[0..<nn],p[..],r[..])==ANIM_LIMIT;
+ outputs:="[{\"input\":\"eyeBlinkLeft\",\"outputs\":[{\"kind\":\"shape\",\"name\":\"blink\",\"weight\":1},{\"kind\":\"shape\",\"name\":\"blink\",\"weight\":0.5}]}]";nn=anim_test_set(source,"face_map",outputs,b[..]);#assert anim_rig_load(cast(string)b[0..<nn],p[..],r[..])==ANIM_REFERENCE;
+ map:[4096]u8;o:[1]Jo;jo_start(o[..],map[..]);jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"input");jo_str(o[..],"eyeBlinkLeft");jo_key(o[..],"outputs");jo_arr(o[..]);for k:0..<9 {jo_raw(o[..],"{\"kind\":\"shape\",\"name\":\"blink\",\"weight\":1}");}jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);nn=anim_test_set(source,"face_map",jo_text(o[..]),b[..]);#assert anim_rig_load(cast(string)b[0..<nn],p[..],r[..])==ANIM_LIMIT;
+}
+#test "animation rig admits sparse named morph deltas and refuses invalid bindings" {
+ text:[4096]u8;rb:[452]u8;n:=anim_test_rig(text[..],rb[..]);delta:[32]u8;anim_test_put(delta[..],8,f32_bits(0.25f32));anim_test_put(delta[..],24,f32_bits(-0.5f32));p:=[2]AnimPack.[AnimPack.{id=asset_id(cast(string)rb[..]),bytes=rb[..]},AnimPack.{id=asset_id(cast(string)delta[..]),bytes=delta[..]}];part:[512]u8;v:=anim_test_part_text(part[..],p[1],0,1,32,32);list:[1024]u8;o:[1]Jo;jo_start(o[..],list[..]);jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"shape");jo_str(o[..],"blink");jo_key(o[..],"section");jo_int(o[..],0);jo_key(o[..],"data");jo_raw(o[..],cast(string)part[0..<v]);jo_end(o[..]);jo_end(o[..]);changed:[8192]u8;n=anim_test_set(cast(string)text[0..<n],"morphs",jo_text(o[..]),changed[..]);source:=cast(string)changed[0..<n];r:[1]AnimRig;
+ #assert anim_rig_load(source,p[..],r[..])==0 && r[0].morph_count==1 && r[0].morphs[0].shape==0 && r[0].morphs[0].section==0 && r[0].morphs[0].data.pack==1 && r[0].morphs[0].data.count==1 && r[0].morphs[0].data.width==32;
+ reverse:=[2]AnimPack.[p[1],p[0]];#assert anim_rig_load(source,reverse[..],r[..])==0;
+ for at:0..<8 {old:=anim_word(delta[..],at*4);anim_test_put(delta[..],at*4,ifx at==0 then 3 else ifx at==1 then 1 else 0x7fc00000);#assert anim_rig_load(source,p[..],r[..])==(ifx at<2 then ANIM_REFERENCE else ANIM_NUMBER);anim_test_put(delta[..],at*4,old);}
+ anim_test_rig_error(source,"\"shape\":\"blink\"","\"shape\":\"missing\"",p[..],ANIM_REFERENCE);anim_test_rig_error(source,"\"section\":0","\"section\":1",p[..],ANIM_REFERENCE);
+}
+#test "animation rig morph capacities widths and duplicate bindings are explicit" #steps 200000000 {
+ text:[4096]u8;rb:[452]u8;rn:=anim_test_rig(text[..],rb[..]);delta:[8192]u8;for k:0..<256 {anim_test_put(delta[..],k*32+4,cast(u32)k);}p:=[2]AnimPack.[AnimPack.{id=asset_id(cast(string)rb[..]),bytes=rb[..]},AnimPack.{id=asset_id(cast(string)delta[..]),bytes=delta[..]}];hash:[64]u8;#assert asset_hex(p[1].id,hash[..]);names:[8192]u8;list:[65536]u8;a:[131072]u8;b:[131072]u8;o:[1]Jo;r:[1]AnimRig;
+ jo_start(o[..],names[..]);jo_arr(o[..]);for k:0..<256 {name:=[1]AnimName.[anim_test_label(k)];jo_str(o[..],anim_text(name[..],0));}jo_end(o[..]);n:=anim_test_set(cast(string)text[0..<rn],"shapes",jo_text(o[..]),a[..]);
+ for count:[3]int.[0,256,257] {jo_start(o[..],list[..]);jo_arr(o[..]);for k:0..<count {name:=[1]AnimName.[anim_test_label(k%256)];jo_obj(o[..]);jo_key(o[..],"shape");jo_str(o[..],anim_text(name[..],0));jo_key(o[..],"section");jo_int(o[..],0);jo_key(o[..],"data");anim_test_part(o[..],cast(string)hash[..],(k%256)*32,1,32,32);jo_end(o[..]);}jo_end(o[..]);nn:=anim_test_set(cast(string)a[0..<n],"face_map","[]",b[..]);for k:0..<nn {a[k]=b[k];}n=nn;nn=anim_test_set(cast(string)a[0..<n],"morphs",jo_text(o[..]),b[..]);#assert anim_rig_load(cast(string)b[0..<nn],p[..],r[..])==(ifx count==257 then ANIM_LIMIT else ANIM_OK);if count==256 {#assert r[0].morph_count==256 && r[0].morphs[255].shape==255 && r[0].morphs[255].data.offset==8160;}}
+ n=anim_test_set(cast(string)text[0..<rn],"morphs","{}",a[..]);#assert anim_rig_load(cast(string)a[0..<n],p[..],r[..])==ANIM_LIMIT;
+ part:[512]u8;v:=anim_test_part_text(part[..],p[1],0,1,32,31);jo_start(o[..],list[..]);jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"shape");jo_str(o[..],"blink");jo_key(o[..],"section");jo_int(o[..],0);jo_key(o[..],"data");jo_raw(o[..],cast(string)part[0..<v]);jo_end(o[..]);jo_end(o[..]);n=anim_test_set(cast(string)text[0..<rn],"morphs",jo_text(o[..]),a[..]);#assert anim_rig_load(cast(string)a[0..<n],p[..],r[..])==ANIM_RANGE;
+}
+#test "animation rig morph records retain offsets strides and unique bindings" {
+ text:[4096]u8;rb:[452]u8;rn:=anim_test_rig(text[..],rb[..]);delta:[80]u8;anim_test_put(delta[..],0,7);anim_test_put(delta[..],48,1);p:=[2]AnimPack.[AnimPack.{id=asset_id(cast(string)rb[..]),bytes=rb[..]},AnimPack.{id=asset_id(cast(string)delta[..]),bytes=delta[..]}];part:[512]u8;v:=anim_test_part_text(part[..],p[1],16,2,32,32);list:[2048]u8;changed:[8192]u8;o:[1]Jo;r:[1]AnimRig;
+ for count:[2]int.[1,2] {jo_start(o[..],list[..]);jo_arr(o[..]);for k:0..<count {jo_obj(o[..]);jo_key(o[..],"shape");jo_str(o[..],"blink");jo_key(o[..],"section");jo_int(o[..],0);jo_key(o[..],"data");jo_raw(o[..],cast(string)part[0..<v]);jo_end(o[..]);}jo_end(o[..]);n:=anim_test_set(cast(string)text[0..<rn],"morphs",jo_text(o[..]),changed[..]);#assert anim_rig_load(cast(string)changed[0..<n],p[..],r[..])==(ifx count==1 then ANIM_OK else ANIM_REFERENCE);if count==1 {#assert r[0].morphs[0].data.offset==16 && r[0].morphs[0].data.stride==32 && r[0].morphs[0].data.count==2;anim_test_rig_error(cast(string)changed[0..<n],"\"shape\":\"blink\"","\"shape\":\"blink\",\"extra\":0",p[..],ANIM_SCHEMA);}}
+ nodes:[32]JvNode;d:[1]Jv;#assert jv_parse(d[..],"{\"first\":0,\"last\":1,\"bad\":2}",nodes[..]);#assert anim_index(d[0],jv_get(d[0],0,"first"),2)==0 && anim_index(d[0],jv_get(d[0],0,"last"),2)==1 && anim_index(d[0],jv_get(d[0],0,"bad"),2)== -1 && anim_index(d[0],jv_get(d[0],0,"first"),0)== -1;
+}
+#test "animation rig every structural refusal reports its named domain" {
+ text:[4096]u8;bytes:[452]u8;n:=anim_test_rig(text[..],bytes[..]);source:=cast(string)text[0..<n];p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];
+ from:=[26]string.["\"name\":\"made-rig\"","\"joints\":[","\"parent\":-1","\"parent\":0","\"mannequin\":\"Head\"","\"offset\":[0,0,0,1]","\"count\":2","\"width\":28","\"width\":48","\"materials\":[\"plain\"]","\"shapes\":[\"blink\"]","\"controls\":[]","\"face_bones\":[\"Head\"]","\"face_bones\":[\"Head\"]","\"input\":\"eyeBlinkLeft\"","\"outputs\":[{","\"kind\":\"shape\"","\"name\":\"blink\"","\"weight\":1","\"format\":\"skin8.v1\"","\"material\":\"plain\"","\"width\":96","\"width\":4","\"stride\":4","\"sections\":[{","\"schema\":\"anim.rig.v1\""];
+ to:=[26]string.["\"name\":\"\"","\"joints\":{","\"parent\":0","\"parent\":0.5","\"mannequin\":\"tail\"","\"offset\":[0,0,0,0]","\"count\":1","\"width\":27","\"width\":47","\"materials\":[]","\"shapes\":{}","\"controls\":{}","\"face_bones\":[\"tail\"]","\"face_bones\":[\"Head\",\"Head\"]","\"input\":\"unknown\"","\"outputs\":{","\"kind\":\"unknown\"","\"name\":\"unknown\"","\"weight\":1.1","\"format\":\"unknown\"","\"material\":\"missing\"","\"width\":95","\"width\":3","\"stride\":3","\"sections\":{","\"schema\":\"anim.rig.v1\",\"extra\":0"];
+ errors:=[26]int.[4,1,7,7,4,5,6,6,6,4,4,4,8,8,4,1,4,8,8,10,8,6,6,6,1,2];
+ for k:0..<26 {anim_test_rig_error(source,from[k],to[k],p[..],errors[k]);}
+ for at:0..<14 {old:=anim_word(bytes[..],at*4);anim_test_put(bytes[..],at*4,0x7fc00000);r:[1]AnimRig;#assert anim_rig_load(source,p[..],r[..])==ANIM_NUMBER;anim_test_put(bytes[..],at*4,old);}
+ for at:0..<24 {old:=anim_word(bytes[..],56+at*4);anim_test_put(bytes[..],56+at*4,0x7fc00000);r:[1]AnimRig;#assert anim_rig_load(source,p[..],r[..])==ANIM_NUMBER;anim_test_put(bytes[..],56+at*4,old);}
+}
+#test "animation rig mixed control maps and null retargets retain all output fields" {
+ text:[4096]u8;bytes:[452]u8;n:=anim_test_rig(text[..],bytes[..]);p:=[1]AnimPack.[AnimPack.{id=asset_id(cast(string)bytes[..]),bytes=bytes[..]}];a:[16384]u8;b:[16384]u8;
+ n=anim_test_replace(cast(string)text[0..<n],"\"controls\":[]","\"controls\":[\"c0\",\"c1\",\"c2\",\"c3\",\"c4\",\"c5\",\"c6\",\"c7\"]",a[..]);
+ n=anim_test_replace(cast(string)a[0..<n],"\"shapes\":[\"blink\"]","\"shapes\":[\"blink\",\"frown\"]",b[..]);
+ n=anim_test_replace(cast(string)b[0..<n],"\"mannequin\":\"Head\"","\"mannequin\":null",a[..]);
+ old:="[{\"input\":\"eyeBlinkLeft\",\"outputs\":[{\"kind\":\"shape\",\"name\":\"blink\",\"weight\":1}]}]";
+ map:[4096]u8;o:[1]Jo;jo_start(o[..],map[..]);jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"input");jo_str(o[..],"tongueOut");jo_key(o[..],"outputs");jo_arr(o[..]);
+ for k:0..<8 {jo_obj(o[..]);jo_key(o[..],"kind");jo_str(o[..],"control");jo_key(o[..],"name");name:=[2]u8.['c',cast(u8)('0'+k)];jo_str(o[..],cast(string)name[..]);jo_key(o[..],"weight");jo_int(o[..],1);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);jo_obj(o[..]);jo_key(o[..],"input");jo_str(o[..],"eyeBlinkLeft");jo_key(o[..],"outputs");jo_raw(o[..],"[{\"kind\":\"shape\",\"name\":\"frown\",\"weight\":0.25},{\"kind\":\"shape\",\"name\":\"blink\",\"weight\":0.75}]");jo_end(o[..]);jo_end(o[..]);
+ n=anim_test_replace(cast(string)a[0..<n],old,jo_text(o[..]),b[..]);r:[1]AnimRig;#assert anim_rig_load(cast(string)b[0..<n],p[..],r[..])==0 && r[0].mapped[0]==0 && r[0].mapped[1]== -1 && r[0].shape_count==2 && r[0].control_count==8 && r[0].face_bindings==10;
+ for k:0..<8 {v:=r[0].face_map[k];#assert v.input==51 && v.control && v.target==k && v.weight==1;}#assert r[0].face_map[8].input==0 && !r[0].face_map[8].control && r[0].face_map[8].target==1 && r[0].face_map[8].weight==0.25 && r[0].face_map[9].target==0 && r[0].face_map[9].weight==0.75;
+ anim_test_rig_error(cast(string)b[0..<n],"\"input\":\"eyeBlinkLeft\"","\"input\":\"tongueOut\"",p[..],ANIM_NAME);
+ anim_test_rig_error(cast(string)b[0..<n],"\"name\":\"frown\",\"weight\":0.25","\"name\":\"blink\",\"weight\":0.25",p[..],ANIM_REFERENCE);
+}

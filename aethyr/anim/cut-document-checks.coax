@@ -1,0 +1,60 @@
+#test "animation cuts resolve scene cameras and read the existing cut line grammar" {
+ s:[1]AnimScene;s[0].ready=true;s[0].name=anim_named("made-scene");s[0].length=10;s[0].cameras=2;s[0].camera[0].name=anim_named("wide");s[0].camera[1].name=anim_named("close");c:[1]AnimCut;
+ text:="{\"schema\":\"anim.cut.v1\",\"name\":\"made-cut\",\"scene\":\"made-scene\",\"fps\":30,\"shots\":[{\"name\":\"opening\",\"camera\":\"wide\",\"from\":0,\"to\":4,\"transition\":\"cut\",\"blend\":0},{\"name\":\"face\",\"camera\":\"close\",\"from\":4,\"to\":9,\"transition\":\"crossfade\",\"blend\":0.5}]}";
+ #assert anim_cut_load(text,s[..],c[..])==0 && c[0].ready && c[0].shots==2 && c[0].shot[1].camera==1 && c[0].shot[1].from==4 && c[0].shot[1].blend==0.5 && c[0].length==9;
+ lines:="cut made-cut\nsize 1280x720\nfps 24\nshot opening src=camera:wide in=0 dur=4\nshot face src=camera:close in=4 dur=5 xfade=0.5\n";
+ #assert anim_cut_lines(lines,s[0],c[..])==0 && c[0].legacy && c[0].fps==24 && c[0].composition[0].w==1280 && c[0].composition[0].h==720 && c[0].shot[1].blend==0.5;
+ #assert anim_cut_lines("shot x src=camera:missing dur=1\n",s[0],c[..])==ANIM_REFERENCE && c[0].shots==2;
+ changed:[2048]u8;from:=[4]string.["\"camera\":\"wide\"","\"to\":9","\"fps\":30","\"blend\":0.5"];to:=[4]string.["\"camera\":\"unknown\"","\"to\":11","\"fps\":0","\"blend\":5"];
+ for k:0..<4 {n:=anim_test_replace(text,from[k],to[k],changed[..]);#assert n>0 && anim_cut_load(cast(string)changed[0..<n],s[..],c[..])!=0 && c[0].shots==2;}
+}
+ACUT_TEST :: "{\"schema\":\"anim.cut.v1\",\"name\":\"made-cut\",\"scene\":\"made-scene\",\"fps\":30,\"shots\":[{\"name\":\"first\",\"camera\":\"wide\",\"from\":0,\"to\":4,\"transition\":\"cut\",\"blend\":0},{\"name\":\"last\",\"camera\":\"close\",\"from\":1,\"to\":5,\"transition\":\"crossfade\",\"blend\":0.5}]}";
+anim_test_cut_scene :: ()->AnimScene {s:AnimScene;s.ready=true;s.name=anim_named("made-scene");s.length=10;s.cameras=2;s.camera[0].name=anim_named("wide");s.camera[1].name=anim_named("close");return s;}
+#test "animation cuts preserve all shot fields and refuse malformed domains" {
+ scenes:=[1]AnimScene.[anim_test_cut_scene()];c:[1]AnimCut;#assert anim_cut_load(ACUT_TEST,scenes[..],c[..])==0 && anim_equal(c[0].name,anim_named("made-cut")) && anim_equal(c[0].scene,scenes[0].name) && c[0].fps==30 && c[0].shots==2 && c[0].length==8;
+ a:=c[0].shot[0];b:=c[0].shot[1];#assert anim_equal(a.name,anim_named("first")) && a.camera==0 && a.from==0 && a.to==4 && a.transition==0 && a.blend==0 && anim_equal(b.name,anim_named("last")) && b.camera==1 && b.from==1 && b.to==5 && b.transition==2 && b.blend==0.5;
+ from:=[18]string.["\"schema\":\"anim.cut.v1\"","\"name\":\"made-cut\"","\"scene\":\"made-scene\"","\"scene\":\"made-scene\"","\"fps\":30","\"fps\":30","\"name\":\"first\"","\"name\":\"last\"","\"name\":\"first\"","\"camera\":\"wide\"","\"from\":0","\"to\":4","\"to\":4","\"blend\":0","\"blend\":0.5","\"transition\":\"crossfade\"","\"transition\":\"crossfade\"","\"blend\":0.5"];
+ to:=[18]string.["\"schema\":\"anim.cut.v1\",\"extra\":0","\"name\":\"\"","\"scene\":\"\"","\"scene\":\"missing\"","\"fps\":0","\"fps\":121","\"name\":\"\"","\"name\":\"first\"","\"name\":\"first\",\"extra\":0","\"camera\":\"missing\"","\"from\":-1","\"to\":0","\"to\":11","\"blend\":0.1","\"blend\":0","\"transition\":\"missing\"","\"transition\":false","\"blend\":4"];
+ errors:=[18]int.[2,4,4,8,5,5,4,4,2,8,5,6,5,6,6,5,5,6];changed:[4096]u8;for k:0..<18 {n:=anim_test_replace(ACUT_TEST,from[k],to[k],changed[..]);#assert n>0 && anim_cut_load(cast(string)changed[0..<n],scenes[..],c[..])==errors[k];}
+ for value:[2]string.["[]","{}"] {n:=anim_test_set(ACUT_TEST,"shots",value,changed[..]);#assert anim_cut_load(cast(string)changed[0..<n],scenes[..],c[..])==ANIM_LIMIT;}
+ #assert anim_cut_load("[]",scenes[..],c[..])==ANIM_JSON && anim_cut_load("{}",scenes[..],c[..])==ANIM_SCHEMA && anim_cut_load(ACUT_TEST,scenes[..],c[0..<0])==ANIM_CAPACITY;scenes[0].ready=false;#assert anim_cut_load(ACUT_TEST,scenes[..],c[..])==ANIM_REFERENCE;
+}
+#test "animation cuts enforce each source and transition boundary" {
+ s:=anim_test_cut_scene();c:AnimCut;c.shots=2;c.shot[0]=AnimCutShot.{from=0,to=4};c.shot[1]=AnimCutShot.{from=1,to=5,blend=1};#assert anim_cut_ranges(c,s)==ANIM_OK;
+ for k:0..<7 {bad:=c;if k==0 {bad.shot[0].from= -1;}if k==1 {bad.shot[0].to=0;}if k==2 {bad.shot[0].to=11;}if k==3 {bad.shot[0].blend= -1;}if k==4 {bad.shot[0].blend=4;}if k==5 {bad.shot[1].blend=4;bad.shot[1].to=6;}if k==6 {bad.shot[0].to=10;}#assert anim_cut_ranges(bad,s)==ANIM_RANGE;}
+ c.shot[0].to=9;#assert anim_cut_ranges(c,s)==ANIM_OK;
+}
+#test "animation cut shot and duration limits have valid exact edges" #steps 100000000 {
+ scenes:=[1]AnimScene.[anim_test_cut_scene()];c:[1]AnimCut;list:[32768]u8;text:[65536]u8;o:[1]Jo;
+ for count:[4]int.[128,129,120,121] {jo_start(o[..],list[..]);jo_arr(o[..]);for k:0..<count {name:=[1]AnimName.[anim_test_label(k)];jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],anim_text(name[..],0));jo_key(o[..],"camera");jo_str(o[..],"wide");jo_key(o[..],"from");jo_int(o[..],0);jo_key(o[..],"to");jo_int(o[..],ifx count<128 then 5 else 1);jo_key(o[..],"transition");jo_str(o[..],"cut");jo_key(o[..],"blend");jo_int(o[..],0);jo_end(o[..]);}jo_end(o[..]);n:=anim_test_set(ACUT_TEST,"shots",jo_text(o[..]),text[..]);#assert anim_cut_load(cast(string)text[0..<n],scenes[..],c[..])==(ifx count==128 || count==120 then ANIM_OK else ANIM_LIMIT);}
+}
+#test "animation legacy cuts reject unsupported composition fields and preserve names" {
+ s:=anim_test_cut_scene();s.camera[0].name=anim_named("w");c:[1]AnimCut;
+ #assert anim_cut_lines("shot s src=camera:w dur=1",s,c[..])==ANIM_OK && c[0].shot[0].camera==0 && c[0].shot[0].transition==0 && c[0].shot[0].from==0 && c[0].shot[0].to==1 && c[0].length==1;
+ #assert anim_cut_lines("shot s src=camera: dur=1",s,c[..])==ANIM_REFERENCE && anim_cut_lines("shot s src=clip.mp4 dur=1",s,c[..])==ANIM_REFERENCE && anim_cut_lines("shot s src=camera:w dur=1\nshot s src=camera:w dur=1",s,c[..])==ANIM_NAME && anim_cut_lines("shot s src=camera:w dur=1 unknown=2",s,c[..])==ANIM_FORMAT && anim_cut_lines("",s,c[..])==ANIM_FORMAT;
+ #assert anim_cut_lines("shot s src=camera:w dur=1",s,c[0..<0])==ANIM_CAPACITY;
+ json:="{\"schema\":\"cut.v1\",\"name\":\"old-cut\",\"shots\":[{\"name\":\"s\",\"src\":\"camera:w\",\"dur\":1}]}";#assert anim_cut_json(json,s,c[..])==0 && anim_equal(c[0].name,anim_named("old-cut"));
+ #assert anim_cut_json("{\"schema\":\"cut.v1\",\"shots\":[]}",s,c[..])==ANIM_FORMAT && anim_cut_json("{\"schema\":\"cut.v1\",\"extra\":0,\"shots\":[]}",s,c[..])==ANIM_SCHEMA;
+}
+#test "animation cut intervals preserve nonzero starts exact ends and a single shot" {
+ s:=anim_test_cut_scene();c:AnimCut;c.shots=1;c.shot[0]=AnimCutShot.{from=1,to=4,blend=3};#assert anim_cut_ranges(c,s)==ANIM_RANGE;c.shot[0]=AnimCutShot.{from=0,to=10};#assert anim_cut_ranges(c,s)==ANIM_OK;
+ c.shots=2;c.shot[0]=AnimCutShot.{from=1,to=3};c.shot[1]=AnimCutShot.{from=0,to=4,blend=2};#assert anim_cut_ranges(c,s)==ANIM_RANGE;
+ scenes:=[1]AnimScene.[s];out:[1]AnimCut;nodes:[1024]JvNode;d:[1]Jv;#assert jv_parse(d[..],ACUT_TEST,nodes[..]);list:[4096]u8;text:[8192]u8;changed:[8192]u8;o:[1]Jo;jo_start(o[..],list[..]);jo_arr(o[..]);jv_write(d[0],jv_at(d[0],jv_get(d[0],0,"shots"),0),o[..]);jo_end(o[..]);n:=anim_test_set(ACUT_TEST,"shots",jo_text(o[..]),text[..]);n=anim_test_set(cast(string)text[0..<n],"fps","1",changed[..]);#assert anim_cut_load(cast(string)changed[0..<n],scenes[..],out[..])==0 && out[0].fps==1 && out[0].shots==1;
+}
+#test "animation legacy cut text limits and total duration are exact" #steps 100000000 {
+ s:=anim_test_cut_scene();s.camera[0].name=anim_named("w");out:[1]AnimCut;text:[262145]u8;for k:0..<text.count {text[k]=' ';}prefix:="shot s src=camera:w dur=1\n";for c,k:prefix {text[k]=c;}
+ #assert anim_cut_lines(cast(string)text[0..<262144],s,out[..])==ANIM_OK && anim_cut_lines(cast(string)text[..],s,out[..])==ANIM_LIMIT;
+ s.length=600;#assert anim_cut_lines("shot s src=camera:w dur=600",s,out[..])==0 && out[0].length==600 && anim_equal(out[0].scene,s.name);
+ #assert anim_cut_lines("shot a src=camera:w dur=350\nshot b src=camera:w dur=350",s,out[..])==ANIM_LIMIT && anim_cut_lines("shot s src=notcam:w dur=1",s,out[..])==ANIM_REFERENCE;
+ json:="{\"schema\":\"cut.v1\",\"name\":\"\",\"shots\":[{\"name\":\"s\",\"src\":\"camera:w\",\"dur\":1}]}";#assert anim_cut_json(json,s,out[..])==ANIM_NAME;
+ #assert anim_cut_json("{\"schema\":\"cut.v1\",\"shots\":[{\"name\":\"s\",\"src\":\"camera:w\",\"dur\":1,\"push\":1}]}",s,out[..])==ANIM_FORMAT;
+}
+#test "animation cuts admit cut.v1 without losing its media composition" {
+ s:AnimScene;s.ready=true;s.name=anim_named("made-scene");s.length=10;s.cameras=1;s.camera[0].name=anim_named("wide");c:[1]AnimCut;
+ text:="{\"schema\":\"cut.v1\",\"fps\":24,\"size\":[1280,720],\"music\":\"made.wav\",\"fade_out\":0.5,\"shots\":[{\"name\":\"opening\",\"src\":\"camera:wide\",\"in\":1,\"dur\":3,\"xfade\":0.2}]}";
+ #assert anim_cut_json(text,s,c[..])==ANIM_OK && c[0].ready && c[0].legacy && anim_equal(c[0].name,anim_named("imported-cut")) && c[0].shots==1 && c[0].fps==24 && c[0].length==3;
+ #assert c[0].shot[0].from==1 && c[0].shot[0].to==4 && c[0].shot[0].transition==2 && c[0].shot[0].blend==0.2 && c[0].composition[0].fade_out_ms==500 && c[0].composition[0].w==1280 && c[0].composition[0].h==720;
+ #assert media_cut.lb_cut_sp(c[0].composition[..],c[0].composition[0].music)=="made.wav";
+ #assert anim_cut_json("{}",s,c[..])==ANIM_SCHEMA && anim_cut_json("[]",s,c[..])==ANIM_JSON && anim_cut_json(text,s,c[0..<0])==ANIM_CAPACITY;
+ s.ready=false;#assert anim_cut_json(text,s,c[..])==ANIM_REFERENCE && anim_cut_lines("shot s src=camera:wide dur=1",s,c[..])==ANIM_REFERENCE;
+}

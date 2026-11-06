@@ -1,0 +1,79 @@
+// ECH1/EFC1 -> admitted animation documents; source payloads stay private.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../verse/tools/humans/ph_num.coax";
+#load "../anim/clip-document.coax";
+#load "../anim/echo-pack.coax";
+#load "../anim/echo-source-names.coax";
+#load "../anim/face-pack.coax";
+
+AeParts :: struct {rig:int;face:int;vertices:int;indices:int;end:int;}
+
+#test "animation document conversion retains every made source pose bit and face track" #steps 200000000 {
+ bytes:[8192]u8;rn:=echo_rig_fixture(bytes[..],1);face_fixture(bytes[rn..<rn+536]);parts:=AeParts.{rig=0,face=rn,vertices=rn+536,indices=rn+536+288,end=rn+536+300};
+ for k:0..<3 {bytes[parts.vertices+k*96+52]=255;anim_test_put(bytes[..],parts.indices+k*4,cast(u32)k);}
+ pack:=AnimPack.{id=asset_id(cast(string)bytes[0..<parts.end]),bytes=bytes[0..<parts.end]};packs:=[1]AnimPack.[pack];hash:[64]u8;#assert asset_hex(pack.id,hash[..]);text:[262144]u8;rig:[1]AnimRig;clip:[1]AnimClip;
+ n:=ae_rig(text[..],pack,parts,cast(string)hash[..]);#assert n>0 && anim_rig_load(cast(string)text[0..<n],packs[..],rig[..])==0 && rig[0].joints==1 && rig[0].sections==1 && rig[0].shape_count==1 && rig[0].face_joint_count==1;
+ for k:0..<24 {n=ae_clip(text[..],pack,parts,k,false,cast(string)hash[..],cast(string)hash[..]);#assert anim_clip_load(cast(string)text[0..<n],packs[..],rig[..],clip[..])==0 && ae_clip_bits(clip[0],pack,parts,k,false);}
+ n=ae_clip(text[..],pack,parts,0,true,cast(string)hash[..],cast(string)hash[..]);#assert anim_clip_load(cast(string)text[0..<n],packs[..],rig[..],clip[..])==0 && ae_clip_bits(clip[0],pack,parts,0,true);
+ #assert rig[0].parents[0]== -1 && rig[0].rest[0].q.w==1 && rig[0].bind[0]==1 && rig[0].bind[5]==1 && rig[0].bind[10]==1;
+ #assert ae_rig_bits(rig[0],pack,parts);
+}
+
+ae_name :: (b:[]u8,at:int)->string {n:=0;while n<64 && b[at+n]!=0 {n+=1;}return cast(string)b[at..<at+n];}
+ae_slot :: (id:int)->AnimName {out:=anim_named("slot-00");out.bytes[5]=cast(u8)('0'+id/10);out.bytes[6]=cast(u8)('0'+id%10);return out;}
+ae_number :: (o:[]Jo,x:f64) {b:[128]u8;jo_raw(o,pn_fixed_text(x,9,b[..]));}
+ae_part :: (o:[]Jo,hash:string,offset:int,count:int,stride:int,width:int) {
+ jo_obj(o);jo_key(o,"pack");jo_str(o,hash);jo_key(o,"offset");jo_int(o,offset);jo_key(o,"count");jo_int(o,count);jo_key(o,"stride");jo_int(o,stride);jo_key(o,"width");jo_int(o,width);jo_end(o);
+}
+ae_names :: (o:[]Jo,b:[]u8,at:int,count:int,stride:int) {jo_arr(o);for k:0..<count {jo_str(o,ae_name(b,at+k*stride));}jo_end(o);}
+ae_rig :: (out:[]u8,pack:AnimPack,p:AeParts,hash:string)->int {
+ b:=pack.bytes;f:=face_info(b[p.face..<p.vertices]);joints:=cast(int)anim_word(b,p.rig+8);o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.rig.v1");jo_key(o[..],"name");jo_str(o[..],"echo");jo_key(o[..],"joints");jo_arr(o[..]);
+ for k:0..<joints {name:=ae_name(b,p.face+f.rig_names+k*64);jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],name);jo_key(o[..],"parent");jo_int(o[..],cast(int)anim_word(b,p.rig+416+k*80)-1);jo_key(o[..],"mannequin");mapped:=mannequin_fold(name);if mapped<0 {jo_null(o[..]);}else {jo_str(o[..],MANNEQUIN_NAME[mapped]);}jo_key(o[..],"offset");jo_raw(o[..],"[0,0,0,1]");jo_end(o[..]);}jo_end(o[..]);
+ jo_key(o[..],"rest");ae_part(o[..],hash,p.rig+468,joints,80,28);jo_key(o[..],"bind");ae_part(o[..],hash,p.rig+420,joints,80,48);
+ jo_key(o[..],"materials");jo_arr(o[..]);for k:0..<26 {name:=[1]AnimName.[ae_slot(k)];jo_str(o[..],anim_text(name[..],0));}jo_end(o[..]);jo_key(o[..],"shapes");ae_names(o[..],b,p.face+f.target_table,f.targets,80);jo_key(o[..],"controls");jo_raw(o[..],"[]");jo_key(o[..],"face_bones");ae_names(o[..],b,p.face+f.bone_table,f.bones,68);
+ jo_key(o[..],"face_map");jo_arr(o[..]);for input:ARKIT_NAMES {target:= -1;for k:0..<f.targets {if mq_same(input,ae_name(b,p.face+f.target_table+k*80)) {target=k;break;}}if target<0 {continue;}jo_obj(o[..]);jo_key(o[..],"input");jo_str(o[..],input);jo_key(o[..],"outputs");jo_arr(o[..]);jo_obj(o[..]);jo_key(o[..],"kind");jo_str(o[..],"shape");jo_key(o[..],"name");jo_str(o[..],ae_name(b,p.face+f.target_table+target*80));jo_key(o[..],"weight");jo_int(o[..],1);jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);}jo_end(o[..]);
+ jo_key(o[..],"sections");jo_arr(o[..]);first:=0;indices:=(p.end-p.indices)/4;vertices:=(p.indices-p.vertices)/96;
+ while first<indices {id:=cast(int)anim_word(b,p.indices+first*4);slot:=cast(int)anim_word(b,p.vertices+id*96+32);#assert slot>=0 && slot<26;end:=first;
+  while end<indices {j:=cast(int)anim_word(b,p.indices+end*4);if anim_word(b,p.vertices+j*96+32)!=cast(u32)slot {break;}end+=1;}
+  #assert (end-first)%3==0;jo_obj(o[..]);jo_key(o[..],"format");jo_str(o[..],"skin8.v1");jo_key(o[..],"material");name:=[1]AnimName.[ae_slot(slot)];jo_str(o[..],anim_text(name[..],0));jo_key(o[..],"vertices");ae_part(o[..],hash,p.vertices,vertices,96,96);jo_key(o[..],"indices");ae_part(o[..],hash,p.indices+first*4,end-first,4,4);jo_end(o[..]);first=end;
+ }jo_end(o[..]);
+ jo_key(o[..],"morphs");jo_arr(o[..]);for k:0..<f.targets {at:=p.face+f.target_table+k*80;count:=cast(int)anim_word(b,at+68);if count==0 {continue;}jo_obj(o[..]);jo_key(o[..],"shape");jo_str(o[..],ae_name(b,at));jo_key(o[..],"section");jo_int(o[..],0);jo_key(o[..],"data");ae_part(o[..],hash,p.face+f.delta_table+cast(int)anim_word(b,at+64)*32,count,32,32);jo_end(o[..]);}jo_end(o[..]);
+ jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+ae_clip :: (out:[]u8,pack:AnimPack,p:AeParts,index:int,face:bool,hash:string,receipt:string)->int {
+ b:=pack.bytes;f:=face_info(b[p.face..<p.vertices]);entry:=ifx face then p.face+f.clip_table+index*80 else p.rig+32+index*16;frames:=cast(int)anim_word(b,entry+(ifx face then 64 else 4));rate:=ifx face then anim_float(b,entry+68) else 30.0f32;tracks:=cast(int)anim_word(b,p.rig+24);name:=ifx face then ae_name(b,entry) else EP_CLIPS[index];o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.clip.v1");jo_key(o[..],"name");jo_str(o[..],name);jo_key(o[..],"rig");jo_str(o[..],"echo");jo_key(o[..],"frames");jo_int(o[..],frames);jo_key(o[..],"rate");ae_number(o[..],cast(f64)rate);jo_key(o[..],"length");ae_number(o[..],ifx face then cast(f64)(frames-1)/cast(f64)rate else cast(f64)anim_float(b,entry+8));jo_key(o[..],"loop");jo_bool(o[..],!face && (index==0 || index==1 || index==2 || index==18 || index==19 || index==22));
+ jo_key(o[..],"joints");if face {jo_raw(o[..],"[]");}else {ae_names(o[..],b,p.face+f.rig_names,tracks,64);jo_key(o[..],"body");ae_part(o[..],hash,p.rig+cast(int)anim_word(b,entry),frames*tracks,28,28);jo_key(o[..],"root");ae_part(o[..],hash,p.rig+cast(int)anim_word(b,entry),frames,tracks*28,12);}
+ jo_key(o[..],"curves");if face {ae_names(o[..],b,p.face+f.curve_table,f.curves,68);jo_key(o[..],"face");ae_part(o[..],hash,p.face+cast(int)anim_word(b,entry+72),frames*f.curves,4,4);}else {jo_raw(o[..],"[]");}
+ jo_key(o[..],"face_bones");if face {ae_names(o[..],b,p.face+f.bone_table,f.bones,68);jo_key(o[..],"face_pose");ae_part(o[..],hash,p.face+cast(int)anim_word(b,entry+76),frames*f.bones,28,28);}else {jo_raw(o[..],"[]");}
+ jo_key(o[..],"events");jo_raw(o[..],"[]");jo_key(o[..],"source");jo_obj(o[..]);jo_key(o[..],"pack");jo_str(o[..],hash);jo_key(o[..],"role");jo_str(o[..],name);jo_key(o[..],"receipt");jo_str(o[..],receipt);jo_end(o[..]);jo_end(o[..]);return ifx o[0].bad then -1 else o[0].n;
+}
+// Independently walk the original source tables, then compare each sample word
+// reached through the admitted descriptors. No pose arithmetic occurs here.
+ae_same_words :: (b:[]u8,part:AnimPart,at:int,count:int,width:int)->bool {
+ if part.count!=count || part.width!=width {return false;}for k:0..<count {for word:0..<width/4 {if anim_word(b,part.offset+k*part.stride+word*4)!=anim_word(b,at+k*width+word*4) {return false;}}}return true;
+}
+ae_clip_bits :: (c:AnimClip,pack:AnimPack,p:AeParts,index:int,face:bool)->bool {
+ b:=pack.bytes;f:=face_info(b[p.face..<p.vertices]);if face {entry:=p.face+f.clip_table+index*80;frames:=cast(int)anim_word(b,entry+64);return ae_same_words(b,c.face,p.face+cast(int)anim_word(b,entry+72),frames*f.curves,4) && ae_same_words(b,c.face_pose,p.face+cast(int)anim_word(b,entry+76),frames*f.bones,28);}
+ entry:=p.rig+32+index*16;frames:=cast(int)anim_word(b,entry+4);tracks:=cast(int)anim_word(b,p.rig+24);return ae_same_words(b,c.body,p.rig+cast(int)anim_word(b,entry),frames*tracks,28);
+}
+ae_rig_bits :: (r:AnimRig,pack:AnimPack,p:AeParts)->bool {
+ b:=pack.bytes;f:=face_info(b[p.face..<p.vertices]);if r.joints!=f.joints || r.shape_count!=f.targets {return false;}
+ for k:0..<r.joints {at:=p.rig+416+k*80;if r.parents[k]!=cast(int)anim_word(b,at)-1 {return false;}for word:0..<12 {if f32_bits(r.bind[k*12+word])!=anim_word(b,at+4+word*4) {return false;}}pose:=r.rest[k];values:=[7]f32.[pose.t.x,pose.t.y,pose.t.z,pose.q.x,pose.q.y,pose.q.z,pose.q.w];for word:0..<7 {if f32_bits(values[word])!=anim_word(b,at+52+word*4) {return false;}}}
+ morph:=0;for shape:0..<f.targets {at:=p.face+f.target_table+shape*80;count:=cast(int)anim_word(b,at+68);if count==0 {continue;}if morph>=r.morph_count || r.morphs[morph].shape!=shape || !ae_same_words(b,r.morphs[morph].data,p.face+f.delta_table+cast(int)anim_word(b,at+64)*32,count,32) {return false;}morph+=1;}return morph==r.morph_count;
+}
+ae_write :: (root:string,name:string,text:string) {path:[4096]u8;#assert fs_write(fs_join(root,name,path[..]),text);}
+tool_main :: ()->int #export_c #effects(all) {
+ args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=3 {print("usage: anim-echo-documents ECHO_DIR FACE_DIR OUTPUT_DIR\n");return 2;}echo:=args_at(args[..],0);face:=args_at(args[..],1);dest:=args_at(args[..],2);#assert fs_exists(dest) || fs_mkdir(dest);
+ bytes:[134217728]u8;path:[4096]u8;p:AeParts;rn:=fs_read(fs_join(echo,"echo.rig",path[..]),bytes[..]);#assert rn>0 && echo_rig_valid(bytes[0..<rn]);p.face=rn;fn:=fs_read(fs_join(face,"echo.face",path[..]),bytes[rn..<bytes.count]);#assert fn>0 && face_valid(bytes[rn..<rn+fn]);p.vertices=rn+fn;vn:=fs_read(fs_join(echo,"echo.vertices",path[..]),bytes[p.vertices..<bytes.count]);#assert vn>0 && vn%96==0;p.indices=p.vertices+vn;ix:=fs_read(fs_join(echo,"echo.indices",path[..]),bytes[p.indices..<bytes.count]);#assert ix>0 && ix%12==0;p.end=p.indices+ix;for k:0..<ix/4 {#assert cast(int)anim_word(bytes[..],p.indices+k*4)<vn/96;}
+ pack:=AnimPack.{id=asset_id(cast(string)bytes[0..<p.end]),bytes=bytes[0..<p.end]};#assert anim_pack_valid(pack);hash:[64]u8;#assert asset_hex(pack.id,hash[..]);h:=cast(string)hash[..];f:=face_info(bytes[p.face..<p.vertices]);joints:=cast(int)anim_word(bytes[..],8);#assert joints==f.joints;
+ // Receipt contains identities and counts only. Source files are retained
+ // unchanged inside the binary so unmodelled source metadata is not lost.
+ receipt:[4096]u8;o:[1]Jo;jo_start(o[..],receipt[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],"anim.export.v1");jo_key(o[..],"converter");jo_str(o[..],"anim-echo-documents.v1");jo_key(o[..],"source_format");jo_str(o[..],"ECH1+EFC1+skin8.v1");jo_key(o[..],"settings");jo_raw(o[..],"{\"sampling\":\"source\",\"bulk_data\":\"unchanged\",\"body_loop_indices\":[0,1,2,18,19,22]}");jo_key(o[..],"pack");jo_str(o[..],h);jo_key(o[..],"joints");jo_int(o[..],joints);jo_key(o[..],"body_clips");jo_int(o[..],24);jo_key(o[..],"face_clips");jo_int(o[..],f.clips);jo_key(o[..],"shapes");jo_int(o[..],f.targets);jo_key(o[..],"curves");jo_int(o[..],f.curves);jo_key(o[..],"face_bones");jo_int(o[..],f.bones);jo_key(o[..],"parts");jo_arr(o[..]);for part:[4]AnimPart.[AnimPart.{offset=0,width=rn},AnimPart.{offset=p.face,width=fn},AnimPart.{offset=p.vertices,width=vn},AnimPart.{offset=p.indices,width=ix}] {jo_obj(o[..]);jo_key(o[..],"offset");jo_int(o[..],part.offset);jo_key(o[..],"bytes");jo_int(o[..],part.width);source_hash:[64]u8;#assert asset_hex(asset_id(cast(string)bytes[part.offset..<part.offset+part.width]),source_hash[..]);jo_key(o[..],"sha256");jo_str(o[..],cast(string)source_hash[..]);jo_end(o[..]);}jo_end(o[..]);jo_end(o[..]);#assert !o[0].bad;
+ receipt_hash:[64]u8;#assert asset_hex(asset_id(jo_text(o[..])),receipt_hash[..]);rh:=cast(string)receipt_hash[..];ae_write(dest,"receipt.json",jo_text(o[..]));file:[68]u8;for c,k:hash {file[k]=c;}for c,k:".bin" {file[64+k]=c;}ae_write(dest,cast(string)file[..],cast(string)bytes[0..<p.end]);
+ text:[262144]u8;rig:[1]AnimRig;clips:[1]AnimClip;packs:=[1]AnimPack.[pack];n:=ae_rig(text[..],pack,p,h);#assert n>0;error:=anim_rig_load(cast(string)text[0..<n],packs[..],rig[..]);if error!=0 {print("rig admission: %\n",anim_error_name(error));return 1;}#assert ae_rig_bits(rig[0],pack,p);ae_write(dest,"echo.rig.json",cast(string)text[0..<n]);
+ for k:0..<24+f.clips {is_face:=k>=24;index:=ifx is_face then k-24 else k;n=ae_clip(text[..],pack,p,index,is_face,h,rh);#assert n>0;error=anim_clip_load(cast(string)text[0..<n],packs[..],rig[..],clips[..]);if error!=0 {print("clip % admission: %\n",k,anim_error_name(error));return 1;}#assert ae_clip_bits(clips[0],pack,p,index,is_face);name:[32]u8;writer:[1]PnOut;writer[0].buf=name[..];pn_put(writer[..],"clip-");pn_putint(writer[..],k);pn_put(writer[..],".json");ae_write(dest,pn_text(writer[..]),cast(string)text[0..<n]);}
+ print("converted joints=% body_clips=24 face_clips=% shapes=% curves=% face_bones=% bytes=% sha256=% receipt=% sample_bit_differences=0\n",joints,f.clips,f.targets,f.curves,f.bones,p.end,h,rh);return 0;
+}

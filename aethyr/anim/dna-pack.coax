@@ -1,0 +1,46 @@
+// Bounded FRG1 admission before the existing face-rig evaluator sees a block.
+#load "document.coax";
+#load "../facerig.coax";
+#load "dna-pack-checks.coax";
+#authority;
+DnaHeader :: struct {ok:bool;controls:int;raws:int;psds:int;groups:int;joints:int;points:int;vertices:int;targets:int;expressions:int;}
+anim_dna_counts :: (controls:int,joints:int,points:int)->bool #effects(all) {return controls>=1 && controls<=1024 && joints>=1 && joints<=1024 && points>=1 && points<=1000000;}
+dna_header_size :: (n:int)->bool #effects(all) {return n>=40;}
+dna_span :: (total:int,at:int,bytes:int)->bool #effects(all) {return at>=0 && bytes>=0 && at<=total && bytes<=total-at;}
+dna_finite :: (b:[]u8,at:int)->bool #effects(all) {return anim_floats(b,at,1);}
+dna_header :: (b:[]u8)->DnaHeader #effects(all) {
+ h:DnaHeader;if !dna_header_size(b.count) {return h;}if anim_word(b,0)!=0x31475246 {return h;}
+ h.controls=cast(int)anim_word(b,4);h.raws=cast(int)anim_word(b,8);h.psds=cast(int)anim_word(b,12);h.groups=cast(int)anim_word(b,16);h.joints=cast(int)anim_word(b,20);h.points=cast(int)anim_word(b,24);h.vertices=cast(int)anim_word(b,28);h.targets=cast(int)anim_word(b,32);h.expressions=cast(int)anim_word(b,36);
+ if !anim_dna_counts(h.controls,h.joints,h.points) || h.raws>h.controls || h.psds>h.controls || h.groups>256 || h.vertices>1000000 || h.targets>2048 || h.expressions>32 {return h;}h.ok=true;return h;
+}
+// Each section returns its next byte or -1. A failed cursor stays failed,
+// so the complete reader needs just one final extent check.
+dna_psd :: (b:[]u8,at:int,controls:int)->int #effects(all) {
+ if !dna_span(b.count,at,12) {return -1;}n:=cast(int)anim_word(b,at+8);if n>controls || !dna_span(b.count,at+12,n*4) || cast(int)anim_word(b,at)>=controls || !dna_finite(b,at+4) {return -1;}for j:0..<n {if cast(int)anim_word(b,at+12+j*4)>=controls {return -1;}}return at+12+n*4;
+}
+dna_group :: (b:[]u8,at:int,joints:int,controls:int)->int #effects(all) {
+ if !dna_span(b.count,at,8) {return -1;}rows:=cast(int)anim_word(b,at);cols:=cast(int)anim_word(b,at+4);if rows>joints*9 || cols>controls {return -1;}size:=8+4*(cols+rows+rows*cols);if !dna_span(b.count,at,size) {return -1;}
+ for j:0..<cols {if cast(int)anim_word(b,at+8+j*4)>=controls {return -1;}}for j:0..<rows {if cast(int)anim_word(b,at+8+cols*4+j*4)>=joints*9 {return -1;}}if !anim_floats(b,at+8+(cols+rows)*4,rows*cols) {return -1;}return at+size;
+}
+dna_joints :: (b:[]u8,at:int,joints:int)->int #effects(all) {
+ if !dna_span(b.count,at,joints*28) {return -1;}for k:0..<joints {p:=at+k*28;parent:=anim_word(b,p);if parent!=0xffffffff && parent>=cast(u32)k {return -1;}if !anim_floats(b,p+4,6) {return -1;}}return at+joints*28;
+}
+dna_points :: (b:[]u8,at:int,joints:int,points:int)->int #effects(all) {
+ if !dna_span(b.count,at,points*72) {return -1;}for k:0..<points {base:=at+k*72;if !anim_floats(b,base,6) {return -1;}for j:0..<6 {p:=base+24+j*8;if frig_u16(cast(string)b,p)>=joints || !dna_finite(b,p+4) {return -1;}}}return at+points*72;
+}
+dna_vertices :: (b:[]u8,at:int,points:int,vertices:int)->int #effects(all) {
+ if !dna_span(b.count,at,vertices*4) {return -1;}for k:0..<vertices {if cast(int)anim_word(b,at+k*4)>=points {return -1;}}return at+vertices*4;
+}
+dna_target :: (b:[]u8,at:int,controls:int,points:int)->int #effects(all) {
+ if !dna_span(b.count,at,12) {return -1;}control:=cast(int)anim_word(b,at);first:=cast(int)anim_word(b,at+4);n:=cast(int)anim_word(b,at+8);if control>=controls || first>points || n>points || !dna_span(b.count,at+12,n*8) {return -1;}for j:0..<n {p:=at+12+j*8;if first+frig_u16(cast(string)b,p)>=points {return -1;}}return at+12+n*8;
+}
+dna_expression :: (b:[]u8,at:int,controls:int)->int #effects(all) {
+ if !dna_span(b.count,at,20) {return -1;}n:=cast(int)anim_word(b,at+16);if n>controls || !dna_span(b.count,at+20,n*8) {return -1;}for j:0..<n {p:=at+20+j*8;if cast(int)anim_word(b,p)>=controls || !dna_finite(b,p+4) {return -1;}}return at+20+n*8;
+}
+anim_dna_valid :: (b:[]u8)->bool #effects(all) {
+ h:=dna_header(b);if !h.ok {return false;}at:=40;
+ for k:0..<h.psds {at=dna_psd(b,at,h.controls);}for k:0..<h.groups {at=dna_group(b,at,h.joints,h.controls);}
+ at=dna_joints(b,at,h.joints);at=dna_points(b,at,h.joints,h.points);at=dna_vertices(b,at,h.points,h.vertices);
+ for k:0..<h.targets {at=dna_target(b,at,h.controls,h.points);}for k:0..<h.expressions {at=dna_expression(b,at,h.controls);}
+ return at==b.count;
+}

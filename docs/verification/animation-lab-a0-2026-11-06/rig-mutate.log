@@ -1,0 +1,10 @@
+coax: note[E0400]: compile-time traversal work: 122521755 of 134217728 used (91%), above three quarters of the limit; more than 134217728 fails with E0400
+  top users of compile-time traversal work:
+    74487920 visits  aethyr/anim/document.coax:32:88  copying arguments into 'anim_equal' (555880 calls)
+    37243960 visits  aethyr/anim/document.coax:32:1  in 'anim_find' (3176 times)
+    1769586 visits  aethyr/anim/rig-document.coax:85:1  in 'anim_rig_load' (6 times)
+    1481884 visits  aethyr/anim/rig-document.coax:43:1  in 'anim_rig_read' (6 times)
+    1442304 visits  coax/lib/crypto/sha256-kernel.coax:63:1  in 'S_compress' (7512 times)
+  fix: pass a view, an index or only the fields it needs instead of copying arguments into 'anim_equal' by value; or split the check (each check has its own traversal budget), or raise its budget with #traversal N on the check (or --traversal N for every check)
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+434 mutants, 434 killed, 0 survived
