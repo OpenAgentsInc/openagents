@@ -1,8 +1,10 @@
 # Everglade edit latency (#12960)
 
-The ten-run edit-to-running median is **900.5 ms** on coderos-4080. All ten
-samples lie between 895 and 992 ms. `benchmark.json` reports whole milliseconds
-and truncates the median to 900; `phase-medians.json` retains the half millisecond.
+The final merged host's ten-run edit-to-running median is **899.5 ms** on
+coderos-4080, with samples between 861 and 905 ms. Its records are in
+`merged-host/`. The initial run has a 900.5 ms median and samples between 895
+and 992 ms. The driver reports whole milliseconds; `phase-medians.json` retains
+the half millisecond in each run.
 
 The machine has an Intel Core i7-14700K, 28 logical CPUs and Linux x86-64.
 Coax is the qualified 0.51.2 compiler. Builds and the driver run at nice 15.
@@ -32,19 +34,20 @@ The application source edit is a fixture and is not committed as gameplay.
 
 ## Where the time goes
 
-These are independent medians, so the rows do not sum exactly.
+These are independent medians from the merged-host run, so the rows do not
+sum exactly.
 
 | Step | Median |
 | --- | ---: |
-| Validate the body and sealed source/compiler/toolchain inputs | 326.5 ms |
+| Validate the body and sealed source/compiler/toolchain inputs | 321 ms |
 | Check and emit the small Coax candidate | 4 ms |
-| Native compilation | 78.5 ms |
-| Wasm compilation | 78 ms |
-| Both compilers in parallel | 80.5 ms |
-| Recheck inputs and publish files | 316 ms |
-| Candidate build and publication | 720.5 ms |
-| Tool invocation and observing both hosts | 184.5 ms |
-| Edit to both running hosts | 900.5 ms |
+| Native compilation | 80.5 ms |
+| Wasm compilation | 85 ms |
+| Both compilers in parallel | 86 ms |
+| Recheck inputs and publish files | 306 ms |
+| Candidate build and publication | 719 ms |
+| Tool invocation and observing both hosts | 177.5 ms |
+| Edit to both running hosts | 899.5 ms |
 
 The full page check reuses **1,197** passing checks and runs **155**, for 1,352
 checks total. Its 704.5-second report includes 148.6 seconds in parallel runs,
@@ -86,9 +89,16 @@ for the exact same source and does not rerun the checker. The observation
 passes: the visible session reports failure, the guarded commit refuses, and
 HEAD remains unchanged. `bad-check.json` records all four predicates as true.
 
-The executable measurements use base `599558ee03` plus this change. The final
-rebase preserves `e7e0b0e71c`. Its only overlap with the conservative input
-manifest is `valleycanyon-face.c`, which neither Everglade build compiles; the
-actual Everglade Coax, C and browser inputs remain unchanged.
+The initial measurements use base `599558ee03` plus this change. The final
+rebase preserves `e7e0b0e71c` and `5d4baa60c1`. Their overlaps with the
+conservative input manifest are `valleycanyon-face.c` and `host.js`. The former
+does not compile into Everglade. The latter adds blend-v1 branches guarded by
+an export Everglade does not provide. The merged host receives a fresh session
+identity, fresh native/Wasm bases and another ten-edit measurement. Its source
+proof completes in 5.46 seconds using the existing complete Coax check verdict;
+the Coax program and native C inputs remain unchanged. The failure-observation
+and guarded-commit code also remain unchanged by these upstream commits.
+Both runtime images also pass local drift with three bots and raids on the
+merged host; their logs are in `merged-host/`.
 
 See [the workflow](../../../coax/web/fast-edit.md) for commands and boundaries.
