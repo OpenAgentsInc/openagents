@@ -274,6 +274,12 @@ dr_mark :: (p: DrPair, name: string) {
 // host gets the same line (roomHost.control) the moment the room page shows you held, so the two
 // holds start as one.
 DR_HELD :: "((__dr.probe(52) & 3) || __dr.probe(53) > 0) ? 1 : 0";
+dr_held_move_ms :: () -> int { return 500; }
+#test "the held movement attempt ends before either three-second hold expires" {
+  // Even a delayed receipt leaves room for this attempt. Do not compare free walking across
+  // two independently delivered releases as if it were an identical input interval.
+  #assert dr_held_move_ms() <= 500 && dr_held_move_ms() > 0;
+}
 dr_hold :: (p: DrPair) {
   if p.native {
     // Both rooms are in one native process. Apply both holds in one control-file read,
@@ -306,7 +312,22 @@ dr_hold :: (p: DrPair) {
   if held != 1 { print("  (the offline page did not take the hold: %)\n", held); }
 }
 
-dr_script :: (p: DrPair, dir: string) {
+dr_rg_margin :: (x: int, z: int, nx: int, nz: int) -> bool {
+  return dr_diff(DR_PLACE, x, nx * 10, z, nz * 10) <= 12000;
+}
+#test "the gravity rehearsal rejects a townsperson at the radius edge" {
+  #assert !dr_rg_margin(-15530, -56700, -191, -6347);
+  #assert dr_rg_margin(-11030, -56700, -191, -6347);
+  #assert dr_rg_margin(0, 0, 1200, 0) && !dr_rg_margin(0, 0, 1201, 0);
+}
+dr_rg_ready :: (c: [] Cdp) -> bool {
+  x := dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,0)", -999999);
+  z := dr_int(c, "__dr.x.coaxial_field_probe(__dr.state,2)", -999999);
+  nx := dr_int(c, "__dr.probe(600)", 999999); nz := dr_int(c, "__dr.probe(601)", 999999);
+  print("  gravity placement: you %,% mm, first townsperson %,% cm\n", x, z, nx, nz);
+  return dr_rg_margin(x, z, nx, nz);
+}
+dr_script :: (p: DrPair, dir: string) -> bool {
   dr_mark(p, "start");
   dr_both_key(p, true, "Escape", "Escape", 27); dr_both_key(p, false, "Escape", "Escape", 27);
   proc_sleep(1500);
@@ -317,7 +338,12 @@ dr_script :: (p: DrPair, dir: string) {
   dr_mark(p, "walk"); proc_sleep(2500);
   dr_mark(p, "jump");
   dr_tap(p, " ", "Space", 32); proc_sleep(1800); dr_both_key(p, false, "w", "KeyW", 87); proc_sleep(1200);
+  // The palisade stop leaves the first townsperson on the 15.24 m radius. Move inward before
+  // comparing discrete landing conditions: centimetres of patrol phase can change an edge entry.
+  dr_both_key(p, true, "a", "KeyA", 65); proc_sleep(2000); dr_both_key(p, false, "a", "KeyA", 65); proc_sleep(300);
+  dr_both_key(p, true, "s", "KeyS", 83); proc_sleep(500); dr_both_key(p, false, "s", "KeyS", 83); proc_sleep(500);
   dr_mark(p, "rg");
+  rg_ready := dr_rg_ready(p.a); rg_ready_b := dr_rg_ready(p.b);
   // a round (6 s) between casts: the rules' one action a round
   dr_tap(p, "5", "Digit5", 53); proc_sleep(6000); dr_tap(p, "5", "Digit5", 53); proc_sleep(6500);
   dr_mark(p, "wos");
@@ -329,10 +355,10 @@ dr_script :: (p: DrPair, dir: string) {
   dr_tap(p, "6", "Digit6", 54); proc_sleep(6500);
   dr_mark(p, "held");
   dr_hold(p);
-  proc_sleep(1200);
-  dr_both_key(p, true, "w", "KeyW", 87); proc_sleep(2000); dr_both_key(p, false, "w", "KeyW", 87); proc_sleep(2500);
+  dr_both_key(p, true, "w", "KeyW", 87); proc_sleep(dr_held_move_ms()); dr_both_key(p, false, "w", "KeyW", 87); proc_sleep(4000);
   dr_mark(p, "folk"); proc_sleep(6000);
   dr_mark(p, "end"); proc_sleep(300);
+  return rg_ready && rg_ready_b;
 }
 
 // The page's record back from the browser.
@@ -493,6 +519,22 @@ dr_movement :: (p: [] DrPage, t0: int, t1: int) -> int {
     if d > most { most = d; }
   }
   return most;
+}
+dr_town_fell :: (p: [] DrPage, t0: int, t1: int) -> bool {
+  if t0 < 0 || t1 <= t0 { return false; }
+  for r: 0..<p[0].n {
+    if dr_at(p, r, C_T) >= t0 && dr_at(p, r, C_T) < t1 && dr_at(p, r, C_FCOND) > 0 { return true; }
+  }
+  return false;
+}
+#test "the gravity rehearsal requires a condition before the scripted Hold Person" {
+  p: [1] DrPage; p[0].n = 2;
+  p[0].rows[C_T] = 1000; p[0].rows[DR_COLS + C_T] = 3000;
+  #assert !dr_town_fell(p[..], 1000, 2000);
+  p[0].rows[DR_COLS + C_FCOND] = 1;
+  #assert !dr_town_fell(p[..], 1000, 2000);
+  p[0].rows[C_FCOND] = 1;
+  #assert dr_town_fell(p[..], 1000, 2000) && !dr_town_fell(p[..], -1, 2000);
 }
 
 // Every probe of the paired session, offline (a) against the room (b) and back.
@@ -721,6 +763,9 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
   q[0].n = 0;
   bput(q[..], "OA_ROOM_TICKET_KEY="); bput(q[..], run.key); bput(q[..], " exec "); bput(q[..], tool); bput(q[..], " coax/web/room/drift-bots.coax ws://127.0.0.1:"); bint(q[..], room); bput(q[..], " "); bint(q[..], run.bots);
   bput(q[..], " 150 "); bint(q[..], code); bput(q[..], " "); bput(q[..], run.dir); bput(q[..], " > "); bput(q[..], run.dir); bput(q[..], "/bots-"); bput(q[..], profile); bput(q[..], ".log 2>&1");
+  ready_path: [1] Buf; bput(ready_path[..], run.dir); bput(ready_path[..], "/bots-ready");
+  unsafe_path: [1] Buf; bput(unsafe_path[..], run.dir); bput(unsafe_path[..], "/bots-unsafe");
+  removed := fs_remove(btext(ready_path[..])); removed = fs_remove(btext(unsafe_path[..]));
   hb := dr_spawn(btext(q[..]));
   proc_sleep(2500);
   ua: [1] Buf; bput(ua[..], "http://127.0.0.1:"); bint(ua[..], run.port + 3); bput(ua[..], "/worlds/everglade?offline=worker&levels=off");
@@ -732,10 +777,21 @@ dr_session :: (run: DrRun, profile: string, rtt: int, rep: [] DrReport, a: [] Dr
       if dr_open(ca[..], btext(ua[..]), dr_offline_script(run,script[..])) && dr_open(cb[..], btext(ub[..]), run.script) && dr_ready(ca[..], false) && dr_ready(cb[..], true) && dr_native_ready(run,ca[..]) {
         dr_dice(ca[..], run.worker && !run.native);
         proc_sleep(2500);
+        deadline := proc_now_ms() + 12000;
+        while !fs_exists(btext(ready_path[..])) && proc_now_ms() < deadline { proc_sleep(100); }
+        if !fs_exists(btext(ready_path[..])) { tool_errln("everglade-drift: background players never reached 32 m clearance"); }
         sh: [1] Buf; bput(sh[..], run.dir); bput(sh[..], "/shot-"); bput(sh[..], profile);
         at: [1] int;
-        dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker, native=run.native, at = at[..]}, run.dir);
+        gravity_ready := dr_script(DrPair.{a = ca[..], b = cb[..], shots = btext(sh[..]), ctl = run.ctl, room = code, worker = run.worker, native=run.native, at = at[..]}, run.dir);
         ok = dr_pull(ca[..], a) && dr_pull(cb[..], b);
+        clearance: [1] DrVerdict;
+        clearance[0].drifted = !fs_exists(btext(ready_path[..])) || fs_exists(btext(unsafe_path[..]));
+        clearance[0].step = "background players";
+        dr_add(rep, "background players stayed at least 32 m away", clearance[0]);
+        placement: [1] DrVerdict;
+        placement[0].drifted = !gravity_ready || !dr_town_fell(a, dr_mark_t(a, "rg"), dr_mark_t(a, "wos")) || !dr_town_fell(b, dr_mark_t(b, "rg"), dr_mark_t(b, "wos"));
+        placement[0].step = "rg"; placement[0].t = dr_mark_t(a, "rg");
+        dr_add(rep, "gravity safely reaches and drops a townsperson", placement[0]);
         {
           diag: [65536] u8; path: [1] Buf; bput(path[..], run.dir); bput(path[..], "/corrections-"); bput(path[..], profile); bput(path[..], ".json");
           _ := fs_write(btext(path[..]), dr_str(cb[..], "JSON.stringify(__dr.largeCorrections)", diag[..]));

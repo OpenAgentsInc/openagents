@@ -96,7 +96,11 @@
         const fc = ["w" + np(24), "r" + r0.toString(16) + "." + r1.toString(16)];
         for (let i = 0, c; i < 96 && (c = fp(100 + i)) >= 0; i++) if (c > 0) fc.push(i + ":" + c);
         const fcs = fc.join(" ");
-        if (fcs !== D.fcond) { D.fcond = fcs; if (D.conds.length < 2000) D.conds.push(t + " " + fcs); }
+        if (fcs !== D.fcond) {
+          D.fcond = fcs;
+          if (D.conds.length < 2000) D.conds.push(t + " " + fcs + " you_mm=" + fp(0) + "," + fp(2)
+            + " npc0_cm=" + np(600) + "," + np(601) + " bot0_cm=" + np(8) + "," + np(9));
+        }
         const p = text(ex, state, 0), s = text(ex, state, 1), b = np(49);
         if (p !== plate) { plate = p; D.texts.push([t, 0, p]); }
         if (s !== status) { status = s; D.texts.push([t, 1, s]); }

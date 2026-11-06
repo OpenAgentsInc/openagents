@@ -1225,6 +1225,24 @@ fits; otherwise it places the page as before and the room refuses it
 (`verse.room_pick`, migration 0128). A saved character names the build that
 last saved it (`room_vitals.build`). Checks: `room_checks.coax` builds.
 
+## Forest fires belong to the room's world
+
+The shared Everglade room tick advances tree fire, spread and motion once
+per world step. Session profile v5 carries each occupied sparse forest
+record as an ordinary public entity, independent of its fire starter.
+The starter retains blame; the latest caster cannot acquire it. The
+authority in `everglade-forest-profile.coax` admits only whole finite
+records in their declared domains. Its root gate kills all 103 mutants.
+
+Room pages apply those records and render fire without advancing local
+tree damage or spread. Forest records have a separate reserved table
+range; boats, doors and abilities retain their capacity. Record reuse
+advances LIFE, and an acknowledged old removal cannot erase a tree now
+held by another record. Whole-tick ACK, retransmission and absolute/delta
+baselines remain shared with other entities. The published v4 profile
+retains its identity. Suite, wire and two-page observations are in
+`docs/verification/everglade-forest-2026-11-05/`.
+
 ## A room host runs each realm by its declared profile
 
 The room server serves Orbit League and Everglade on one 60 Hz beat, each by
