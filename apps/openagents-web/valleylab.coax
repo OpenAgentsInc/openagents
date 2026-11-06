@@ -255,6 +255,7 @@ valley_blur :: (s:[]ValleyLab) #export_c {
 }
 valley_key :: (s:[]ValleyLab,key:int,down:bool)->bool #export_c {
   valley_start(s);bit:=0;
+  if down && (key==78 || key==110) {url:="/worlds/valley-world?pack=valley-world";for c,k:url {s[0].outbox[k]=c;}s[0].out_n=url.count;s[0].action=1;return true;}
   if down && (key==80 || key==112) {valley_canyon_open(s);return true;}
   if down && key==48 {valley_scan_lab(s,0);return true;}
   if down && s[0].scan_lab {if key==118 || key==86 {s[0].mode=(s[0].mode+1)%5;return true;}if key==108 || key==76 {valley_scan_lab(s,1-s[0].scan_selected);return true;}if key==114 || key==82 {valley_scan_lab(s,s[0].scan_selected);return true;}if key==104 || key==72 || key==102 || key==70 || key==99 || key==67 {return true;}}
@@ -294,7 +295,8 @@ valley_pointer :: (s:[]ValleyLab,x:f32,y:f32,phase:int,kind:int,id:int)->bool #e
   if phase==0 {
     if y<234*s[0].d {
       cx:=x/s[0].d;cy:=y/s[0].d;w:=s[0].width/s[0].d;
-      if cy>=190 && cy<=226 && cx>=320 && cx<=w-16 {valley_scan_lab(s,0);}
+      if cy<48 && cx>=145 && cx<w-100 {_:=valley_key(s,78,true);}
+      else if cy>=190 && cy<=226 && cx>=320 && cx<=w-16 {valley_scan_lab(s,0);}
       else if cy>=190 && cy<=226 && cx>=168 && cx<=312 {valley_field_lab(s,7);}
       else if cy>=190 && cy<=226 && cx>=16 && cx<=160 {valley_grid_lab(s,7);}
       else if cy>=82 && cy<=126 && cx>=16 && cx<322 {valley_station(s,cast(int)((cx-16)/102));}
@@ -397,6 +399,7 @@ valley_frame :: (s:[]ValleyLab,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:
   s[0].draws=[4]u32.[0,cast(u32)s[0].index_n,0x80000000,1];
   pen:=HdPen.{d=d,top=0,bottom=h/d,cyan=false,sans=false};n:=0;
   n=hd_text(out,n,"VALLEY LAB",20,34,18,pen,0);
+  n=hd_text(out,n,"N WORLD",150,34,11,pen,1);
   n=hd_text_fit(out,n,ifx s[0].scan_lab then "10 / MEGASCANS SOURCE BASELINE" else ifx s[0].field_lab then "09 / DETERMINISTIC ROCK FIELD" else ifx s[0].grid_lab then "08 / ADJACENT REAL GROUPS" else [3]string.["01 / WALKABLE BASIN","02 / ASSET INSPECTOR","03 / INDEXED GEOMETRY"][s[0].stage],20,59,11,w/d-125,pen,1);
   n=hd_text(out,n,"RESET",w/d-84,36,12,pen,0);
   for tab:0..<3 {b:=HudBox.{x=16+cast(f32)tab*102,y=82,width=96,height=44};n=hd_panel(out,n,b,pen,s[0].stage==tab);n=hd_text_fit(out,n,[3]string.["1 WALK","2 ASSETS","3 MESH"][tab],b.x+7,109,11,82,pen,0);}
@@ -813,4 +816,5 @@ valley_scan_panel :: (s:[]ValleyLab,out:[]f32,n:int,pen:HdPen)->int {
   s[0].action=0;for c,k:"section" {s[0].inbox[k]=c;}valley_hash(s[..],7);#assert s[0].action==1 && s[0].out_n==38;
   valley_scan_lab(s[..],0);s[0].action=0;s[0].width=390;s[0].height=844;#assert valley_pointer(s[..],100,732,0,1,1) && s[0].action==1;
 }
+#test "Valley world opens by key and phone header touch" #steps 1000000000 {s:[1]ValleyLab;#assert valley_key(s[..],78,true) && cast(string)s[0].outbox[0..<s[0].out_n]=="/worlds/valley-world?pack=valley-world";s[0].action=0;s[0].width=390;#assert valley_pointer(s[..],180,30,0,1,8) && s[0].action==1;}
 valley_canyon_open :: (s:[]ValleyLab) {url:="/worlds/valley-canyon?pack=valley-slay";for c,k:url {s[0].outbox[k]=c;}s[0].out_n=url.count;s[0].action=1;}

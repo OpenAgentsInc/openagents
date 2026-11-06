@@ -1,5 +1,11 @@
 # Owner actions
 
+## Valley Lab source world (2026-11-06)
+
+- Optional local visual review: open `/worlds/valley-lab` in the local website build and choose **N WORLD**, or open `/worlds/valley-world?pack=valley-world`. The pinned private pack is already staged under `~/.openagents/verse/private-build/web/valley-world.pack` on this Mac.
+- WASD/left thumb moves Echo, Shift walks, Space/JUMP jumps, drag/right thumb looks, R/RESET restores her source-ground spawn, and 2–5/the tabs visit four parts of the basin. V changes material diagnostics; 1 BACK returns to the lab.
+- This is a large original-layout slice. Exact Unreal lighting, full Nanite source and exact triangle collision remain unfinished. Automated checks are muted/headless; no owner approval is required for the completed code and data checks.
+
 ## Valley Lab Slay preview (2026-11-06)
 
 - [ ] Try [the local source-shot view](http://127.0.0.1:8894/worlds/valley-canyon?pack=valley-slay). It starts paused at TF0290 sequence frame 1125. P plays/pauses; comma/period step; J returns to that shot. F isolates facial performance; brackets select clips; B toggles neutral; T restarts. R returns to walking, WASD moves, Shift walks, Space jumps, drag/arrows look, C/H inspect.

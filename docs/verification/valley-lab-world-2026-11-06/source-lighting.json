@@ -1,0 +1,37 @@
+{
+  "schema": "valley.world.sdk-lighting.v1",
+  "lights": [
+    {
+      "actor": "CF_DirectionalLight4",
+      "forward_xyz": [
+        -0.7742571471660082,
+        -0.14594801027816146,
+        -0.615812510719131
+      ],
+      "intensity_lux": 2.9000000953674316,
+      "colour": [
+        255,
+        255,
+        255
+      ],
+      "temperature": 6100.0,
+      "use_temperature": true
+    },
+    {
+      "actor": "ED_DirectionalLight_sky",
+      "forward_xyz": [
+        0.7310268872690243,
+        -0.6452301727678821,
+        -0.22198584243075128
+      ],
+      "intensity_lux": 1.9500000476837158,
+      "colour": [
+        255,
+        215,
+        203
+      ],
+      "temperature": 5000.0,
+      "use_temperature": false
+    }
+  ]
+}

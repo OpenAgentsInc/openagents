@@ -1,0 +1,20 @@
+{
+  "schema": "valley.world.independent-oracle.v1",
+  "source_actors": 18,
+  "meshes": 130,
+  "instances": 27501,
+  "unique_vertices": 1001889,
+  "unique_fallback_triangles": 1705175,
+  "whole_scene_fallback_triangles": 407418897,
+  "geometry": "every position/normal/UV/index matches SDK LOD0 fallback bytes",
+  "original_echo_prefix": "rig, geometry, indices and groom byte-exact",
+  "matrix_max_absolute_error": 1.5008838317953632e-05,
+  "affine_vertex_error_bound_metres": 1.7194716208538475e-05,
+  "component_material_bindings": "all original overrides checked independently",
+  "derived_texture_layers_exact_against_pillow": 240,
+  "ground_samples": 66049,
+  "uncovered_samples": 3080,
+  "pack_bytes": 1561899992,
+  "pack_sha256": "9057c55b78b295f04f50a07e19133f528e88e576c0f737fb3f2501e5aa1a807e",
+  "scope": "source-data parity; does not establish Unreal image, Nanite, material-graph or triangle-collision parity"
+}

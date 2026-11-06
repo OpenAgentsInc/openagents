@@ -965,7 +965,10 @@ async function deviceLost(device, info) {
   const retiredPacks=retirePacks();
   if (recovering) { recovering.n += 1;return; }   // the device being built went too: its rebuild starts again
   waiting ||= [];
-  const attempt = recovering = { n: 0 }, held = stateBytes(), until = t0 + (dev && globalThis.coaxialRecoverMs || RECOVER_MS);
+  // Optional v1 scalar ABI: the Coax realm declares its recovery window in milliseconds.
+  // Existing realms retain RECOVER_MS; the platform only applies the selected deadline.
+  const realmRecoveryMs = engine.exports.coaxial_gpu_recover_ms_v1?.() ?? RECOVER_MS;
+  const attempt = recovering = { n: 0 }, held = stateBytes(), until = t0 + (dev && globalThis.coaxialRecoverMs || realmRecoveryMs);
   globalThis.coaxial.gpuRecovery = { state: "recovering", reason: info.reason, losses: losses.length };
   let error = null;
   await retiredPacks;

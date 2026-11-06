@@ -1,0 +1,52 @@
+// Original world geometry/placements and source maps; Echo uses the shared source shader.
+#load "valleycanyon.coax";
+#load "../../../verse/valley/world-materials.coax";
+#test "World sky has a bright horizon and a finite sun disc" {u:[128]f32;u[0]=1280;u[1]=800;u[15]=1;u[19]=1;u[17]=1;u[22]=1;u[25]=1;a:=vw_bg_fs(v4(640,400,0,1),u[..]);#assert a.x>0 && a.w==1;}
+vw_at :: (b:[]u32,at:int)->V3 {return v3(cv_word(b,at),cv_word(b,at+1),cv_word(b,at+2));}
+vw_matrix :: (b:[]u32,at:int,p:V3,w:f32)->V3 {return v3(wg_dot3(vw_at(b,at),p)+cv_word(b,at+3)*w,wg_dot3(vw_at(b,at+4),p)+cv_word(b,at+7)*w,wg_dot3(vw_at(b,at+8),p)+cv_word(b,at+11)*w);}
+vw_world :: (id:u32,instance:u32,vertices:[]u32,u:[]f32)->V3 {
+ at:=ifx id<504367 then cast(int)id*12 else cast(int)u[116]+(cast(int)id-2000000)*9;
+ m:=cast(int)u[120]+(cast(int)instance-3)*24;return vw_matrix(vertices,m,vw_at(vertices,at),1);
+}
+vw_bg_vs :: (i:u32,j:u32)->V4 {return vc_bg_vs(i,j);}
+vw_bg_fs :: (p:V4,u:[]f32)->V4 {
+ if u[110]>0.5 {return vc_bg_fs(p,u);}
+ ray:=wg_normalize3(cv_add(cv_at(u,20),cv_add(cv_scale(cv_at(u,12),(p.x/u[0]*2-1)/u[15]),cv_scale(cv_at(u,16),(1-p.y/u[1]*2)/u[19]))));
+ t:=pow(clampf(ray.y,0.0f32,1.0f32),0.45f32);c:=cv_add(cv_scale(v3(0.73,0.73,0.66),1-t),cv_scale(v3(0.16,0.36,0.57),t));sun:=pow(fmax(0.0f32,wg_dot3(ray,cv_at(u,24))),1024.0f32);c=cv_add(c,cv_scale(v3(1,0.84,0.55),sun));return v4(c.x,c.y,c.z,1);
+}
+vw_fx_vs :: (i:u32,j:u32,a:vc_vertex,u:[]f32)->SplashV {return vc_fx_vs(i,j,a,u);}
+vw_fx_fs :: (v:SplashV,u:[]f32)->V4 {return vc_fx_fs(v,u);}
+vw_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,bones:[]f32)->CanyonSurface {
+ if instance<3 {return vc_scene_vs(id,instance,u,vertices,bones);}
+ world:=vw_world(id,instance,vertices,u);at:=ifx id<504367 then cast(int)id*12 else cast(int)u[116]+(cast(int)id-2000000)*9;m:=cast(int)u[120]+(cast(int)instance-3)*24;
+ normal:=vw_matrix(vertices,m+12,vw_at(vertices,at+3),0);uv:=v2(cv_word(vertices,at+6),cv_word(vertices,at+7));r:=cv_sub(world,cv_at(u,8));z:=wg_dot3(r,cv_at(u,20));base:=ifx id<504367 then cast(u32)0 else vertices[at+8];override:=vertices[m+15];material:=cast(f32)(ifx (base>>16)==0 && override>0 then override else base&65535);
+ return CanyonSurface.{pos=v4(wg_dot3(r,cv_at(u,12))*u[15],wg_dot3(r,cv_at(u,16))*u[19],300.0/299.95*(z-0.05),z),world=world,normal=normal,uv=uv,paint=v4(1,1,1,1),tangent=v4(0,0,0,1),character= -1,material=material};
+}
+vw_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,bones:[]f32)->CanyonShadow {
+ if instance<3 {return vc_shadow_vs(id,instance,u,vertices,bones);}
+ q:=cv_shadow(vw_world(id,instance,vertices,u),u);return CanyonShadow.{pos=v4(q.x,q.y,q.z,1),uv=v2(0,0),character=0,material=0};
+}
+vw_shadow_fs :: (s:CanyonShadow,vertices:[]u32,sheets:Tex2DArray,sheet:Sampler) {vc_shadow_fs(s,vertices,sheets,sheet);}
+vw_rgb :: (a:V4)->V3 {return v3(a.x,a.y,a.z);}
+vw_butte_adjust :: (a:V3,b:[]u32,at:int)->V3 {c:=vw_at(b,at);t:=vw_at(b,at+3);grey:=a.x*0.3+a.y*0.59+a.z*0.11;return v3(world_butte_channel(a.x,grey,c.x,c.y,t.x,c.z),world_butte_channel(a.y,grey,c.x,c.y,t.y,c.z),world_butte_channel(a.z,grey,c.x,c.y,t.z,c.z));}
+vw_planar :: (sheets:Tex2DArray,sheet:Sampler,layer:int,p:V2,dx:V2,dy:V2,metres:f32)->V3 {return vw_rgb(render_sample_layer8_grad(sheets,sheet,cv_scale2(p,1/metres),cast(s32)layer,cv_scale2(dx,1/metres),cv_scale2(dy,1/metres),0));}
+vw_butte_colour :: (s:CanyonSurface,b:[]u32,m:int,sheets:Tex2DArray,sheet:Sampler,dx:V2,dy:V2,px:V3,py:V3)->V3 {
+ // Restore the original absolute Unreal position in metres for the source world-aligned layers.
+ p:=v3(s.world.x-23.41011254,s.world.z-4.53311970,s.world.y-11.30145871);x:=v3(px.x,px.z,px.y);y:=v3(py.x,py.z,py.y);n:=wg_normalize3(s.normal);weights:=v3(pow(abs(n.x),3.0f32),pow(abs(n.z),3.0f32),pow(abs(n.y),3.0f32));sum:=weights.x+weights.y+weights.z;
+ layer:=cast(int)b[m];tile:=cv_word(b,m+26);xy:=vw_planar(sheets,sheet,layer,v2(p.x,p.y),v2(x.x,x.y),v2(y.x,y.y),tile);xz:=vw_planar(sheets,sheet,layer,v2(p.x,p.z),v2(x.x,x.z),v2(y.x,y.z),tile);yz:=vw_planar(sheets,sheet,layer,v2(p.y,p.z),v2(x.y,x.z),v2(y.y,y.z),tile);
+ cliff:=vw_butte_adjust(cv_scale(cv_add(cv_scale(xy,weights.z),cv_add(cv_scale(xz,weights.y),cv_scale(yz,weights.x))),1/sum),b,m+20);
+ flat:=vw_butte_adjust(vw_planar(sheets,sheet,cast(int)b[m+17]-1,v2(p.x,p.y),v2(x.x,x.y),v2(y.x,y.y),cv_word(b,m+34)),b,m+28);rocks:=vw_butte_adjust(vw_planar(sheets,sheet,cast(int)b[m+18]-1,v2(p.x,p.y),v2(x.x,x.y),v2(y.x,y.y),cv_word(b,m+42)),b,m+36);
+ mask:=render_sample_layer8_grad(sheets,sheet,s.uv,cast(s32)b[m+19]-1,dx,dy,0);base:=v3(world_butte_mix(flat.x,cliff.x,rocks.x,mask.x,mask.y),world_butte_mix(flat.y,cliff.y,rocks.y,mask.x,mask.y),world_butte_mix(flat.z,cliff.z,rocks.z,mask.x,mask.y));grey:=base.x*0.3+base.y*0.59+base.z*0.11;desat:=cv_word(b,m+46);base=cv_add(cv_scale(base,1-desat),cv_scale(v3(grey,grey,grey),desat));overlay:=vw_rgb(render_sample_layer8_grad(sheets,sheet,s.uv,cast(s32)b[m+44]-1,dx,dy,0));amount:=cv_word(b,m+45);return cv_add(cv_scale(base,1-amount),cv_scale(overlay,amount));
+}
+vw_scene_fs :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices:[]u32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
+ dx:=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y));dy:=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y));px:=v3(gpu_dpdx_fine(s.world.x),gpu_dpdx_fine(s.world.y),gpu_dpdx_fine(s.world.z));py:=v3(gpu_dpdy_fine(s.world.x),gpu_dpdy_fine(s.world.y),gpu_dpdy_fine(s.world.z));
+ if s.character>=0 {return cv_scene_shade(s,u,sheets,sheet,vertices,shadow_map,shadow_cmp,dx,dy);}
+ m:=cast(int)u[124]+cast(int)s.material*WORLD_MATERIAL_WORDS;tile:=cv_word(vertices,m+8);uv:=v2(s.uv.x*tile,s.uv.y*tile);a:=render_sample_layer8_grad(sheets,sheet,uv,cast(s32)vertices[m],cv_scale2(dx,tile),cv_scale2(dy,tile),0);contrast:=cv_word(vertices,m+12);base:=v3(pow(a.x,contrast),pow(a.y,contrast),pow(a.z,contrast));grey:=base.x*0.3+base.y*0.59+base.z*0.11;saturation:=cv_word(vertices,m+11);base=cv_add(cv_scale(v3(grey,grey,grey),1-saturation),cv_scale(base,saturation));albedo:=v3(base.x*cv_word(vertices,m+4),base.y*cv_word(vertices,m+5),base.z*cv_word(vertices,m+6));rough:=cv_word(vertices,m+7);n:=wg_normalize3(s.normal);
+ layered:=(vertices[m+3]&4)!=0;if layered {albedo=vw_butte_colour(s,vertices,m,sheets,sheet,dx,dy,px,py);}
+ rough_layer:=cast(int)vertices[m+1]-1;if (vertices[m+3]&2)!=0 {rough=world_derived_roughness(ifx layered then albedo.x else a.x,cv_word(vertices,m+13),cv_word(vertices,m+14));}else if rough_layer>=0 {r:=render_sample_layer8_grad(sheets,sheet,uv,cast(s32)rough_layer,cv_scale2(dx,tile),cv_scale2(dy,tile),0);value:=cv_srgb(ifx (vertices[m+3]&1)!=0 then r.y else r.x);rough=world_material_sat(mix(cv_word(vertices,m+15),cv_word(vertices,m+16),pow(value,cv_word(vertices,m+13))*cv_word(vertices,m+14)));}
+ normal_layer:=cast(int)vertices[m+2]-1;if normal_layer>=0 && !layered {nt:=cv_word(vertices,m+9);map:=cv_echo_normal(render_sample_layer8_grad(sheets,sheet,v2(s.uv.x*nt,s.uv.y*nt),cast(s32)normal_layer,cv_scale2(dx,nt),cv_scale2(dy,nt),0),cv_word(vertices,m+10));den:=dx.x*dy.y-dx.y*dy.x;if abs(den)>0.00000001 {t:=wg_normalize3(cv_scale(cv_sub(cv_scale(px,dy.y),cv_scale(py,dx.y)),1/den));b:=wg_normalize3(cv_scale(cv_sub(cv_scale(py,dx.x),cv_scale(px,dy.x)),1/den));n=wg_normalize3(cv_add(cv_scale(t,map.x),cv_add(cv_scale(b,map.y),cv_scale(n,map.z))));}}
+ rough=clampf(rough,0.08f32,1.0f32);if u[4]>0.5 && u[4]<1.5 {return v4(cv_srgb(albedo.x),cv_srgb(albedo.y),cv_srgb(albedo.z),1);}if u[4]>1.5 && u[4]<2.5 {return v4(n.x*0.5+0.5,n.y*0.5+0.5,n.z*0.5+0.5,1);}if u[4]>2.5 {return v4(rough,rough,rough,1);}
+ l:=cv_at(u,24);v:=wg_normalize3(cv_sub(cv_at(u,8),s.world));halfway:=wg_normalize3(cv_add(l,v));nl:=fmax(0.0f32,wg_dot3(n,l));nv:=fmax(0.0001f32,wg_dot3(n,v));nh:=fmax(0.0f32,wg_dot3(n,halfway));vh:=fmax(0.0f32,wg_dot3(v,halfway));alpha:=rough*rough;aa:=alpha*alpha;den:=nh*nh*(aa-1)+1;k:=(rough+1)*(rough+1)/8;spec:=aa/(3.14159265*den*den)*nv/(nv*(1-k)+k)*nl/(nl*(1-k)+k)*(0.04+0.96*pow(1-vh,5.0f32))/(4*nv*fmax(nl,0.0001f32));
+ q:=cv_shadow(s.world,u);shadow:f32=1;if abs(q.x)<1 && abs(q.y)<1 && q.z>0 && q.z<1 {shadow=gpu_compare(shadow_map,shadow_cmp,v2(q.x*0.5+0.5,0.5-q.y*0.5),q.z-0.0002);}
+ colour:=cv_add(cv_scale(albedo,0.16+0.18*(n.y*0.5+0.5)+nl*shadow*3.5/3.14159265),v3(spec*nl*shadow*3.5,spec*nl*shadow*3.3,spec*nl*shadow*3));mapped:=film_rec709(film_rgb(colour.x,colour.y,colour.z));lit:=v3(cv_srgb(clampf(mapped.r,0.0f32,1.0f32)),cv_srgb(clampf(mapped.g,0.0f32,1.0f32)),cv_srgb(clampf(mapped.b,0.0f32,1.0f32)));distance:=sqrt(wg_dot3(cv_sub(s.world,cv_at(u,8)),cv_sub(s.world,cv_at(u,8))));fog:=1-exp(-distance*0.0025);c:=cv_add(cv_scale(lit,1-fog),cv_scale(v3(0.73,0.73,0.66),fog));return v4(c.x,c.y,c.z,1);
+}

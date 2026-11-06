@@ -1,0 +1,36 @@
+// Merge independent, data-only SDK export batches. Source packages are never changed.
+// ROOT [PART_DIRECTORY ...], e.g. .../world-source part024 part040 part056 part072 part088
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+WmDoc :: struct {text:[33554432]u8;nodes:[1048576]JvNode;d:[1]Jv;}
+WmNames :: struct {bytes:[512][512]u8;length:[512]int;n:int;}
+WmMeshMatch :: struct {row:int= -1;index:int= -1;}
+#test "SDK merge resolves reordered export meshes by full source identity" {nodes:[32]JvNode;d:[1]Jv;#assert jv_parse(d[..],"{\"meshes\":[{\"path\":\"/B\"},{\"path\":\"/A\"},{\"path\":\"/AB\"}]}",nodes[..]);a:=wm_find_mesh(d[0],"/A");#assert a.index==1 && a.row>=0 && wm_find_mesh(d[0],"/AB").index==2 && wm_find_mesh(d[0],"/missing").row== -1;}
+wm_find_mesh :: (d:Jv,identity:string)->WmMeshMatch {list:=jv_get(d,0,"meshes");for k:0..<jv_len(d,list) {row:=jv_at(d,list,k);if jv_raw(d,jv_get(d,row,"path"))==identity {return WmMeshMatch.{row=row,index=k};}}return WmMeshMatch.{};}
+#test "SDK merge deduplicates whole source identities rather than name prefixes" {s:[1]WmNames;#assert wm_add(s[..],"/Game/Rock.A") && !wm_add(s[..],"/Game/Rock.A") && wm_add(s[..],"/Game/Rock.AB") && s[0].n==2;}
+wm_add :: (s:[]WmNames,name:string)->bool {#assert name.count<512;for k:0..<s[0].n {if cast(string)s[0].bytes[k][0..<s[0].length[k]]==name {return false;}}#assert s[0].n<512;k:=s[0].n;for c,i:name {s[0].bytes[k][i]=c;}s[0].length[k]=name.count;s[0].n+=1;return true;}
+wm_load :: (s:[]WmDoc,path:string) {n:=fs_read(path,s[0].text[..]);#assert n>0 && jv_parse(s[0].d[..],cast(string)s[0].text[0..<n],s[0].nodes[..]);}
+wm_get :: (s:[]WmDoc,node:int,key:string)->int {return jv_get(s[0].d[0],node,key);}
+wm_str :: (s:[]WmDoc,node:int,key:string)->string {return jv_raw(s[0].d[0],wm_get(s,node,key));}
+wm_name :: (index:int,suffix:string,b:[]u8)->string {prefix:="mesh";for c,k:prefix {b[k]=c;}b[4]=cast(u8)(48+index/100);b[5]=cast(u8)(48+(index/10)%10);b[6]=cast(u8)(48+index%10);for c,k:suffix {b[7+k]=c;}return cast(string)b[0..<7+suffix.count];}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])<1 || args_count(a[..])>8 {return 2;}root:=args_at(a[..],0);nparts:=args_count(a[..]);world:[8]WmDoc;material:[8]WmDoc;path:[4096]u8;partpath:[4096]u8;
+ for k:0..<nparts {part:=ifx k==0 then root else fs_join(root,args_at(a[..],k),partpath[..]);wm_load(world[k..<k+1],fs_join(part,"world.json",path[..]));wm_load(material[k..<k+1],fs_join(part,"materials.json",path[..]));}
+ materials:[8388608]u8;textures:[2097152]u8;mo:[1]Jo;to:[1]Jo;mn:[1]WmNames;tn:[1]WmNames;
+ jo_start(mo[..],materials[..]);jo_arr(mo[..]);jo_start(to[..],textures[..]);jo_arr(to[..]);
+ for k:0..<nparts {s:=material[k..<k+1];d:=s[0].d[0];m:=wm_get(s,0,"materials");for i:0..<jv_len(d,m) {row:=jv_at(d,m,i);if wm_add(mn[..],wm_str(s,row,"path")) {jv_write(d,row,mo[..]);}}
+  t:=wm_get(s,0,"textures");for i:0..<jv_len(d,t) {row:=jv_at(d,t,i);if wm_add(tn[..],wm_str(s,row,"path")) {jo_obj(to[..]);for key:[4]string.["path","file","width","height"] {jo_key(to[..],key);if key=="file" && k>0 {jo_str(to[..],fs_join(args_at(a[..],k),wm_str(s,row,"file"),path[..]));}else {jv_write(d,wm_get(s,row,key),to[..]);}}jo_end(to[..]);}}
+ }jo_end(mo[..]);jo_end(to[..]);#assert !mo[0].bad && !to[0].bad;
+ out:[33554432]u8;j:[1]Jo;jo_start(j[..],out[..]);jo_obj(j[..]);jo_key(j[..],"materials");jo_raw(j[..],jo_text(mo[..]));jo_key(j[..],"textures");jo_raw(j[..],jo_text(to[..]));jo_end(j[..]);#assert fs_write(fs_join(root,"materials.json",path[..]),jo_text(j[..]));
+ jo_start(j[..],out[..]);jo_obj(j[..]);base:=world[0].d[0];
+ for key:[5]string.["schema","engine","actors","instances","meshes"] {node:=jv_get(base,0,key);if node<0 {continue;}jo_key(j[..],key);if key!="meshes" {jv_write(base,node,j[..]);continue;}
+  jo_arr(j[..]);for mesh:0..<jv_len(base,node) {selected:=0;selected_row:=jv_at(base,node,mesh);identity:=jv_raw(base,jv_get(base,selected_row,"path"));selected_mesh:=mesh;file:[128]u8;
+   for p:1..<nparts {s:=world[p..<p+1];match:=wm_find_mesh(s[0].d[0],identity);if match.row<0 || wm_get(s,match.row,"materials")<0 {continue;}name:=wm_name(match.index,".gltf",file[..]);dir:=fs_join(root,args_at(a[..],p),partpath[..]);if fs_size(fs_join(dir,name,path[..]))>0 {selected=p;selected_row=match.row;selected_mesh=match.index;}}
+   if selected==0 {jv_write(base,selected_row,j[..]);}else {s:=world[selected..<selected+1];jo_obj(j[..]);for field:[2]string.["path","materials"] {jo_key(j[..],field);jv_write(s[0].d[0],wm_get(s,selected_row,field),j[..]);}jo_key(j[..],"gltf");jo_str(j[..],fs_join(args_at(a[..],selected),wm_name(selected_mesh,".gltf",file[..]),path[..]));jo_end(j[..]);}
+  }jo_end(j[..]);
+ }jo_end(j[..]);#assert !j[0].bad && fs_write(fs_join(root,"world.json",path[..]),jo_text(j[..]));
+ print("Merged SDK materials=% textures=% batches=%\n",mn[0].n,tn[0].n,nparts);return 0;
+}

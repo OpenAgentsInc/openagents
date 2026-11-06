@@ -131,6 +131,11 @@ cv_orb_shade :: (s:CanyonSurface,u:[]f32,vertices:[]u32)->V4 {
 vc_scene_fs :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices:[]u32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
   if u[112]>0.5 && abs(1-s.pos.y/u[1]*2)>u[0]/u[1]/u[113] {gpu_discard();}
   dx:=v2(gpu_dpdx_fine(s.uv.x),gpu_dpdx_fine(s.uv.y));dy:=v2(gpu_dpdy_fine(s.uv.x),gpu_dpdy_fine(s.uv.y));
+  return cv_scene_shade(s,u,sheets,sheet,vertices,shadow_map,shadow_cmp,dx,dy);
+}
+#test "Walking Valley and Slay retain their own source head material profiles" {a:=v3(0.2,0.1,0.05);v:=cv_profile_head_colour(a,true);s:=cv_profile_head_colour(a,false);#assert v.x==cv_echo_head_colour(a).x && s.x==cv_echo_slay_head_colour(a).x && v.x!=s.x;}
+cv_profile_head_colour :: (a:V3,valley:bool)->V3 {return ifx valley then cv_echo_head_colour(a) else cv_echo_slay_head_colour(a);}
+cv_scene_shade :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices:[]u32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,dx:V2,dy:V2)->V4 {
   if s.material==29 {return cv_orb_shade(s,u,vertices);}
   n:=wg_normalize3(s.normal);albedo:=v3(1,1,1);rough:f32=0.65;metal:f32=0;
 
@@ -138,7 +143,7 @@ vc_scene_fs :: (s:CanyonSurface,u:[]f32,sheets:Tex2DArray,sheet:Sampler,vertices
    if colour>=0 {a:=render_sample_layer8_grad(sheets,sheet,s.uv,cast(s32)colour,dx,dy,0);albedo=v3(albedo.x*a.x,albedo.y*a.y,albedo.z*a.z);}if orm>=0 {a:=render_sample_layer8_grad(sheets,sheet,s.uv,cast(s32)orm,dx,dy,0);rough=cv_srgb(a.y);metal=cv_srgb(a.z);}
    if (s.material==26 || s.material==27) {albedo=cv_echo_groom_colour(s.uv.x,s.uv.y);metal=0;rough=mix(0.32f32,0.45f32,s.uv.y)*(1+0.1*s.uv.x);}
    if s.material==ECHO_LASH_SLOT {albedo=cv_scale(v3(mix(0.08f32,0.16f32,s.uv.y),mix(0.053397f32,0.090834f32,s.uv.y),mix(0.04f32,0.056f32,s.uv.y)),0.5);rough=0.6;metal=0;}
-   if s.material==ECHO_HEAD_SLOT {albedo=cv_echo_slay_head_colour(albedo);metal=0;macro:=render_sample_layer8_grad(sheets,sheet,s.uv,26,dx,dy,0);additional:=render_sample_layer8_grad(sheets,sheet,s.uv,27,dx,dy,0);rough=macro.x+rough*0.2+additional.x;}
+   if s.material==ECHO_HEAD_SLOT {albedo=cv_profile_head_colour(albedo,u[114]<0);metal=0;macro:=render_sample_layer8_grad(sheets,sheet,s.uv,26,dx,dy,0);additional:=render_sample_layer8_grad(sheets,sheet,s.uv,27,dx,dy,0);rough=macro.x+rough*0.2+additional.x;}
    if s.material==ECHO_SKIN_SLOT {albedo=cv_echo_body_colour(albedo);rough=rough*0.2+0.45*0.8;metal=0;}
    if s.material==ECHO_EYE_LEFT_SLOT || s.material==ECHO_EYE_RIGHT_SLOT {x:=s.uv.x-0.5;y:=s.uv.y-0.5;r:=sqrt(x*x+y*y);iris_uv:=cv_echo_pupil(v2(x/0.3+0.5,y/0.3+0.5));iris:=render_sample_layer8_grad(sheets,sheet,iris_uv,9,cv_scale2(dx,1/0.3),cv_scale2(dy,1/0.3),0);mask:=1-smoothstep(0.115f32,0.15f32,r);limbus:=1-pow(fmin(1.0f32,sqrt((iris_uv.x-0.5)*(iris_uv.x-0.5)+(iris_uv.y-0.5)*(iris_uv.y-0.5))*2.15),8.0f32);ic:=v3(pow(iris.x*0.723055*1.4*2,1.1f32),pow(iris.y*0.644480*1.4*2,1.1f32),pow(iris.z*0.623960*1.4*2,1.1f32));sclera:=v3(albedo.x*0.541667,albedo.y*0.494239,albedo.z*0.460880);albedo=cv_add(cv_scale(sclera,1-mask),cv_scale(ic,mask*limbus));corner:=cv_echo_eye_shadow(r);albedo=v3(albedo.x*mix(0.23f32,1.0f32,corner)*1.4,albedo.y*mix(0.083042f32,1.0f32,corner)*1.4,albedo.z*mix(0.031906f32,1.0f32,corner)*1.4);}
    if normal_map>=0 {a:=render_sample_layer8_grad(sheets,sheet,s.uv,cast(s32)normal_map,dx,dy,0);strength:=ifx s.material==ECHO_HEAD_SLOT then 0.65f32 else ifx s.material==ECHO_SKIN_SLOT then 1.0f32 else ifx s.material==5 || s.material==13 then 0.7f32 else ifx cv_echo_core_material(s.material) then 0.65f32 else 1.0f32;map:=cv_echo_normal(a,strength);

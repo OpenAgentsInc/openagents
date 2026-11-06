@@ -1,0 +1,33 @@
+#test "World trailer requires a complete bounded grid and draw table" {
+ b:[VW_CATALOG_CAP]u8;n:=vw_fixture(b[..]);#assert vw_catalog_valid(b[0..<n]);
+ #assert !vw_catalog_valid(b[0..<63]) && !vw_catalog_valid(b[0..<n-1]) && !vw_catalog_valid(b[0..<n+1]);
+ #assert !vw_header_size(63) && vw_header_size(64) && vw_header_size(65);
+}
+#forall "World catalogue ranges have exact inclusive endpoints" k:0..<8 {
+ v:=[4]int.[1,77954848,29710980,33];slot:=k/2;v[slot]=[8]int.[1,32768,77954848,268435456,29710980,134217728,33,256][k];#assert vw_ranges(v[0],v[1],v[2],v[3]);v[slot]+=(ifx k%2==0 then -1 else 1);#assert !vw_ranges(v[0],v[1],v[2],v[3]);
+}
+#forall "World float guards preserve finite low bits and reject nonfinite exponents" k:0..<6 {
+ #assert vw_float([6]u32.[0,0x3f800000,0x3f800001,0xbf800001,0x7f7fffff,0xff7fffff][k],-3.402823466e38,3.402823466e38);
+ #assert !vw_float([6]u32.[0x7f800000,0x7f800001,0x7fc00000,0xff800000,0xff800001,0xffc00000][k],-512,512);
+ #assert vw_float(f32_bits(-128.0f32),-128,256) && vw_float(f32_bits(256.0f32),-128,256);
+ #assert !vw_float(f32_bits(-129.0f32),-128,256) && !vw_float(f32_bits(257.0f32),-128,256);
+}
+#test "World number spans visit every word and reject partial bytes" {b:[16]u8;for k:0..<4 {scan_put(b[..],k*4,f32_bits(cast(f32)k));}#assert vw_numbers(b[..],0,3) && vw_numbers(b[0..<0],0,3);for k:0..<4 {c:=b;scan_put(c[..],k*4,f32_bits(4.0f32));#assert !vw_numbers(c[..],0,3);}#assert !vw_numbers(b[0..<15],0,3);}
+#test "World draw range helpers check zero exact end and negative inputs" {#assert vw_span(0,3,3) && vw_span(1,3,4);#assert !vw_span(-1,3,4) && !vw_span(0,2,3) && !vw_span(5,3,4) && !vw_span(0,4,3);}
+#test "World catalogue visits distinct consecutive draws" {b:[VW_CATALOG_CAP]u8;n:=vw_fixture(b[..]);at:=n-32;for k:0..<32 {b[n+k]=b[at+k];}scan_put(b[..],8,2);scan_put(b[..],n+8,4);#assert vw_catalog_valid(b[0..<n+32]);scan_put(b[..],n+8,3);#assert !vw_catalog_valid(b[0..<n+32]);}
+#test "World draw bounds include their exact endpoints" {d:[32]u8;scan_put(d[..],4,3);scan_put(d[..],8,3);scan_put(d[..],12,1);#assert vw_draw(d[..],0,3);for k:0..<3 {scan_put(d[..],16+k*4,f32_bits(ifx k%2==0 then 512.0f32 else -512.0f32));}scan_put(d[..],28,f32_bits(512.0f32));#assert vw_draw(d[..],0,3);for k:0..<4 {c:=d;scan_put(c[..],16+k*4,f32_bits(513.0f32));#assert !vw_draw(c[..],0,3);}scan_put(d[..],28,0);#assert vw_draw(d[..],0,3);}
+#forall "World trailer refuses every changed structural word" k:0..<8 {
+ b:[VW_CATALOG_CAP]u8;n:=vw_fixture(b[..]);scan_put(b[..],k*4,[8]u32.[0,2,0,0,0,0,256,0][k]);#assert !vw_catalog_valid(b[0..<n]);
+}
+#forall "World trailer refuses nonfinite grid descriptor or collision heights" k:0..<4 {
+ b:[VW_CATALOG_CAP]u8;n:=vw_fixture(b[..]);scan_put(b[..],[4]int.[32,36,40,64][k],0x7fc00000);#assert !vw_catalog_valid(b[0..<n]);
+}
+#test "World draw ranges cannot escape the index buffer or instance matrix table" #steps 100000000 {
+ b:[VW_CATALOG_CAP]u8;n:=vw_fixture(b[..]);at:=VW_HEADER+VW_POINTS*4;
+ for k:0..<7 {c:=b;scan_put(c[..],at+[7]int.[0,4,4,8,12,16,28][k],[7]u32.[7427748,0,4,2,2,0x7f800000,0xbf800000][k]);#assert !vw_catalog_valid(c[0..<n]);}
+}
+vw_fixture :: (b:[]u8)->int {
+ values:=[8]u32.[0x31445756,1,1,77954896,29710992,33,257,66049];for k:0..<8 {scan_put(b,k*4,values[k]);}
+ for k:0..<3 {scan_put(b,32+k*4,f32_bits([3]f32.[-112,-112,1][k]));}
+ at:=VW_HEADER+VW_POINTS*4;scan_put(b,at,7427745);scan_put(b,at+4,3);scan_put(b,at+8,3);scan_put(b,at+12,1);scan_put(b,at+28,f32_bits(2));return at+VW_DRAW_BYTES;
+}

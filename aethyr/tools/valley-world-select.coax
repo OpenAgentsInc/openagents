@@ -1,0 +1,16 @@
+// Select the detailed nine cells plus original structural ground in their surrounding source cells.
+// SDK_INVENTORY OUTPUT; selection arithmetic belongs here, SDK loading remains in Python.
+// tool.sh: stack-gib 2
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../verse/tools/humans/ph_num.coax";
+ws_has :: (s:string,part:string)->bool {if s.count<part.count {return false;}for at:0..<s.count-part.count+1 {same:=true;for k:0..<part.count {if s[at+k]!=part[k] {same=false;break;}}if same {return true;}}return false;}
+#test "Source cut retains original detailed cells and all nearby original placements" {#assert ws_keep("_L0_","/Game/Pebble",100000,100000);#assert ws_keep("_L3_","/Game/Pebble",0,0);#assert !ws_keep("_L3_","/Geometry/LightBlockers/Box",0,0);#assert ws_keep("_L4_","/Geometry/MASS/Ground",-15541,-13653) && ws_keep("_L4_","/Geometry/MASS/Ground",14058,15946);#assert ws_keep("_L4_","/Geometry/MASS/Ground",24058,25946);#assert !ws_keep("_L4_","/Game/Pebble",14059,0);}
+ws_keep :: (actor:string,mesh:string,x:f64,y:f64)->bool {return ws_has(actor,"_L0_") || (!ws_has(mesh,"/LightBlockers/") && ((x>= -15541 && x<=14058 && y>= -13653 && y<=15946) || (ws_has(mesh,"/Geometry/") && x>= -25541 && x<=24058 && y>= -23653 && y<=25946)));}
+tool_main :: ()->int #export_c {
+ a:[1]Args;if !args_load(a[..]) || args_count(a[..])!=2 {return 2;}text:[67108864]u8;nodes:[4194304]JvNode;doc:[1]Jv;n:=fs_read(args_at(a[..],0),text[..]);#assert n>0 && jv_parse(doc[..],cast(string)text[0..<n],nodes[..]);d:=doc[0];list:=jv_get(d,0,"instances");count:=jv_len(d,list);#assert count<100000;keep:[100000]bool;need_mesh:[512]bool;need_actor:[512]bool;meshes:=jv_get(d,0,"meshes");actors:=jv_get(d,0,"actors");nm:=jv_len(d,meshes);na:=jv_len(d,actors);#assert nm<=512 && na<=512;selected:=0;instance_nodes:[100000]int;node:=d.nodes[list].first;for k:0..<count {instance_nodes[k]=node;node=d.nodes[node].next;}
+ for k:0..<count {row:=instance_nodes[k];actor:=jv_raw(d,jv_get(d,row,"actor"));mesh:=jv_raw(d,jv_get(d,row,"mesh"));t:=jv_get(d,row,"translation_cm");x:=pn_f(jv_raw(d,jv_at(d,t,0)));y:=pn_f(jv_raw(d,jv_at(d,t,1)));if !ws_keep(actor,mesh,x,y) {continue;}keep[k]=true;selected+=1;for i:0..<nm {if jv_raw(d,jv_get(d,jv_at(d,meshes,i),"path"))==mesh {need_mesh[i]=true;}}for i:0..<na {if jv_raw(d,jv_get(d,jv_at(d,actors,i),"label"))==actor {need_actor[i]=true;}}}
+ out:[33554432]u8;j:[1]Jo;jo_start(j[..],out[..]);jo_obj(j[..]);for key:[5]string.["schema","engine","actors","meshes","instances"] {at:=jv_get(d,0,key);if at<0 {continue;}jo_key(j[..],key);if key=="schema" || key=="engine" {jv_write(d,at,j[..]);continue;}jo_arr(j[..]);child:=d.nodes[at].first;for k:0..<jv_len(d,at) {if (key=="instances" && keep[k]) || (key=="meshes" && need_mesh[k]) || (key=="actors" && need_actor[k]) {jv_write(d,child,j[..]);}child=d.nodes[child].next;}jo_end(j[..]);}jo_end(j[..]);#assert !j[0].bad && fs_write(args_at(a[..],1),jo_text(j[..]));print("Selected source instances=%\n",selected);return 0;
+}

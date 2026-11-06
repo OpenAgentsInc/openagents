@@ -1,6 +1,6 @@
 # Valley Lab: build a valley from checked Aethyr primitives
 
-Status: active implementation roadmap, updated 2026-11-05. The initial
+Status: active implementation roadmap, updated 2026-11-06. The initial
 walkable world, procedural asset/indexed baseline, bounded leaves, ownership
 hierarchy, parent simplification, screen-error cuts and HTTP page stations now
 run locally, including adjacent nonplanar grid parents and a deterministic
@@ -24,6 +24,23 @@ project is a reference for scale, composition and system decomposition.
 The first useful release is a walkable graybox plus a station holding one
 rock. The final destination is the complete valley experience, reached by
 small, independently reviewable steps rather than one scene-sized rewrite.
+
+## Landed: nine original world cells with Echo (2026-11-06)
+
+`N WORLD` opens `/worlds/valley-world?pack=valley-world`, a roughly 250 metre
+Ancient World slice: 27,501 original placements, 130 fallback meshes, 90 materials
+and 240 texture layers including Echo. The four basin/west/east/north waypoints,
+keyboard and touch movement, jump, source-ground reset and material diagnostics
+make the composition navigable. The original Valley Echo body rig and clips
+remain separate from the Slay performance inspector on `P`.
+
+The pack is private and SHA-256 pinned. Geometry, UVs, indices, placements,
+component overrides and resized source pixels have an independent oracle.
+The renderer ports the recovered color, normal and S-curve roughness settings;
+it does not yet reproduce Unreal's complete lighting/material pipeline or
+Nanite source. Collision uses a bounded one-metre sampled top surface with
+explicit holes, rather than exact triangles and overhangs. The full source and
+verification scope is in the [world slice receipt](../verification/valley-lab-world-2026-11-06/README.md).
 
 ## Landed: graybox, one rock and its full-detail baseline
 

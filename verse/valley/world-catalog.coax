@@ -1,0 +1,29 @@
+// Immutable scenery/collision trailer after Echo's original rig, covered by the whole pack identity.
+#load "scan.coax";
+#authority;
+VW_GRID :: 257;
+VW_POINTS :: VW_GRID*VW_GRID;
+VW_DRAWS :: 32768;
+VW_HEADER :: 64;
+VW_DRAW_BYTES :: 32;
+VW_CATALOG_CAP :: VW_HEADER+VW_POINTS*4+VW_DRAWS*VW_DRAW_BYTES;
+vw_header_size :: (n:int)->bool {return n>=64;}
+vw_ranges :: (n:int,vb:int,ib:int,layers:int)->bool {return n>=1 && n<=32768 && vb>=77954848 && vb<=268435456 && ib>=29710980 && ib<=134217728 && layers>=33 && layers<=256;}
+vw_float :: (bits:u32,low:f32,high:f32)->bool {if (bits&0x7f800000)==0x7f800000 {return false;}v:=f32_from_bits(bits);return v>=low && v<=high;}
+vw_numbers :: (b:[]u8,low:f32,high:f32)->bool {if b.count%4!=0 {return false;}for k:0..<b.count/4 {if !vw_float(scan_u32(b,k*4),low,high) {return false;}}return true;}
+vw_span :: (first:int,count:int,words:int)->bool {return first>=0 && count>=3 && count<=words-first;}
+vw_draw :: (b:[]u8,ordinal:int,words:int)->bool {
+ first:=cast(int)scan_u32(b,0);count:=cast(int)scan_u32(b,4);
+ return vw_span(first,count,words) && count%3==0 && cast(int)scan_u32(b,8)==ordinal+3 && scan_u32(b,12)==1 && vw_numbers(b[16..<28],-512,512) && vw_float(scan_u32(b,28),0,512);
+}
+vw_catalog_valid :: (b:[]u8)->bool {
+ if !vw_header_size(b.count) {return false;}
+ if scan_u32(b,0)!=0x31445756 || scan_u32(b,4)!=1 || scan_u32(b,24)!=257 || scan_u32(b,28)!=66049 {return false;}
+ n:=cast(int)scan_u32(b,8);vb:=cast(int)scan_u32(b,12);ib:=cast(int)scan_u32(b,16);layers:=cast(int)scan_u32(b,20);
+ if !vw_ranges(n,vb,ib,layers) || vb%4!=0 || ib%4!=0 || b.count!=VW_HEADER+VW_POINTS*4+n*VW_DRAW_BYTES {return false;}
+ for k:0..<3 {if scan_u32(b,32+k*4)!=f32_bits([3]f32.[-112,-112,1][k]) {return false;}}
+ if !vw_numbers(b[VW_HEADER..<VW_HEADER+VW_POINTS*4],-128,256) {return false;}
+ for k:0..<n {at:=VW_HEADER+VW_POINTS*4+k*VW_DRAW_BYTES;if !vw_draw(b[at..<at+VW_DRAW_BYTES],k,ib/4) {return false;}}
+ return true;
+}
+#load "../../aethyr/tests/valley-world-catalog.coax";

@@ -1,0 +1,3 @@
+--vertices vw_bg_vs,vw_scene_vs,vw_shadow_vs,vw_fx_vs
+--fragments vw_bg_fs,vw_scene_fs,vw_shadow_fs,vw_fx_fs
+--bindings apps/openagents-web/gpu/valleyworld.bindings --strip vw_
